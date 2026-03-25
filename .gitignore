@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 packages/
 BenchmarkDotNet.Artifacts/
+
+# AI
+.claude/settings.local.json
