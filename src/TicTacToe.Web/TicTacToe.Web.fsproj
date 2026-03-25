@@ -28,7 +28,8 @@
     <PackageReference Include="Frank.Auth" Version="7.3.0" />
     <PackageReference Include="Frank.Cli.MSBuild" Version="7.3.0" />
     <PackageReference Include="Frank.Datastar" Version="7.3.0" />
-    <PackageReference Include="Frank.Statecharts.Core" Version="7.3.0" />
+    <PackageReference Include="Frank.Discovery" Version="7.3.0" />
+    <PackageReference Include="Frank.Statecharts" Version="7.3.0" />
     <PackageReference Include="Oxpecker.ViewEngine" Version="2.*" />
   </ItemGroup>
 
