@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet *)",
+      "Bash(TEST_BASE_URL=* dotnet *)",
+      "Bash(HEADED=* TEST_BASE_URL=* dotnet *)",
+      "Bash(TEST_BASE_URL=* timeout * dotnet *)",
+      "Bash(timeout * dotnet *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(curl *)",
+      "Bash(timeout * curl *)",
+      "Bash(pkill *)",
+      "Bash(pgrep *)",
+      "Bash(kill *)",
+      "Bash(lsof *)",
+      "Bash(smcat *)",
+      "Bash(xmllint *)",
+      "Bash(.specify/scripts/bash/*)",
+      "WebFetch(domain:data-star.dev)",
+      "WebFetch(domain:www.nuget.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:playwright.dev)",
+      "WebFetch(domain:lanayx.github.io)",
+      "WebSearch",
+      "mcp__plugin_context7_context7__resolve-library-id",
+      "mcp__plugin_context7_context7__query-docs"
+    ]
+  }
+}
