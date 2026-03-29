@@ -83,7 +83,6 @@ let home =
     resource "/" {
         name "Home"
         entryPoint
-        discoveryMediaType "text/html" "self"
         requireAuth
         get Handlers.home
     }
@@ -98,7 +97,6 @@ let games =
     resource "/games" {
         name "Games"
         entryPoint
-        discoveryMediaType "text/html" "self"
         requireAuth
         post Handlers.createGame
     }
@@ -106,8 +104,6 @@ let games =
 let gameById =
     resource "/games/{id}" {
         name "GameById"
-        entryPoint
-        discoveryMediaType "text/html" "self"
         requireAuth
         get Handlers.getGame
         post Handlers.makeMove
@@ -117,8 +113,6 @@ let gameById =
 let gameReset =
     resource "/games/{id}/reset" {
         name "GameReset"
-        entryPoint
-        discoveryMediaType "text/html" "self"
         requireAuth
         post Handlers.resetGame
     }
