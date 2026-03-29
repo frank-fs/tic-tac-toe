@@ -12,6 +12,8 @@ open Microsoft.Extensions.Logging
 open Frank.Builder
 open Frank.Auth
 open Frank.Datastar
+open Frank.Discovery
+open Frank.Affordances
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Engine
@@ -23,6 +25,13 @@ let configureLogging (builder: ILoggingBuilder) =
     builder
 
 let configureServices (services: IServiceCollection) =
+    services.AddSingleton<JsonHomeMetadata>(
+        { Title = Some "TicTacToe"
+          DocsUrl = None
+          AlpsBaseUri = None
+          AlpsDescriptors = None })
+    |> ignore
+
     services.AddRouting().AddHttpContextAccessor() |> ignore
 
     services.AddAntiforgery() |> ignore
@@ -74,6 +83,7 @@ let debug =
 let home =
     resource "/" {
         name "Home"
+        entryPoint
         requireAuth
         get Handlers.home
     }
@@ -87,6 +97,7 @@ let sse =
 let games =
     resource "/games" {
         name "Games"
+        entryPoint
         requireAuth
         post Handlers.createGame
     }
@@ -138,6 +149,8 @@ let main args =
         plugBeforeRoutingWhen isDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
         plugBeforeRoutingWhenNot isDevelopment (fun app -> ExceptionHandlerExtensions.UseExceptionHandler(app, "/error", true))
+
+        useDiscovery
 
         useAuthentication (fun auth -> auth.AddCookie(fun options -> options.Cookie.Name <- "TicTacToe.User"; options.Cookie.HttpOnly <- true; options.Cookie.SameSite <- SameSiteMode.Strict; options.Cookie.SecurePolicy <- CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan <- TimeSpan.FromDays(30.0); options.SlidingExpiration <- true; options.LoginPath <- "/login"; options.Events <- CookieAuthenticationEvents(OnRedirectToLogin = fun ctx -> if ctx.Request.Headers.ContainsKey("X-Agent-Id") then ctx.Response.StatusCode <- 401; ctx.Response.Headers["WWW-Authenticate"] <- "X-Agent-Id realm=\"TicTacToe\""; Task.CompletedTask else ctx.Response.Redirect(ctx.RedirectUri); Task.CompletedTask)))
 
