@@ -11,6 +11,8 @@ open Microsoft.Extensions.Logging
 open Frank.Builder
 open Frank.Auth
 open Frank.Datastar
+open Frank.Discovery
+open Frank.Affordances
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Engine
@@ -22,6 +24,13 @@ let configureLogging (builder: ILoggingBuilder) =
     builder
 
 let configureServices (services: IServiceCollection) =
+    services.AddSingleton<JsonHomeMetadata>(
+        { Title = Some "TicTacToe"
+          DocsUrl = None
+          AlpsBaseUri = None
+          AlpsDescriptors = None })
+    |> ignore
+
     services.AddRouting().AddHttpContextAccessor() |> ignore
 
     services.AddAntiforgery() |> ignore
@@ -73,6 +82,8 @@ let debug =
 let home =
     resource "/" {
         name "Home"
+        entryPoint
+        discoveryMediaType "text/html" "self"
         requireAuth
         get Handlers.home
     }
@@ -86,6 +97,8 @@ let sse =
 let games =
     resource "/games" {
         name "Games"
+        entryPoint
+        discoveryMediaType "text/html" "self"
         requireAuth
         post Handlers.createGame
     }
@@ -93,6 +106,8 @@ let games =
 let gameById =
     resource "/games/{id}" {
         name "GameById"
+        entryPoint
+        discoveryMediaType "text/html" "self"
         requireAuth
         get Handlers.getGame
         post Handlers.makeMove
@@ -102,6 +117,8 @@ let gameById =
 let gameReset =
     resource "/games/{id}/reset" {
         name "GameReset"
+        entryPoint
+        discoveryMediaType "text/html" "self"
         requireAuth
         post Handlers.resetGame
     }
@@ -137,6 +154,8 @@ let main args =
         plugBeforeRoutingWhen isDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
         plugBeforeRoutingWhenNot isDevelopment (fun app -> ExceptionHandlerExtensions.UseExceptionHandler(app, "/error", true))
+
+        useDiscovery
 
         useAuthentication (fun auth -> auth.AddCookie(fun options -> options.Cookie.Name <- "TicTacToe.User"; options.Cookie.HttpOnly <- true; options.Cookie.SameSite <- SameSiteMode.Strict; options.Cookie.SecurePolicy <- CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan <- TimeSpan.FromDays(30.0); options.SlidingExpiration <- true; options.LoginPath <- "/login"))
 
