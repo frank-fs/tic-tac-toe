@@ -21,6 +21,7 @@
     <Compile Include="InitialGamesTests.fs" />
     <Compile Include="UserIdentityTests.fs" />
     <Compile Include="AffordanceTests.fs" />
+    <Compile Include="ProtocolTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
