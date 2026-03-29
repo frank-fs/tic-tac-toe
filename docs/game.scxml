@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" initial="Playing">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" name="TicTacToeGame" initial="Playing">
 
   <!--
     Game Child State Machine (single game instance)
     Models a single tic-tac-toe game from creation to disposal.
+    This is a TEMPLATE: the GameSupervisor creates runtime instances.
     Multiple instances may run concurrently, one per game board.
     Invoked from the main statechart (statechart.scxml).
 
@@ -11,7 +12,22 @@
       - GamePlay: turn-by-turn game progression
       - PlayerIdentity: player role assignment
 
+    State alignment with MoveResult DU:
+      XTurn     -> MoveResult.XTurn
+      OTurn     -> MoveResult.OTurn
+      Won       -> MoveResult.Won
+      Draw      -> MoveResult.Draw
+      MoveError -> MoveResult.Error (transient, returns via history)
+      Disposed  -> removed from GameSupervisor store
+
     Lifecycle events (dispose, reset, timeout) exit the entire game.
+
+    Note: ECMAScript guard functions (wouldWin, wouldFillBoard,
+    isParticipant, hasActivity) and <assign> actions are out of scope
+    for the Frank.Cli statechart parser (silently skipped). The guards
+    are preserved as string expressions in the AST for documentation.
+
+    Validated for Frank.Cli 7.3.0 (frank statechart parse/validate).
   -->
 
   <datamodel>

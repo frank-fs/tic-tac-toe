@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" initial="Unauthenticated">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" name="TicTacToeApp" initial="Unauthenticated">
 
   <!--
     TicTacToe Application Statechart
@@ -10,7 +10,12 @@
       3. Participate in games (child state machine: game.scxml)
 
     Auth and Game are invoked as child state machines.
-    Multiple game instances may be active concurrently.
+    The game.scxml child machine is a TEMPLATE for a single game instance;
+    the GameSupervisor creates runtime instances from this template.
+    Multiple game instances may be active concurrently, but concurrent
+    participation is managed at runtime, not modeled in SCXML.
+
+    Validated for Frank.Cli 7.3.0 (frank statechart parse/validate).
   -->
 
   <state id="Unauthenticated">
