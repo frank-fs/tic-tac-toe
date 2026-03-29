@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <!-- Frank.Cli.MSBuild: base URI for ALPS namespace and semantic generation -->
+    <FrankCliBaseUri>http://localhost:5228</FrankCliBaseUri>
   </PropertyGroup>
 
   <ItemGroup>

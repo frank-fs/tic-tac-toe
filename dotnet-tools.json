@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {
+    "frank.cli": {
+      "version": "7.3.1",
+      "commands": [
+        "frank"
+      ],
+      "rollForward": false
+    }
+  }
+}
