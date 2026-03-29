@@ -16,6 +16,25 @@ let gameTransition (state: GamePhase) (event: GameEvent) (_ctx: unit) =
     // The actual outcome is determined by the Engine; the statechart store
     // is updated by the observer AFTER the Engine processes the move.
     // For the statechart middleware transition, we just allow the transition.
+    // -----------------------------------------------------------------------
+    // KNOWN LIMITATION: Approximate transitions
+    //
+    // These transitions assume a normal alternating-turn outcome. The Engine
+    // owns the real game logic; a move may actually result in Won, Draw, or
+    // Error. The observer in Handlers.fs corrects the store immediately after
+    // the Engine processes the move, so the race window is:
+    //
+    //   middleware transition (approximate) -> handler -> Engine -> observer (corrects)
+    //
+    // This is acceptable because:
+    //   1. The 202 response carries no state representation, so the client
+    //      never sees the intermediate approximate state.
+    //   2. The in-memory MailboxProcessorStore observer fires synchronously
+    //      within the same request pipeline, making the correction near-instant.
+    //
+    // Revisit if the store becomes async/distributed, where the correction
+    // latency could surface stale state to concurrent readers.
+    // -----------------------------------------------------------------------
     | GamePhase.XTurn, GameEvent.MakeMove _ -> TransitionResult.Transitioned(GamePhase.OTurn, ())
     | GamePhase.OTurn, GameEvent.MakeMove _ -> TransitionResult.Transitioned(GamePhase.XTurn, ())
     // Reset creates a new game — the old game's statechart is not reused

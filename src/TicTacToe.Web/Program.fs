@@ -83,7 +83,7 @@ let resolveStateKey (app: IApplicationBuilder) =
 
                     if not (obj.ReferenceEquals(metadata, null)) then
                         // Enforce authentication — statefulResource endpoints require auth
-                        if not ctx.User.Identity.IsAuthenticated then
+                        if ctx.User.Identity |> isNull || not ctx.User.Identity.IsAuthenticated then
                             do! ctx.ChallengeAsync()
                             challenged <- true
                         else
@@ -203,7 +203,10 @@ let createInitialGames (app: IApplicationBuilder) =
         for _ in 1..6 do
             let (gameId, game) = supervisor.CreateGame()
             // Seed initial state in the statechart store
-            store.SetState gameId GamePhase.XTurn () |> fun t -> t.Wait()
+            // GetAwaiter().GetResult() avoids AggregateException wrapping (unlike .Wait()).
+            // Synchronous blocking is acceptable: ApplicationStarted callback is Action (sync),
+            // and the in-memory store has no SynchronizationContext deadlock risk.
+            store.SetState gameId GamePhase.XTurn () |> fun t -> t.GetAwaiter().GetResult()
             Handlers.subscribeToGame gameId game assignmentManager supervisor store)
     |> ignore
 

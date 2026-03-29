@@ -63,7 +63,11 @@ let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssi
                 { new IObserver<MoveResult> with
                     member _.OnNext(result) =
                         let phase = toGamePhase result
-                        store.SetState gameId phase () |> ignore
+                        // Synchronous blocking is acceptable here: IObserver.OnNext is
+                        // synchronous, and the in-memory MailboxProcessorStore has no
+                        // SynchronizationContext deadlock risk under Kestrel.
+                        store.SetState gameId phase ()
+                        |> fun t -> t.GetAwaiter().GetResult()
 
                     member _.OnError(_) = ()
                     member _.OnCompleted() = () }
@@ -359,6 +363,11 @@ let deleteGame (ctx: HttpContext) =
 
                     // Dispose the game - this triggers OnCompleted which removes subscription
                     game.Dispose()
+
+                    // TODO: Remove orphaned store entry for this gameId.
+                    // IStateMachineStore currently has no RemoveState method, so the
+                    // entry persists. Acceptable for in-memory store (cleared on restart)
+                    // but should be revisited if the store becomes durable/distributed.
 
                     // Broadcast removal to all clients
                     broadcast (RemoveElement $"#game-{gameId}")
