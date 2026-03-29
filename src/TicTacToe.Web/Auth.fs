@@ -176,9 +176,11 @@ type GameUserClaimsTransformation(httpContextAccessor: IHttpContextAccessor, log
             task {
                 try
                     // Check for agent identity via X-Agent-Id header first
+                    // Only use agent identity if no existing authentication is present
                     match tryCreateAgentPrincipal() with
-                    | Some agentPrincipal -> return agentPrincipal
-                    | None ->
+                    | Some agentPrincipal when not (principal.Identity <> null && principal.Identity.IsAuthenticated) ->
+                        return agentPrincipal
+                    | _ ->
 
                     // Log entry point with any existing user ID
                     if not (isNull log) then

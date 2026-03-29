@@ -139,7 +139,7 @@ let main args =
 
         plugBeforeRoutingWhenNot isDevelopment (fun app -> ExceptionHandlerExtensions.UseExceptionHandler(app, "/error", true))
 
-        useAuthentication (fun auth -> auth.AddCookie(fun options -> options.Cookie.Name <- "TicTacToe.User"; options.Cookie.HttpOnly <- true; options.Cookie.SameSite <- SameSiteMode.Strict; options.Cookie.SecurePolicy <- CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan <- TimeSpan.FromDays(30.0); options.SlidingExpiration <- true; options.LoginPath <- "/login"; options.Events <- CookieAuthenticationEvents(OnRedirectToLogin = fun ctx -> if ctx.Request.Headers.ContainsKey("X-Agent-Id") then ctx.Response.StatusCode <- 401; Task.CompletedTask else ctx.Response.Redirect(ctx.RedirectUri); Task.CompletedTask)))
+        useAuthentication (fun auth -> auth.AddCookie(fun options -> options.Cookie.Name <- "TicTacToe.User"; options.Cookie.HttpOnly <- true; options.Cookie.SameSite <- SameSiteMode.Strict; options.Cookie.SecurePolicy <- CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan <- TimeSpan.FromDays(30.0); options.SlidingExpiration <- true; options.LoginPath <- "/login"; options.Events <- CookieAuthenticationEvents(OnRedirectToLogin = fun ctx -> if ctx.Request.Headers.ContainsKey("X-Agent-Id") then ctx.Response.StatusCode <- 401; ctx.Response.Headers["WWW-Authenticate"] <- "X-Agent-Id realm=\"TicTacToe\""; Task.CompletedTask else ctx.Response.Redirect(ctx.RedirectUri); Task.CompletedTask)))
 
         useAuthorization
 
