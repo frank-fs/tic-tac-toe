@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" initial="AwaitingLogin">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" version="1.0" datamodel="ecmascript" name="TicTacToeAuth" initial="AwaitingLogin">
 
   <!--
     Authentication Child State Machine
     Models cookie-based authentication.
     Invoked from the main statechart (statechart.scxml).
+
+    Validated for Frank.Cli 7.3.0 (frank statechart parse/validate).
   -->
 
   <state id="AwaitingLogin">
