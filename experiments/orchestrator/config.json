@@ -1,0 +1,6 @@
+{
+    "serverUrl": "http://localhost:5228",
+    "defaultGameCount": 3,
+    "timeoutSeconds": 60,
+    "maxRequestsPerGame": 50
+}
