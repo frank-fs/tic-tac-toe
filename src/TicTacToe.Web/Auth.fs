@@ -145,13 +145,41 @@ type GameUserClaimsTransformation(httpContextAccessor: IHttpContextAccessor, log
             [||]
 
     /// <summary>
-    /// Implementation of IClaimsTransformation that ensures users have
-    /// appropriate identification claims for the Tic Tac Toe application.
+    /// Tries to extract an agent identity from the X-Agent-Id header.
+    /// Returns Some(ClaimsPrincipal) if the header is present and non-empty.
     /// </summary>
+    let tryCreateAgentPrincipal () =
+        try
+            let context = httpContextAccessor.HttpContext
+            if isNull context then None
+            else
+                match context.Request.Headers.TryGetValue("X-Agent-Id") with
+                | true, values ->
+                    let agentId = values.ToString()
+                    if String.IsNullOrWhiteSpace(agentId) then None
+                    else
+                        log.LogInformation("Agent authentication via X-Agent-Id: {AgentId}", agentId)
+                        let claims = [|
+                            Claim(ClaimTypes.UserId, agentId)
+                            Claim(ClaimTypes.Created, getTimestamp())
+                            Claim(ClaimTypes.LastVisit, getTimestamp())
+                        |]
+                        let identity = ClaimsIdentity(claims, "TicTacToe.Agent")
+                        Some(ClaimsPrincipal(identity))
+                | _ -> None
+        with ex ->
+            log.LogWarning(ex, "Error checking X-Agent-Id header")
+            None
+
     interface IClaimsTransformation with
         member _.TransformAsync(principal: ClaimsPrincipal) =
             task {
                 try
+                    // Check for agent identity via X-Agent-Id header first
+                    match tryCreateAgentPrincipal() with
+                    | Some agentPrincipal -> return agentPrincipal
+                    | None ->
+
                     // Log entry point with any existing user ID
                     if not (isNull log) then
                         let existingId = principal.FindClaimValue(ClaimTypes.UserId)
