@@ -2,8 +2,42 @@ module TicTacToe.Web.Model
 
 // Player assignment types for multi-player support
 // This module tracks which authenticated users are assigned to which game roles
+// Also defines GamePhase DU for statechart integration (Web layer only, not Engine)
 
 open System
+open TicTacToe.Model
+
+// ============================================================================
+// GamePhase — statechart state (Web layer only, Engine untouched)
+// ============================================================================
+
+/// Game phase for statechart state machine. Maps from Engine's MoveResult.
+/// RequireQualifiedAccess avoids shadowing MoveResult's XTurn/OTurn/Won/Draw/Error cases.
+[<RequireQualifiedAccess>]
+[<StructuralEquality; StructuralComparison>]
+type GamePhase =
+    | XTurn
+    | OTurn
+    | Won
+    | Draw
+    | Error
+
+/// Events that trigger statechart transitions.
+/// RequireQualifiedAccess to avoid shadowing Engine's MakeMove.
+[<RequireQualifiedAccess>]
+type GameEvent =
+    | MakeMove of position: SquarePosition
+    | Reset
+    | Delete
+
+/// Convert Engine's MoveResult to the statechart GamePhase.
+let toGamePhase (result: MoveResult) : GamePhase =
+    match result with
+    | MoveResult.XTurn _ -> GamePhase.XTurn
+    | MoveResult.OTurn _ -> GamePhase.OTurn
+    | MoveResult.Won _ -> GamePhase.Won
+    | MoveResult.Draw _ -> GamePhase.Draw
+    | MoveResult.Error _ -> GamePhase.Error
 
 /// Reasons why a move was rejected
 type RejectionReason =

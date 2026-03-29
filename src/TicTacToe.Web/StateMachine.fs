@@ -1,0 +1,114 @@
+module TicTacToe.Web.GameStateMachine
+
+open Frank.Statecharts
+open Frank.Resources.Model
+open TicTacToe.Web.Model
+
+// ============================================================================
+// Transition function
+// ============================================================================
+
+/// Statechart context: unit (all real game state lives in Engine's GameSupervisor).
+/// The statechart only tracks phase transitions for routing/affordances.
+let gameTransition (state: GamePhase) (event: GameEvent) (_ctx: unit) =
+    match state, event with
+    // A move from XTurn can go to OTurn, Won, Draw, or Error
+    // The actual outcome is determined by the Engine; the statechart store
+    // is updated by the observer AFTER the Engine processes the move.
+    // For the statechart middleware transition, we just allow the transition.
+    // -----------------------------------------------------------------------
+    // KNOWN LIMITATION: Approximate transitions
+    //
+    // These transitions assume a normal alternating-turn outcome. The Engine
+    // owns the real game logic; a move may actually result in Won, Draw, or
+    // Error. The observer in Handlers.fs corrects the store immediately after
+    // the Engine processes the move, so the race window is:
+    //
+    //   middleware transition (approximate) -> handler -> Engine -> observer (corrects)
+    //
+    // This is acceptable because:
+    //   1. The 202 response carries no state representation, so the client
+    //      never sees the intermediate approximate state.
+    //   2. The in-memory MailboxProcessorStore observer fires synchronously
+    //      within the same request pipeline, making the correction near-instant.
+    //
+    // Revisit if the store becomes async/distributed, where the correction
+    // latency could surface stale state to concurrent readers.
+    // -----------------------------------------------------------------------
+    | GamePhase.XTurn, GameEvent.MakeMove _ -> TransitionResult.Transitioned(GamePhase.OTurn, ())
+    | GamePhase.OTurn, GameEvent.MakeMove _ -> TransitionResult.Transitioned(GamePhase.XTurn, ())
+    // Reset creates a new game — the old game's statechart is not reused
+    | _, GameEvent.Reset -> TransitionResult.Transitioned(GamePhase.XTurn, ())
+    // Delete is a terminal action
+    | _, GameEvent.Delete -> TransitionResult.Invalid "Delete removes the game"
+    // Cannot move in terminal states
+    | GamePhase.Won, GameEvent.MakeMove _ -> TransitionResult.Invalid "Game already over"
+    | GamePhase.Draw, GameEvent.MakeMove _ -> TransitionResult.Invalid "Game already over"
+    | GamePhase.Error, GameEvent.MakeMove _ -> TransitionResult.Invalid "Game in error state"
+
+// ============================================================================
+// Guards
+// ============================================================================
+
+/// Turn guard: checks that the user has the correct player claim for the current turn.
+/// The role predicates resolve "PlayerX"/"PlayerO" from claims; this guard
+/// checks that the resolved role matches the current phase.
+///
+/// Uses EventValidation (post-handler) so it only fires when a MakeMove event is set.
+/// GET and DELETE requests don't set events, so they pass through without turn checks.
+let turnGuard: Guard<GamePhase, GameEvent, unit> =
+    EventValidation(
+        "TurnGuard",
+        fun ctx ->
+            match ctx.Event with
+            | GameEvent.MakeMove _ ->
+                match ctx.CurrentState with
+                | GamePhase.XTurn ->
+                    if ctx.HasRole("PlayerX") then GuardResult.Allowed
+                    elif ctx.HasRole("PlayerO") then GuardResult.Blocked BlockReason.NotYourTurn
+                    else
+                        // Unassigned user — allow (assignment happens in handler)
+                        GuardResult.Allowed
+                | GamePhase.OTurn ->
+                    if ctx.HasRole("PlayerO") then GuardResult.Allowed
+                    elif ctx.HasRole("PlayerX") then GuardResult.Blocked BlockReason.NotYourTurn
+                    else
+                        // Unassigned user — allow (assignment happens in handler)
+                        GuardResult.Allowed
+                | GamePhase.Won | GamePhase.Draw | GamePhase.Error ->
+                    // Terminal states — moves are blocked by the transition function
+                    GuardResult.Allowed
+            | _ -> GuardResult.Allowed
+    )
+
+// ============================================================================
+// State machine definition
+// ============================================================================
+
+let gameMachine: StateMachine<GamePhase, GameEvent, unit> =
+    { Initial = GamePhase.XTurn
+      InitialContext = ()
+      Transition = gameTransition
+      Guards = [ turnGuard ]
+      StateMetadata =
+        Map.ofList
+            [ GamePhase.XTurn,
+              { AllowedMethods = [ "GET"; "POST"; "DELETE" ]
+                IsFinal = false
+                Description = Some "X's turn to play" }
+              GamePhase.OTurn,
+              { AllowedMethods = [ "GET"; "POST"; "DELETE" ]
+                IsFinal = false
+                Description = Some "O's turn to play" }
+              GamePhase.Won,
+              { AllowedMethods = [ "GET"; "DELETE" ]
+                IsFinal = true
+                Description = Some "Game over: someone won" }
+              GamePhase.Draw,
+              { AllowedMethods = [ "GET"; "DELETE" ]
+                IsFinal = true
+                Description = Some "Game over: draw" }
+              GamePhase.Error,
+              { AllowedMethods = [ "GET" ]
+                IsFinal = true
+                Description = Some "Game in error state" } ] }
