@@ -28,10 +28,11 @@ let configureLogging (builder: ILoggingBuilder) =
     builder
 
 let configureServices (services: IServiceCollection) =
+    // TODO: AlpsBaseUri should come from configuration for production (must be absolute per Miller review)
     services.AddSingleton<JsonHomeMetadata>(
         { Title = Some "TicTacToe"
           DocsUrl = None
-          AlpsBaseUri = None
+          AlpsBaseUri = Some "/alps/tictactoe"
           AlpsDescriptors = None })
     |> ignore
 
@@ -150,6 +151,7 @@ let home =
     resource "/" {
         name "Home"
         entryPoint
+        discoveryMediaType "application/alps+json" "describedby"
         requireAuth
         get Handlers.home
     }
@@ -164,6 +166,7 @@ let games =
     resource "/games" {
         name "Games"
         entryPoint
+        discoveryMediaType "application/alps+json" "describedby"
         requireAuth
         post Handlers.createGame
     }

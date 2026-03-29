@@ -1,0 +1,71 @@
+{
+  "alps": {
+    "version": "1.0",
+    "doc": { "value": "ALPS profile for Tic-Tac-Toe game API" },
+    "descriptor": [
+      {
+        "id": "home",
+        "type": "semantic",
+        "doc": { "value": "Application entry point" },
+        "descriptor": [
+          { "id": "goGames", "type": "safe", "rt": "#gameCollection", "doc": { "value": "Navigate to games collection" } }
+        ]
+      },
+      {
+        "id": "gameCollection",
+        "type": "semantic",
+        "doc": { "value": "Collection of active tic-tac-toe games" },
+        "ref": "https://schema.org/ItemList",
+        "descriptor": [
+          { "id": "createGame", "type": "unsafe", "rt": "#game", "doc": { "value": "Create a new game" } }
+        ]
+      },
+      {
+        "id": "game",
+        "type": "semantic",
+        "doc": { "value": "A single tic-tac-toe game instance" },
+        "ref": "https://schema.org/Game",
+        "descriptor": [
+          {
+            "id": "board",
+            "type": "semantic",
+            "doc": { "value": "3x3 grid of squares, each Empty, X, or O" }
+          },
+          {
+            "id": "player",
+            "type": "semantic",
+            "ref": "https://schema.org/player",
+            "doc": { "value": "A participant in the game (X or O)" }
+          },
+          {
+            "id": "position",
+            "type": "semantic",
+            "doc": { "value": "Square position on the board: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight" }
+          },
+          {
+            "id": "makeMove",
+            "type": "unsafe",
+            "ref": "https://schema.org/MoveAction",
+            "doc": { "value": "Place a mark (X or O) on a board square" },
+            "descriptor": [
+              { "id": "gameId", "type": "semantic", "doc": { "value": "Game instance identifier" } },
+              { "id": "player", "type": "semantic", "doc": { "value": "X or O" } },
+              { "id": "position", "type": "semantic", "doc": { "value": "Target square" } }
+            ]
+          },
+          {
+            "id": "deleteGame",
+            "type": "idempotent",
+            "doc": { "value": "Remove a game from the collection" }
+          },
+          {
+            "id": "resetGame",
+            "type": "unsafe",
+            "rt": "#game",
+            "doc": { "value": "Replace a completed game with a fresh one" }
+          }
+        ]
+      }
+    ]
+  }
+}
