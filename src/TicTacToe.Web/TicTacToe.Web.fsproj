@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <Compile Include="Model.fs" />
+    <Compile Include="StateMachine.fs" />
     <Compile Include="Extensions.fs" />
     <Compile Include="Auth.fs" />
     <Compile Include="SseBroadcast.fs" />

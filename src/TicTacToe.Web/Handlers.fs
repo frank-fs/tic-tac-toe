@@ -10,6 +10,7 @@ open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
 open Oxpecker.ViewEngine
 open Frank.Datastar
+open Frank.Statecharts
 open TicTacToe.Web.SseBroadcast
 open TicTacToe.Web.templates.shared
 open TicTacToe.Web.templates.game
@@ -28,10 +29,14 @@ type MoveSignals =
 let private gameSubscriptions =
     System.Collections.Concurrent.ConcurrentDictionary<string, IDisposable>()
 
-/// Subscribe to a game's state changes and broadcast updates
-let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssignmentManager) (supervisor: GameSupervisor) =
+/// Subscribe to a game's state changes and broadcast updates.
+/// Sets up two independent observers:
+///   1. SSE broadcast observer (existing) — drives broadcastPerRole for Datastar
+///   2. Statechart store observer (new) — updates GamePhase in the store
+let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssignmentManager) (supervisor: GameSupervisor) (store: IStateMachineStore<GamePhase, unit>) =
     if not (gameSubscriptions.ContainsKey(gameId)) then
-        let subscription =
+        // Observer 1: SSE broadcast (existing behavior)
+        let sseSub =
             game.Subscribe(
                 { new IObserver<MoveResult> with
                     member _.OnNext(result) =
@@ -52,7 +57,26 @@ let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssi
                         | _ -> () }
             )
 
-        gameSubscriptions.TryAdd(gameId, subscription) |> ignore
+        // Observer 2: Statechart store update — keeps GamePhase in sync with Engine
+        let storeSub =
+            game.Subscribe(
+                { new IObserver<MoveResult> with
+                    member _.OnNext(result) =
+                        let phase = toGamePhase result
+                        store.SetState gameId phase () |> ignore
+
+                    member _.OnError(_) = ()
+                    member _.OnCompleted() = () }
+            )
+
+        // Combine both subscriptions into a single disposable
+        let combined =
+            { new IDisposable with
+                member _.Dispose() =
+                    sseSub.Dispose()
+                    storeSub.Dispose() }
+
+        gameSubscriptions.TryAdd(gameId, combined) |> ignore
 
 /// Login endpoint - signs in user and redirects back
 /// This creates a persistent cookie for user identification
@@ -175,10 +199,14 @@ let createGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let store = ctx.RequestServices.GetRequiredService<IStateMachineStore<GamePhase, unit>>()
         let (gameId, game) = supervisor.CreateGame()
 
+        // Seed initial state in the statechart store
+        do! store.SetState gameId GamePhase.XTurn ()
+
         // Subscribe to game state changes
-        subscribeToGame gameId game assignmentManager supervisor
+        subscribeToGame gameId game assignmentManager supervisor store
 
         // Get initial state and broadcast to all clients
         use initialSub =
@@ -203,12 +231,13 @@ let getGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let store = ctx.RequestServices.GetRequiredService<IStateMachineStore<GamePhase, unit>>()
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
         match supervisor.GetGame(gameId) with
         | Some game ->
             // Subscribe to ensure updates are broadcast
-            subscribeToGame gameId game assignmentManager supervisor
+            subscribeToGame gameId game assignmentManager supervisor store
 
             // Get current state via a temporary subscription
             let mutable currentResult: MoveResult option = None
@@ -239,7 +268,9 @@ let private isXTurn (moveResult: MoveResult) =
     | MoveResult.XTurn _ -> true
     | _ -> false
 
-/// POST /games/{id} - Make a move in a specific game
+/// POST /games/{id} - Make a move in a specific game.
+/// The statechart middleware has already checked guards (turn order via claims).
+/// This handler performs assignment validation and delegates to the Engine.
 let makeMove (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
@@ -247,6 +278,7 @@ let makeMove (ctx: HttpContext) =
         let assignmentManager =
             ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
 
+        let store = ctx.RequestServices.GetRequiredService<IStateMachineStore<GamePhase, unit>>()
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
         // Get user ID from authenticated user
@@ -272,8 +304,15 @@ let makeMove (ctx: HttpContext) =
                     match validationResult with
                     | Allowed ->
                         // Ensure we're subscribed to broadcast updates
-                        subscribeToGame gameId game assignmentManager supervisor
+                        subscribeToGame gameId game assignmentManager supervisor store
                         game.MakeMove(moveAction)
+
+                        // Set event for statechart middleware transition
+                        let position =
+                            match moveAction with
+                            | XMove pos | OMove pos -> pos
+                        StateMachineContext.setEvent ctx (GameEvent.MakeMove position)
+
                         ctx.Response.StatusCode <- 202
                     | Rejected reason ->
                         // Move was rejected - broadcast rejection animation
@@ -293,7 +332,8 @@ let makeMove (ctx: HttpContext) =
             ctx.Response.StatusCode <- 401
     }
 
-/// DELETE /games/{id} - Delete a game
+/// DELETE /games/{id} - Delete a game.
+/// The statechart middleware checks method is allowed in current state.
 let deleteGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
@@ -335,6 +375,7 @@ let resetGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let store = ctx.RequestServices.GetRequiredService<IStateMachineStore<GamePhase, unit>>()
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
         // Get user ID from authenticated user
@@ -356,8 +397,11 @@ let resetGame (ctx: HttpContext) =
                     // Create new game first (maintains count)
                     let (newGameId, newGame) = supervisor.CreateGame()
 
+                    // Seed initial state in the statechart store for the new game
+                    do! store.SetState newGameId GamePhase.XTurn ()
+
                     // Subscribe to new game state changes
-                    subscribeToGame newGameId newGame assignmentManager supervisor
+                    subscribeToGame newGameId newGame assignmentManager supervisor store
 
                     // Clear old game's player assignments
                     assignmentManager.RemoveGame(gameId)
