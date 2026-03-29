@@ -34,26 +34,32 @@ let gameTransition (state: GamePhase) (event: GameEvent) (_ctx: unit) =
 /// Turn guard: checks that the user has the correct player claim for the current turn.
 /// The role predicates resolve "PlayerX"/"PlayerO" from claims; this guard
 /// checks that the resolved role matches the current phase.
+///
+/// Uses EventValidation (post-handler) so it only fires when a MakeMove event is set.
+/// GET and DELETE requests don't set events, so they pass through without turn checks.
 let turnGuard: Guard<GamePhase, GameEvent, unit> =
-    AccessControl(
+    EventValidation(
         "TurnGuard",
         fun ctx ->
-            match ctx.CurrentState with
-            | GamePhase.XTurn ->
-                if ctx.HasRole("PlayerX") then GuardResult.Allowed
-                elif ctx.HasRole("PlayerO") then GuardResult.Blocked BlockReason.NotYourTurn
-                else
-                    // Unassigned user — allow (assignment happens in handler)
+            match ctx.Event with
+            | GameEvent.MakeMove _ ->
+                match ctx.CurrentState with
+                | GamePhase.XTurn ->
+                    if ctx.HasRole("PlayerX") then GuardResult.Allowed
+                    elif ctx.HasRole("PlayerO") then GuardResult.Blocked BlockReason.NotYourTurn
+                    else
+                        // Unassigned user — allow (assignment happens in handler)
+                        GuardResult.Allowed
+                | GamePhase.OTurn ->
+                    if ctx.HasRole("PlayerO") then GuardResult.Allowed
+                    elif ctx.HasRole("PlayerX") then GuardResult.Blocked BlockReason.NotYourTurn
+                    else
+                        // Unassigned user — allow (assignment happens in handler)
+                        GuardResult.Allowed
+                | GamePhase.Won | GamePhase.Draw | GamePhase.Error ->
+                    // Terminal states — moves are blocked by the transition function
                     GuardResult.Allowed
-            | GamePhase.OTurn ->
-                if ctx.HasRole("PlayerO") then GuardResult.Allowed
-                elif ctx.HasRole("PlayerX") then GuardResult.Blocked BlockReason.NotYourTurn
-                else
-                    // Unassigned user — allow (assignment happens in handler)
-                    GuardResult.Allowed
-            | GamePhase.Won | GamePhase.Draw | GamePhase.Error ->
-                // GET is allowed in terminal states; POST will be blocked by method check
-                GuardResult.Allowed
+            | _ -> GuardResult.Allowed
     )
 
 // ============================================================================

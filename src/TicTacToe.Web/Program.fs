@@ -67,40 +67,51 @@ let configureServices (services: IServiceCollection) =
 /// on HttpContext.Features. Also enriches the user's claims with player assignment
 /// for the current game so role predicates and guards can check them.
 /// Must run AFTER routing and BEFORE the statechart middleware.
+///
+/// Enforces authentication for stateful resource endpoints: unauthenticated
+/// requests are challenged (302 redirect to login) before reaching the
+/// statechart middleware or any handler.
 let resolveStateKey (app: IApplicationBuilder) =
     app.Use(
         Func<HttpContext, Func<Task>, Task>(fun ctx next ->
             task {
                 let endpoint = ctx.GetEndpoint()
+                let mutable challenged = false
 
                 if not (isNull endpoint) then
                     let metadata = endpoint.Metadata.GetMetadata<StateMachineMetadata>()
 
                     if not (obj.ReferenceEquals(metadata, null)) then
-                        let instanceId = metadata.ResolveInstanceId ctx
+                        // Enforce authentication — statefulResource endpoints require auth
+                        if not ctx.User.Identity.IsAuthenticated then
+                            do! ctx.ChallengeAsync()
+                            challenged <- true
+                        else
+                            let instanceId = metadata.ResolveInstanceId ctx
 
-                        // Enrich user claims with player assignment for this game
-                        let assignmentManager =
-                            ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
-                        let assignment = assignmentManager.GetAssignment(instanceId)
-                        let userId = ctx.User.TryGetUserId()
+                            // Enrich user claims with player assignment for this game
+                            let assignmentManager =
+                                ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+                            let assignment = assignmentManager.GetAssignment(instanceId)
+                            let userId = ctx.User.TryGetUserId()
 
-                        match assignment, userId with
-                        | Some a, Some uid ->
-                            let claims = ResizeArray<Claim>()
-                            if a.PlayerXId = Some uid then
-                                claims.Add(Claim("player", "X"))
-                            elif a.PlayerOId = Some uid then
-                                claims.Add(Claim("player", "O"))
-                            if claims.Count > 0 then
-                                let identity = ClaimsIdentity(claims, "GameAssignment")
-                                ctx.User.AddIdentity(identity)
-                        | _ -> ()
+                            match assignment, userId with
+                            | Some a, Some uid ->
+                                let claims = ResizeArray<Claim>()
+                                if a.PlayerXId = Some uid then
+                                    claims.Add(Claim("player", "X"))
+                                elif a.PlayerOId = Some uid then
+                                    claims.Add(Claim("player", "O"))
+                                if claims.Count > 0 then
+                                    let identity = ClaimsIdentity(claims, "GameAssignment")
+                                    ctx.User.AddIdentity(identity)
+                            | _ -> ()
 
-                        let! _stateKey = metadata.GetCurrentStateKey ctx.RequestServices ctx instanceId
-                        ()
+                            let! _stateKey = metadata.GetCurrentStateKey ctx.RequestServices ctx instanceId
+                            ()
 
-                do! next.Invoke()
+                if not challenged then
+                    do! next.Invoke()
             }
             :> Task)
     )
