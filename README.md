@@ -69,9 +69,9 @@ This project demonstrates modern hypermedia-driven architecture using F# and Dat
 
 - **F#** - Functional-first language for concise, correct code
 - **ASP.NET Core** - Web framework with Kestrel HTTP server
-- **Frank 7.1.0** - Minimal routing and HTTP handling
-- **Frank.Auth 7.1.0** - Declarative resource-based authentication
-- **Frank.Datastar 7.1.0** - Server-sent events with streaming HTML
+- **Frank 7.2.0** - Minimal routing and HTTP handling
+- **Frank.Auth 7.2.0** - Declarative resource-based authentication
+- **Frank.Datastar 7.2.0** - Server-sent events with streaming HTML
 - **Oxpecker.ViewEngine 2.x** - Type-safe HTML rendering with zero-copy streaming
 - **Playwright** - End-to-end browser automation testing
 
