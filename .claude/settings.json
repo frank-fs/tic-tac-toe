@@ -31,6 +31,15 @@
             "command": "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); repo_root=$(git rev-parse --show-toplevel 2>/dev/null); file=\"$TOOL_INPUT_FILE_PATH\"; case \"$file\" in \"$repo_root\"/*) if [ \"$branch\" = \"master\" ] || [ \"$branch\" = \"main\" ]; then echo \"BLOCKED: Cannot edit files on master.\" >&2; exit 2; fi;; esac"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cmd=\"$TOOL_INPUT_COMMAND\"; if echo \"$cmd\" | grep -qE 'git push' && echo \"$cmd\" | grep -qE '\\b(master|main)\\b'; then if [ -z \"$TIC_TAC_TOE_ALLOW_PUSH\" ]; then echo \"BLOCKED: Claude cannot push to master/main directly.\" >&2; echo \"User bypass: TIC_TAC_TOE_ALLOW_PUSH=1 git push\" >&2; exit 2; fi; fi"
+          }
+        ]
       }
     ],
     "Stop": [

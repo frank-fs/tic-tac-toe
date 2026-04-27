@@ -40,7 +40,7 @@ git merge --ff-only <branch>  # (in main worktree)
 git push origin master        # Pre-Push approval required
 ```
 
-**Pre-Push approval:** Respond to the hook prompt, or bypass with `TIC_TAC_TOE_ALLOW_PUSH=1 git push origin master`.
+**Pre-Push protection:** Claude is blocked from pushing to master/main. To allow it: `TIC_TAC_TOE_ALLOW_PUSH=1 git push origin master`.
 
 ## Phases
 
