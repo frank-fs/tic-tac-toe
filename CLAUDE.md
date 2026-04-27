@@ -14,8 +14,8 @@ dotnet test test/TicTacToe.Engine.Tests/
 # Run server (default port 5228)
 dotnet run --project src/TicTacToe.Web/
 
-# Run integration tests (requires server on 5228)
-dotnet test test/TicTacToe.Web.Tests/
+# Run integration tests (requires server on 5228; default TEST_BASE_URL is :5000, not :5228)
+TEST_BASE_URL=http://localhost:5228 dotnet test test/TicTacToe.Web.Tests/
 ```
 
 ## H-Wave Workflow

@@ -11,6 +11,7 @@ open Microsoft.Extensions.Logging
 open Frank.Builder
 open Frank.Auth
 open Frank.Datastar
+open Frank.OpenApi
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Engine
@@ -133,6 +134,8 @@ let main args =
         service configureServices
 
         logging configureLogging
+
+        useOpenApi
 
         plugBeforeRoutingWhen isDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
