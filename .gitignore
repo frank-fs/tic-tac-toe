@@ -28,3 +28,5 @@ BenchmarkDotNet.Artifacts/
 
 # AI
 .claude/settings.local.json
+.claude/worktrees/
+.serena/
