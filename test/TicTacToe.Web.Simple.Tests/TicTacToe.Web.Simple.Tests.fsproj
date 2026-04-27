@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="TestBase.fs" />
+    <Compile Include="GameTests.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="10.0.102" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageReference Include="Microsoft.Playwright.NUnit" Version="1.*" />
+    <PackageReference Include="NUnit" Version="4.*" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.*" />
+  </ItemGroup>
+
+</Project>

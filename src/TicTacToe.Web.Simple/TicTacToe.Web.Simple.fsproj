@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="GameStore.fs" />
+    <Compile Include="Model.fs" />
+    <Compile Include="Extensions.fs" />
+    <Compile Include="Auth.fs" />
+    <Compile Include="templates/shared/layout.fs" />
+    <Compile Include="templates/game.fs" />
+    <Compile Include="templates/home.fs" />
+    <Compile Include="Handlers.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\TicTacToe.Engine\TicTacToe.Engine.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="10.0.102" />
+    <PackageReference Include="Frank" Version="7.2.0" />
+    <PackageReference Include="Frank.Auth" Version="7.2.0" />
+    <PackageReference Include="Frank.OpenApi" Version="7.2.0" />
+    <PackageReference Include="Oxpecker.ViewEngine" Version="2.*" />
+  </ItemGroup>
+
+</Project>
