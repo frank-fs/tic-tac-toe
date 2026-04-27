@@ -8,6 +8,28 @@ open NUnit.Framework
 open Microsoft.Playwright
 open TicTacToe.Web.Simple.Tests
 
+// Position index → nth-child (1-based) for .board form:
+//  1=TopLeft  2=TopCenter  3=TopRight
+//  4=MiddleLeft  5=MiddleCenter  6=MiddleRight
+//  7=BottomLeft  8=BottomCenter  9=BottomRight
+
+let private clickNth (page: IPage) (nth: int) (timeoutMs: int) =
+    task {
+        let navTask =
+            page.WaitForURLAsync("**/arenas/**", PageWaitForURLOptions(Timeout = Nullable(float32 timeoutMs)))
+        do! page.ClickAsync($".board form:nth-child({nth}) button[type='submit']")
+        do! navTask
+    }
+
+let private createArena (page: IPage) (timeoutMs: int) =
+    task {
+        let navTask =
+            page.WaitForURLAsync("**/arenas/**", PageWaitForURLOptions(Timeout = Nullable(float32 timeoutMs)))
+        do! page.ClickAsync("button[type='submit']")
+        do! navTask
+        return page.Url
+    }
+
 /// Verifies V_simple-specific behaviors — notably the differences from V_proto.
 [<TestFixture>]
 type HomePageTests() =
@@ -205,4 +227,284 @@ type JsonApiTests() =
             // whoseTurn might be a string "X" or a JSON object with "some" wrapper
             // Check it's not null/missing
             Assert.That(whoseTurn.ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "whoseTurn should not be null for a new game")
+        }
+
+// ============================================================================
+// Full game flows — two browser contexts (two distinct cookie identities)
+// ============================================================================
+
+[<TestFixture>]
+type FullGameTests() =
+    inherit TestBase()
+
+    [<Test>]
+    member this.``X wins with top row - status shows X wins``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // X: TopLeft (1), O: MiddleLeft (4), X: TopCenter (2), O: MiddleCenter (5), X: TopRight (3)
+            do! clickNth this.Page 1 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 4 this.TimeoutMs
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 2 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 5 this.TimeoutMs
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 3 this.TimeoutMs // X wins!
+
+            let! statusEl = this.Page.QuerySelectorAsync(".status")
+            Assert.That(statusEl, Is.Not.Null, ".status element missing after X wins")
+            let! statusText = statusEl.InnerTextAsync()
+            Assert.That(statusText, Does.Contain("X wins"), $"Expected 'X wins!' in status, got '{statusText}'")
+
+            let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9), "All 9 squares should remain visible after game over")
+        }
+
+    [<Test>]
+    member this.``O wins with middle row - status shows O wins``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // X: TL(1), O: ML(4), X: TC(2), O: MC(5), X: BR(9), O: MR(6) → O wins middle row
+            do! clickNth this.Page 1 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 4 this.TimeoutMs
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 2 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 5 this.TimeoutMs
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 9 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 6 this.TimeoutMs // O wins!
+
+            let! statusEl = p2.QuerySelectorAsync(".status")
+            Assert.That(statusEl, Is.Not.Null, ".status element missing after O wins")
+            let! statusText = statusEl.InnerTextAsync()
+            Assert.That(statusText, Does.Contain("O wins"), $"Expected 'O wins!' in status, got '{statusText}'")
+
+            let! squares = p2.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9), "All 9 squares should remain visible after game over")
+        }
+
+    [<Test>]
+    member this.``Full game ends in draw - status shows draw``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // Draw sequence — no winner: X-TL,O-TC,X-TR,O-MC,X-ML,O-BR,X-BC,O-BL,X-MR
+            // Final board: TL=X TC=O TR=X / ML=X MC=O MR=X / BL=O BC=X BR=O
+            do! clickNth this.Page 1 this.TimeoutMs // X-TL
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 2 this.TimeoutMs // O-TC
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 3 this.TimeoutMs // X-TR
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 5 this.TimeoutMs // O-MC
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 4 this.TimeoutMs // X-ML
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 9 this.TimeoutMs // O-BR
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 8 this.TimeoutMs // X-BC
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 7 this.TimeoutMs // O-BL
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 6 this.TimeoutMs // X-MR → draw
+
+            let! statusEl = this.Page.QuerySelectorAsync(".status")
+            Assert.That(statusEl, Is.Not.Null)
+            let! statusText = statusEl.InnerTextAsync()
+            Assert.That(statusText.ToLower(), Does.Contain("draw"), $"Expected draw in status, got '{statusText}'")
+
+            let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9))
+        }
+
+// ============================================================================
+// Error handling — inline errors, engine rejections
+// ============================================================================
+
+[<TestFixture>]
+type ErrorBehaviorTests() =
+    inherit TestBase()
+
+    [<Test>]
+    member this.``Wrong turn error message text is correct``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+
+            // X plays first move
+            do! clickNth this.Page 1 this.TimeoutMs
+
+            // Same player immediately tries again — it's O's turn
+            do! clickNth this.Page 2 this.TimeoutMs
+
+            let! errorDiv = this.Page.QuerySelectorAsync(".error-msg")
+            Assert.That(errorDiv, Is.Not.Null, "Expected .error-msg after wrong-turn move")
+            let! errorText = errorDiv.InnerTextAsync()
+            Assert.That(errorText, Does.Contain("not your turn").Or.Contain("not a player"),
+                $"Expected wrong-turn message, got '{errorText}'")
+
+            let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9), "All 9 squares still present after error")
+        }
+
+    [<Test>]
+    member this.``Occupied square shows error in status``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // X plays TopLeft (1), O plays TopCenter (2), X tries TopLeft again (occupied)
+            do! clickNth this.Page 1 this.TimeoutMs
+
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 2 this.TimeoutMs
+
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 1 this.TimeoutMs // position already taken
+
+            let! statusEl = this.Page.QuerySelectorAsync(".status")
+            Assert.That(statusEl, Is.Not.Null)
+            let! statusText = statusEl.InnerTextAsync()
+            // Engine returns Error(state, "Invalid move") for occupied squares;
+            // the handler renders it via statusText as "Error: Invalid move"
+            Assert.That(statusText, Does.Contain("Error"),
+                $"Expected error status for occupied square, got '{statusText}'")
+
+            let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9), "Squares still visible after occupied-square error")
+        }
+
+    [<Test>]
+    member this.``Player X cannot move after X wins - shows not your turn``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // X wins: TL,ML,TC,MC,TR
+            do! clickNth this.Page 1 this.TimeoutMs
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 4 this.TimeoutMs
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 2 this.TimeoutMs
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 5 this.TimeoutMs
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 3 this.TimeoutMs // X wins
+
+            // X (player 1) tries to play after the win
+            do! clickNth this.Page 7 this.TimeoutMs
+
+            let! errorDiv = this.Page.QuerySelectorAsync(".error-msg")
+            Assert.That(errorDiv, Is.Not.Null, "Expected .error-msg when X moves after game over")
+            let! errorText = errorDiv.InnerTextAsync()
+            Assert.That(errorText, Does.Contain("not your turn").Or.Contain("not a player"),
+                $"Expected rejection message, got '{errorText}'")
+        }
+
+    [<Test>]
+    member this.``Spectator gets not-a-player error after both roles assigned``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // Assign both players: X plays, O plays
+            do! clickNth this.Page 1 this.TimeoutMs // P1 → X
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 2 this.TimeoutMs // P2 → O
+
+            // P3 — fresh context, third identity
+            let! p3 = this.CreateSecondPlayer(arenaUrl)
+            // p3 is already at arenaUrl (CreateSecondPlayer navigates there)
+            do! clickNth p3 5 this.TimeoutMs // spectator tries MiddleCenter
+
+            let! errorDiv = p3.QuerySelectorAsync(".error-msg")
+            Assert.That(errorDiv, Is.Not.Null, "Expected .error-msg for spectator")
+            let! errorText = errorDiv.InnerTextAsync()
+            Assert.That(errorText, Does.Contain("not a player"),
+                $"Expected 'not a player' rejection for spectator, got '{errorText}'")
+
+            let! squares = p3.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9))
+        }
+
+// ============================================================================
+// Restart — board and assignments cleared after reset
+// ============================================================================
+
+[<TestFixture>]
+type RestartTests() =
+    inherit TestBase()
+
+    [<Test>]
+    member this.``Restart after X wins clears board and resets to X turn``() : Task =
+        task {
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            // X wins: TL,ML,TC,MC,TR
+            do! clickNth this.Page 1 this.TimeoutMs
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 4 this.TimeoutMs
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 2 this.TimeoutMs
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 5 this.TimeoutMs
+            let! _ = this.Page.GotoAsync(arenaUrl)
+            do! clickNth this.Page 3 this.TimeoutMs // X wins
+
+            // Verify win before restart
+            let! statusBefore = this.Page.QuerySelectorAsync(".status")
+            let! statusBeforeText = statusBefore.InnerTextAsync()
+            Assert.That(statusBeforeText, Does.Contain("X wins"))
+
+            // Click restart
+            let restartTask =
+                this.Page.WaitForURLAsync("**/arenas/**", PageWaitForURLOptions(Timeout = Nullable(float32 this.TimeoutMs)))
+            do! this.Page.ClickAsync(".reset-game-btn")
+            do! restartTask
+
+            // Board should be cleared — status "X's turn"
+            let! statusAfter = this.Page.QuerySelectorAsync(".status")
+            Assert.That(statusAfter, Is.Not.Null)
+            let! statusAfterText = statusAfter.InnerTextAsync()
+            Assert.That(statusAfterText, Does.Contain("X's turn"),
+                $"Expected 'X's turn' after restart, got '{statusAfterText}'")
+
+            // All 9 squares empty (showing '·' or blank)
+            let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
+            Assert.That(squares.Count, Is.EqualTo(9))
+
+            let! buttonTexts =
+                squares
+                |> Seq.map (fun sq -> sq.InnerTextAsync() |> Async.AwaitTask)
+                |> Async.Parallel
+                |> Async.StartAsTask
+
+            let filled = buttonTexts |> Array.filter (fun t -> t.Trim() = "X" || t.Trim() = "O")
+            Assert.That(filled.Length, Is.EqualTo(0), $"Expected empty board after restart, found {filled.Length} filled squares")
         }
