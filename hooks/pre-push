@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Pre-push hook: require approval before pushing to master
+# Bypass with: TIC_TAC_TOE_ALLOW_PUSH=1 git push ...
+
+remote=$1
+url=$2
+
+# Check each ref being pushed
+while read local_ref local_sha remote_ref remote_sha; do
+  if [[ "$remote_ref" == "refs/heads/master" ]] || [[ "$remote_ref" == "refs/heads/main" ]]; then
+    if [ -z "$TIC_TAC_TOE_ALLOW_PUSH" ]; then
+      echo "Pre-push check: About to push to master"
+      echo "Bypass with: TIC_TAC_TOE_ALLOW_PUSH=1 git push"
+      read -p "Continue? (y/n) " -n 1 -r
+      echo
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Push aborted."
+        exit 1
+      fi
+    fi
+  fi
+done
+
+exit 0

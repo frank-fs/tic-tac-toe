@@ -1,0 +1,48 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet:*)",
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(ls:*)",
+      "Bash(mkdir:*)",
+      "Bash(cd:*)",
+      "Bash(jq:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown'); echo '=== tic-tac-toe Session ==='; echo \"Branch: $branch\"; if [ \"$branch\" = \"master\" ] || [ \"$branch\" = \"main\" ]; then echo ''; echo 'WARNING: On master. Create a worktree first:'; echo '  git worktree add .claude/worktrees/<name> -b <branch>'; fi"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); repo_root=$(git rev-parse --show-toplevel 2>/dev/null); file=\"$TOOL_INPUT_FILE_PATH\"; case \"$file\" in \"$repo_root\"/*) if [ \"$branch\" = \"master\" ] || [ \"$branch\" = \"main\" ]; then echo \"BLOCKED: Cannot edit files on master.\" >&2; exit 2; fi;; esac"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo 'unknown'); changes=$(git diff --name-only HEAD 2>/dev/null | wc -l); if [ \"$changes\" -gt 0 ] && [ \"$branch\" != \"master\" ] && [ \"$branch\" != \"main\" ]; then echo ''; echo '=== Before Claiming Work Complete ==='; echo '1. dotnet build'; echo '2. dotnet test test/TicTacToe.Engine.Tests/'; echo '3. dotnet test test/TicTacToe.Web.Tests/ (if applicable)'; echo '4. Verify server runs'; echo '5. /verification-before-completion'; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

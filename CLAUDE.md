@@ -1,28 +1,6 @@
-# tic-tac-toe Development Guidelines
+# tic-tac-toe: Agent-Hypothesis Experiment
 
-Auto-generated from all feature plans. Last updated: 2026-02-02
-
-## Active Technologies
-- In-memory via MailboxProcessor (GameSupervisor pattern) (006-game-reset)
-- In-memory via MailboxProcessor (existing GameSupervisor/PlayerAssignmentManager pattern) (007-player-identity-legend)
-- F# targeting .NET 10.0 + Frank 6.5.0, Frank.Datastar 6.5.0, Oxpecker.ViewEngine 1.1.0 (008-user-affordances)
-- In-memory via MailboxProcessor (GameSupervisor, PlayerAssignmentManager) (008-user-affordances)
-- F# targeting .NET 10.0 + Frank 7.1.0, Frank.Datastar 7.1.0, Frank.Auth 7.1.0, Oxpecker.ViewEngine 2.* (001-frank-upgrade)
-- XML (SCXML W3C Recommendation, version 1.0) with ECMAScript data model + smcat 14.0.5 (locally installed) for SCXML → SVG conversion (009-extract-scxml)
-- N/A (documentation artifact, no runtime state) (009-extract-scxml)
-
-- F# targeting .NET 10.0 + Frank 6.4.0, Frank.Datastar 6.4.0, Oxpecker.ViewEngine 1.1.0, System.Reactive 6.0.2 (002-multi-game-rest-api)
-- In-memory via MailboxProcessor (existing GameSupervisor pattern) (002-multi-game-rest-api)
-- F# targeting .NET 10.0 + GitHub Actions, `actions/checkout`, `actions/setup-dotnet`, `actions/upload-artifact` (004-github-actions-ci)
-
-- F# targeting .NET 10.0 (per existing project) + Frank 6.4.0, Frank.Datastar 6.4.0, Oxpecker.ViewEngine 1.1.0 (001-web-frontend-single-game)
-
-## Project Structure
-
-```text
-src/
-tests/
-```
+F# .NET 10.0 web framework demonstrating HATEOAS discovery and semantic layers (F0–F8) across two server variants (V_proto / V_swagger) measured against an RPC MCP null hypothesis.
 
 ## Commands
 
@@ -30,25 +8,57 @@ tests/
 # Build
 dotnet build
 
-# Run unit tests (engine)
+# Run unit tests
 dotnet test test/TicTacToe.Engine.Tests/
 
-# Run the server (required before Playwright integration tests)
+# Run server (default port 5228)
 dotnet run --project src/TicTacToe.Web/
 
-# Run Playwright integration tests (server must be running on port 5228)
+# Run integration tests (requires server on 5228)
 dotnet test test/TicTacToe.Web.Tests/
 ```
 
-## Code Style
+## H-Wave Workflow
 
-F# targeting .NET 10.0 (per existing project): Follow standard conventions
+Before claiming work complete on any H-issue:
 
-## Recent Changes
-- 009-extract-scxml: Added XML (SCXML W3C Recommendation, version 1.0) with ECMAScript data model + smcat 14.0.5 (locally installed) for SCXML → SVG conversion
-- 001-frank-upgrade: Added F# targeting .NET 10.0 + Frank 7.1.0, Frank.Datastar 7.1.0, Frank.Auth 7.1.0, Oxpecker.ViewEngine 2.*
-- 008-user-affordances: Added F# targeting .NET 10.0 + Frank 6.5.0, Frank.Datastar 6.5.0, Oxpecker.ViewEngine 1.1.0
+1. `dotnet build`
+2. `dotnet test test/TicTacToe.Engine.Tests/`
+3. `dotnet test test/TicTacToe.Web.Tests/` (if applicable)
+4. Verify server runs and basic routes respond
+5. Use `/verification-before-completion` for larger changes
 
+### Git Workflow
 
-<!-- MANUAL ADDITIONS START -->
-<!-- MANUAL ADDITIONS END -->
+**Worktree only.** Edits on master are blocked.
+
+```bash
+git worktree add .claude/worktrees/<name> -b <branch-name>
+cd .claude/worktrees/<name>
+# work, test, commit
+git merge --ff-only <branch>  # (in main worktree)
+git push origin master        # Pre-Push approval required
+```
+
+**Pre-Push approval:** Respond to the hook prompt, or bypass with `TIC_TAC_TOE_ALLOW_PUSH=1 git push origin master`.
+
+## Phases
+
+| Phase | Issues | Status |
+|-------|--------|--------|
+| **Harness 0** | H0 | Todo |
+| **Harness 1** | H1, H2, H4, H6 | Todo |
+| **Gate** | G0 | Todo |
+| **F0 Baseline** | F0 | Todo |
+| **F1-F4 Discovery** | F1-F4 | Todo |
+| **F6-F8 Semantic** | F6-F8 | Todo |
+| **Analysis** | H3 | Todo |
+
+**Project board:** `https://github.com/orgs/frank-fs/projects/2`
+
+## Code Discipline
+
+- **Type safety.** Preconditions at boundaries, leverage F# inference.
+- **Idiomatic F#.** CEs, DUs, Option, pipelines.
+- **No silent failures.** Log via `ILogger`; never swallow exceptions.
+- **Measurement precision.** HTTP transcripts, RPVA, invalid-request rate per issue spec.
