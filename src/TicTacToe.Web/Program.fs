@@ -135,8 +135,6 @@ let main args =
 
         logging configureLogging
 
-        useOpenApi
-
         plugBeforeRoutingWhen isDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 
         plugBeforeRoutingWhenNot isDevelopment (fun app -> ExceptionHandlerExtensions.UseExceptionHandler(app, "/error", true))
@@ -144,6 +142,8 @@ let main args =
         useAuthentication (fun auth -> auth.AddCookie(fun options -> options.Cookie.Name <- "TicTacToe.User"; options.Cookie.HttpOnly <- true; options.Cookie.SameSite <- SameSiteMode.Strict; options.Cookie.SecurePolicy <- CookieSecurePolicy.SameAsRequest; options.ExpireTimeSpan <- TimeSpan.FromDays(30.0); options.SlidingExpiration <- true; options.LoginPath <- "/login"))
 
         useAuthorization
+
+        useOpenApi
 
         plugBeforeRouting ResponseCompressionBuilderExtensions.UseResponseCompression
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
