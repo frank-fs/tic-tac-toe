@@ -21,7 +21,7 @@ The model substitution (Qwen2.5-14B-Instruct instead of the originally specified
 
 ## Cell Matrix
 
-Four canary cells, one game each, `--temperature 0.0`, model `qwen2.5-14b-instruct`:
+Four canary cells, one game each, `--temperature 0.0`, model `qwen2.5-14b-instruct:2`:
 
 | Output file | Variant | Setup | Notes |
 |-------------|---------|-------|-------|
@@ -42,7 +42,7 @@ $env:ANTHROPIC_API_KEY  = "lm-studio"   # any non-empty string; LM Studio ignore
 ```
 
 LM Studio configuration:
-- Model: `qwen2.5-14b-instruct`
+- Model: `qwen2.5-14b-instruct:2`
 - Context length: **32768** (not the default 4096)
 - API format: Anthropic `/v1/messages`
 
@@ -108,7 +108,7 @@ Models available locally for this experiment:
 
 | Model | Size | Role |
 |-------|------|------|
-| Qwen2.5-14B-Instruct (Q3_K_L) | 14B | G0 primary; F-axis measurement; fits fully on RTX 3090 (24GB); 1M context ceiling |
+| `qwen2.5-14b-instruct:2` (Q3_K_L) | 14B | G0 primary; F-axis measurement; fits fully on RTX 3090 (24GB); 1M context ceiling |
 | Gemma 4 E4B | ~4B | F-axis cross-family comparison |
 
 Notes:
