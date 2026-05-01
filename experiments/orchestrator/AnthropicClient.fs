@@ -6,7 +6,12 @@ open System.Net.Http.Json
 open System.Text.Json.Nodes
 open System.Threading.Tasks
 
-let private httpClient = new HttpClient(BaseAddress = Uri("https://api.anthropic.com"))
+let private baseUrl () =
+    Environment.GetEnvironmentVariable("ANTHROPIC_BASE_URL")
+    |> Option.ofObj
+    |> Option.defaultValue "https://api.anthropic.com"
+
+let private httpClient = new HttpClient()
 
 let private apiKey () =
     match Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY") with
@@ -71,7 +76,7 @@ let private buildRequest (model: string) (temperature: float) (systemPrompt: str
 
 let private postMessages (req: JsonObject) : Task<JsonObject> =
     task {
-        use request = new HttpRequestMessage(HttpMethod.Post, "/v1/messages")
+        use request = new HttpRequestMessage(HttpMethod.Post, Uri($"{baseUrl()}/v1/messages"))
         request.Headers.Add("x-api-key", apiKey())
         request.Headers.Add("anthropic-version", "2023-06-01")
         request.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31")

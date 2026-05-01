@@ -12,7 +12,7 @@ Usage: orchestrator run [options]
 Options:
   --commit <sha>          git SHA or HEAD (default: HEAD)
   --variant <proto|simple> server variant (default: proto)
-  --model <haiku|sonnet|opus> Claude model (default: haiku)
+  --model <haiku|sonnet|opus|name> Claude model or local model name (default: haiku)
   --persona <beginner|expert|chaos> agent persona (default: beginner)
   --setup <E0|E1|E_RPC>   agent setup mode (default: E1)
   --games <N>             number of games (default: 3)
@@ -34,6 +34,7 @@ let private parseArgs (args: string[]) : RunConfig option =
         | "--model" :: "haiku" :: rest -> parse { cfg with Model = Haiku } rest
         | "--model" :: "sonnet" :: rest -> parse { cfg with Model = Sonnet } rest
         | "--model" :: "opus" :: rest -> parse { cfg with Model = Opus } rest
+        | "--model" :: v :: rest -> parse { cfg with Model = Custom v } rest
         | "--persona" :: "beginner" :: rest -> parse { cfg with Persona = Beginner } rest
         | "--persona" :: "expert" :: rest -> parse { cfg with Persona = Expert } rest
         | "--persona" :: "chaos" :: rest -> parse { cfg with Persona = Chaos } rest

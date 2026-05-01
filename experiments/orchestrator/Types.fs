@@ -7,7 +7,7 @@ open System.Text.Json.Serialization
 
 type Variant = Proto | Simple
 
-type ModelId = Haiku | Sonnet | Opus
+type ModelId = Haiku | Sonnet | Opus | Custom of string
 
 type Persona = Beginner | Expert | Chaos
 
@@ -118,7 +118,10 @@ module ModelId =
         | Haiku -> "claude-haiku-4-5-20251001"
         | Sonnet -> "claude-sonnet-4-6"
         | Opus -> "claude-opus-4-7"
-    let toString = function Haiku -> "haiku" | Sonnet -> "sonnet" | Opus -> "opus"
+        | Custom s -> s
+    let toString = function
+        | Haiku -> "haiku" | Sonnet -> "sonnet" | Opus -> "opus"
+        | Custom s -> s
 
 module Variant =
     let toString = function Proto -> "proto" | Simple -> "simple"
