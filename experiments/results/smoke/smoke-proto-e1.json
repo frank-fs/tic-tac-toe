@@ -1,0 +1,26 @@
+{
+  "cell": {
+    "commit": "HEAD",
+    "variant": "proto",
+    "model": "qwen2.5-14b-instruct:2",
+    "persona": "beginner",
+    "setup": "E1"
+  },
+  "games": [
+    {
+      "transcript": [],
+      "metrics": {
+        "rpva": 1.7976931348623157E+308,
+        "invalid_rate": 0,
+        "abandoned": true,
+        "tokens": 383
+      }
+    }
+  ],
+  "aggregate": {
+    "rpva": 1.7976931348623157E+308,
+    "invalid_rate": 0,
+    "abandon_rate": 1,
+    "tokens": 383
+  }
+}

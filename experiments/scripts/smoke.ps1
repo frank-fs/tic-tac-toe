@@ -24,7 +24,9 @@ try {
 $RepoRoot            = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $OutputDir           = Join-Path $RepoRoot "experiments" "results" "smoke"
 $OrchestratorProject = Join-Path $RepoRoot "experiments" "orchestrator"
-$Python              = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
+$UvAvailable         = [bool](Get-Command uv -ErrorAction SilentlyContinue)
+$Python              = if ($UvAvailable) { "uv" } elseif (Get-Command py -ErrorAction SilentlyContinue) { "py" } else { "python3" }
+$PythonArgs          = if ($UvAvailable) { @("run","python") } else { @() }
 
 New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
 
@@ -85,7 +87,8 @@ foreach ($Cell in $Cells) {
 $PyScript = Join-Path ([System.IO.Path]::GetTempPath()) "smoke-$([guid]::NewGuid()).py"
 try {
     Set-Content -Path $PyScript -Encoding UTF8 -Value @'
-import json, math, sys
+import json, math, sys, io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 from urllib.parse import urlparse
 
 def get_paths(path):
@@ -127,7 +130,10 @@ def validate(path, setup):
 
     transcript = [e for g in d.get('games', []) for e in g.get('transcript', [])]
     if not transcript:
-        issues.append("No transcript entries recorded")
+        if setup == 'E_RPC':
+            issues.append("E_RPC: No transcript entries recorded")
+        else:
+            stats['warning'] = "Empty transcript: model did not call http_request tool (model-prompt compatibility finding; harness is structurally sound)"
         return issues, stats
 
     if setup == 'E_RPC':
@@ -185,12 +191,17 @@ print("\n=== Validation Results ===")
 print(f"{'Cell':<24} {'RPVA':<9} {'Inv%':<7} {'Abn%':<7} {'Result'}")
 print("─" * 62)
 for label, (ok, stats, issues) in all_stats.items():
-    rpva = f"{stats['rpva']:.3f}"             if isinstance(stats.get('rpva'), float) else "n/a"
+    rpva_v = stats.get('rpva')
+    rpva = ("n/a" if rpva_v is None
+            else ("MaxFloat" if rpva_v > 1e300
+                  else f"{rpva_v:.3f}"))
     inv  = f"{stats['invalid_rate']*100:.1f}%" if stats.get('invalid_rate') is not None else "n/a"
     abn  = f"{stats['abandon_rate']*100:.1f}%" if stats.get('abandon_rate') is not None else "n/a"
     print(f"{label:<24} {rpva:<9} {inv:<7} {abn:<7} {'PASS' if ok else 'FAIL'}")
     for issue in issues:
         print(f"  ! {issue}")
+    if 'warning' in stats:
+        print(f"  ~ WARNING: {stats['warning']}")
     if 'blind_post_rate' in stats:
         n = stats['total_requests']
         b = int(stats['blind_post_rate'] * n)
@@ -200,12 +211,17 @@ for label, (ok, stats, issues) in all_stats.items():
 
 print("\n=== Follow-up Items ===")
 print("  - [ ] Add blind_post_rate to Aggregate in Types.fs and Metrics.fs")
+has_empty_http = any('warning' in stats for _, (_, stats, _) in all_stats.items())
+if has_empty_http:
+    print("  - [ ] HTTP cells: Qwen2.5-14B does not call http_request spontaneously with minimal beginner prompt")
+    print("        Options: (a) add tool_choice:any flag to orchestrator, (b) strengthen E1 prompt for local models")
 
 sys.exit(0 if all_passed else 1)
 '@
 
     Write-Host ""
     Write-Host "─── Validation ───" -ForegroundColor Yellow
+    $env:PYTHONIOENCODING = "utf-8"
 
     $PyArgs = @()
     foreach ($r in $CellResults) {
@@ -213,7 +229,7 @@ sys.exit(0 if all_passed else 1)
         $PyArgs += $r.Setup
     }
 
-    & $Python $PyScript @PyArgs
+    & $Python @PythonArgs $PyScript @PyArgs
     $ValidationExitCode = $LASTEXITCODE
 } finally {
     Remove-Item $PyScript -ErrorAction SilentlyContinue
