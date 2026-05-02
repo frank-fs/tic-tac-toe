@@ -15,8 +15,11 @@ param(
     [string]$Model   = "qwen2.5-14b-instruct:2"
 )
 
+$PriorBaseUrl = $env:ANTHROPIC_BASE_URL
+$PriorApiKey  = $env:ANTHROPIC_API_KEY
 $env:ANTHROPIC_BASE_URL = $BaseUrl
 $env:ANTHROPIC_API_KEY  = $ApiKey
+try {
 
 $RepoRoot            = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $OutputDir           = Join-Path $RepoRoot "experiments" "results" "smoke"
@@ -44,6 +47,7 @@ Write-Host ""
 
 $CellResults = @()
 
+$LASTEXITCODE = 0
 foreach ($Cell in $Cells) {
     $OutputFile = Join-Path $OutputDir "$($Cell.Name).json"
     $AllArgs = @(
@@ -78,9 +82,9 @@ foreach ($Cell in $Cells) {
 
 # ── Python validation ──────────────────────────────────────────────────────────
 
-$PyScript = [System.IO.Path]::GetTempFileName() -replace '\.tmp$', '.py'
-
-Set-Content -Path $PyScript -Encoding UTF8 -Value @'
+$PyScript = Join-Path ([System.IO.Path]::GetTempPath()) "smoke-$([guid]::NewGuid()).py"
+try {
+    Set-Content -Path $PyScript -Encoding UTF8 -Value @'
 import json, math, sys
 from urllib.parse import urlparse
 
@@ -200,18 +204,20 @@ print("  - [ ] Add blind_post_rate to Aggregate in Types.fs and Metrics.fs")
 sys.exit(0 if all_passed else 1)
 '@
 
-Write-Host ""
-Write-Host "─── Validation ───" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "─── Validation ───" -ForegroundColor Yellow
 
-$PyArgs = @()
-foreach ($r in $CellResults) {
-    $PyArgs += $r.Output
-    $PyArgs += $r.Setup
+    $PyArgs = @()
+    foreach ($r in $CellResults) {
+        $PyArgs += $r.Output
+        $PyArgs += $r.Setup
+    }
+
+    & $Python $PyScript @PyArgs
+    $ValidationExitCode = $LASTEXITCODE
+} finally {
+    Remove-Item $PyScript -ErrorAction SilentlyContinue
 }
-
-& $Python $PyScript @PyArgs
-$ValidationExitCode = $LASTEXITCODE
-Remove-Item $PyScript -ErrorAction SilentlyContinue
 
 # ── Final verdict ──────────────────────────────────────────────────────────────
 
@@ -232,3 +238,8 @@ if ($AllPassed) {
 }
 
 exit ([int](-not $AllPassed))
+
+} finally {
+    if ($null -eq $PriorBaseUrl) { Remove-Item Env:ANTHROPIC_BASE_URL -EA SilentlyContinue } else { $env:ANTHROPIC_BASE_URL = $PriorBaseUrl }
+    if ($null -eq $PriorApiKey)  { Remove-Item Env:ANTHROPIC_API_KEY  -EA SilentlyContinue } else { $env:ANTHROPIC_API_KEY  = $PriorApiKey  }
+}
