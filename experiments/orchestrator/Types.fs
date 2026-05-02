@@ -32,7 +32,6 @@ type RunConfig = {
 
 // ── Transcript ────────────────────────────────────────────────────────────────
 
-[<JsonConverter(typeof<JsonStringEnumConverter>)>]
 type OutcomeTag =
     | ValidAction
     | InvalidAction
@@ -40,7 +39,6 @@ type OutcomeTag =
     | Retry
     | Abandoned
 
-[<JsonConverter(typeof<JsonStringEnumConverter>)>]
 type StrategyTag =
     | HtmlFollow
     | SpecFollow
@@ -116,6 +114,34 @@ type RunOutput = {
     [<JsonPropertyName("games")>] Games: GameRecord list
     [<JsonPropertyName("aggregate")>] Aggregate: Aggregate
 }
+
+// ── JSON converters for F# DUs ────────────────────────────────────────────────
+
+type OutcomeTagConverter() =
+    inherit JsonConverter<OutcomeTag>()
+    override _.Write(writer, value, _) =
+        writer.WriteStringValue(
+            match value with
+            | ValidAction -> "ValidAction" | InvalidAction -> "InvalidAction"
+            | Discovery -> "Discovery" | Retry -> "Retry" | Abandoned -> "Abandoned")
+    override _.Read(reader, _, _) =
+        match reader.GetString() with
+        | "ValidAction" -> ValidAction | "InvalidAction" -> InvalidAction
+        | "Discovery" -> Discovery | "Retry" -> Retry | "Abandoned" -> Abandoned
+        | s -> failwithf "Unknown OutcomeTag: %s" s
+
+type StrategyTagConverter() =
+    inherit JsonConverter<StrategyTag>()
+    override _.Write(writer, value, _) =
+        writer.WriteStringValue(
+            match value with
+            | HtmlFollow -> "HtmlFollow" | SpecFollow -> "SpecFollow"
+            | BlindPost -> "BlindPost" | RetryStrategy -> "RetryStrategy")
+    override _.Read(reader, _, _) =
+        match reader.GetString() with
+        | "HtmlFollow" -> HtmlFollow | "SpecFollow" -> SpecFollow
+        | "BlindPost" -> BlindPost | "RetryStrategy" -> RetryStrategy
+        | s -> failwithf "Unknown StrategyTag: %s" s
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

@@ -3,7 +3,6 @@ module TicTacToe.Orchestrator.Program
 open System
 open System.IO
 open System.Text.Json
-open System.Text.Json.Serialization
 open TicTacToe.Orchestrator.Types
 
 let private usage = """
@@ -82,7 +81,8 @@ let private parseArgs (args: string[]) : RunConfig option =
 
 let private jsonOptions =
     let opts = JsonSerializerOptions(WriteIndented = true)
-    opts.Converters.Add(JsonStringEnumConverter())
+    opts.Converters.Add(OutcomeTagConverter())
+    opts.Converters.Add(StrategyTagConverter())
     opts
 
 [<EntryPoint>]
