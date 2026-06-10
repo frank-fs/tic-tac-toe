@@ -10,7 +10,7 @@
     <Compile Include="Types.fs" />
     <Compile Include="Classifier.fs" />
     <Compile Include="Metrics.fs" />
-    <Compile Include="AnthropicClient.fs" />
+    <Compile Include="LlmClient.fs" />
     <Compile Include="HttpAgent.fs" />
     <Compile Include="RpcAgent.fs" />
     <Compile Include="ServerProcess.fs" />

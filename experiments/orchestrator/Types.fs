@@ -13,6 +13,11 @@ type Persona = Beginner | Expert | Chaos
 
 type Setup = E0 | E1 | ERPC
 
+/// Which wire format to use when calling the LLM.
+/// Anthropic: POST /v1/messages, Anthropic auth headers, tool_use blocks.
+/// OpenAiCompat: POST /v1/chat/completions, Bearer auth, OpenAI tool_calls format (LM Studio, Moonshot, etc.)
+type Backend = Anthropic | OpenAiCompat
+
 type RunConfig = {
     Commit: string
     Variant: Variant
@@ -22,6 +27,7 @@ type RunConfig = {
     Games: int
     Output: string
     Temperature: float
+    Backend: Backend
 }
 
 // ── Transcript ────────────────────────────────────────────────────────────────
@@ -135,3 +141,14 @@ module Persona =
 
 module Setup =
     let toString = function E0 -> "E0" | E1 -> "E1" | ERPC -> "E_RPC"
+
+module Backend =
+    let toString = function Anthropic -> "anthropic" | OpenAiCompat -> "openai"
+
+    /// Auto-detect backend from environment variables.
+    /// WORKER_BASE_URL set → OpenAiCompat (LM Studio OpenAI endpoint, Moonshot, etc.)
+    /// Otherwise → Anthropic (real API or LM Studio Anthropic endpoint via ANTHROPIC_BASE_URL)
+    let autoDetect () =
+        let workerUrl = System.Environment.GetEnvironmentVariable("WORKER_BASE_URL")
+        if not (System.String.IsNullOrEmpty(workerUrl)) then OpenAiCompat
+        else Anthropic

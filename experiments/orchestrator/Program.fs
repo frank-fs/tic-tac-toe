@@ -10,20 +10,41 @@ let private usage = """
 Usage: orchestrator run [options]
 
 Options:
-  --commit <sha>          git SHA or HEAD (default: HEAD)
-  --variant <proto|simple> server variant (default: proto)
-  --model <haiku|sonnet|opus|name> Claude model or local model name (default: haiku)
+  --commit <sha>             git SHA or HEAD (default: HEAD)
+  --variant <proto|simple>   server variant (default: proto)
+  --model <haiku|sonnet|opus|name>  Claude model or local model name (default: haiku)
   --persona <beginner|expert|chaos> agent persona (default: beginner)
-  --setup <E0|E1|E_RPC>   agent setup mode (default: E1)
-  --games <N>             number of games (default: 3)
-  --output <file>         output JSON file (default: run.json)
-  --temperature <float>   sampling temperature (default: 0.0)
+  --setup <E0|E1|E_RPC>      agent setup mode (default: E1)
+  --games <N>                number of games (default: 3)
+  --output <file>            output JSON file (default: run.json)
+  --temperature <float>      sampling temperature (default: 0.0)
+  --backend <anthropic|openai>  LLM wire format (default: auto-detect from env)
+
+Backend auto-detection (no --backend flag needed):
+  WORKER_BASE_URL set        → openai  (LM Studio OpenAI endpoint, Moonshot, etc.)
+  ANTHROPIC_BASE_URL set     → anthropic  (LM Studio Anthropic endpoint)
+  neither set                → anthropic  (real Anthropic API)
+
+LM Studio (Anthropic endpoint):
+  export ANTHROPIC_BASE_URL=http://localhost:1234/api
+  export ANTHROPIC_API_KEY=lm-studio
+
+LM Studio (OpenAI endpoint):
+  export WORKER_BASE_URL=http://localhost:1234
+  export WORKER_API_KEY=lm-studio  # optional, lm-studio is the default
 """
 
 let private parseArgs (args: string[]) : RunConfig option =
+    let defaultBackend = Backend.autoDetect()
+    let defaultModel =
+        // WORKER_MODEL mirrors ask-kimi: lets you set the default local model once
+        match Environment.GetEnvironmentVariable("WORKER_MODEL") with
+        | null | "" -> Haiku
+        | m -> Custom m
     let defaults : RunConfig = {
-        Commit = "HEAD"; Variant = Proto; Model = Haiku; Persona = Beginner
+        Commit = "HEAD"; Variant = Proto; Model = defaultModel; Persona = Beginner
         Setup = E1; Games = 3; Output = "run.json"; Temperature = 0.0
+        Backend = defaultBackend
     }
     let rec parse (cfg: RunConfig) (args: string list) =
         match args with
@@ -50,6 +71,8 @@ let private parseArgs (args: string[]) : RunConfig option =
             match Double.TryParse(v, Globalization.NumberStyles.Float, Globalization.CultureInfo.InvariantCulture) with
             | true, t -> parse { cfg with Temperature = t } rest
             | _ -> None
+        | "--backend" :: "anthropic" :: rest -> parse { cfg with Backend = Anthropic } rest
+        | "--backend" :: "openai" :: rest -> parse { cfg with Backend = OpenAiCompat } rest
         | unknown :: _ ->
             eprintfn "Unknown argument: %s" unknown
             None

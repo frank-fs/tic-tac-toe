@@ -6,7 +6,7 @@ open System.Threading.Tasks
 open TicTacToe.Engine
 open TicTacToe.Model
 open TicTacToe.Orchestrator.Types
-open TicTacToe.Orchestrator.AnthropicClient
+open TicTacToe.Orchestrator.LlmClient
 
 let private maxTurns = 50
 
@@ -150,6 +150,7 @@ let private dispatchTool (supervisor: GameSupervisor) (call: ToolCall) : string 
 /// Run one game using E_RPC setup (no HTTP).
 /// Returns (transcript entries as Tool records, total tokens consumed).
 let runGame
+    (backend: Backend)
     (model: string)
     (temperature: float)
     (systemPrompt: string)
@@ -165,14 +166,14 @@ let runGame
         let mutable keepGoing = true
 
         while keepGoing && turn < maxTurns do
-            let! result = runTurn model temperature (Some systemPrompt) tools messages
+            let! result = runTurn backend model temperature (Some systemPrompt) tools messages
             match result with
             | Done(_, inp, out) ->
                 totalTokens <- totalTokens + inp + out
                 keepGoing <- false
             | ToolCalls(calls, inp, out) ->
                 totalTokens <- totalTokens + inp + out
-                appendAssistantToolUse messages calls |> ignore
+                appendAssistantToolUse backend messages calls |> ignore
 
                 let toolResults = System.Collections.Generic.List<string * string>()
                 for call in calls do
@@ -189,7 +190,7 @@ let runGame
                     transcript <- transcript @ [entry]
                     toolResults.Add(call.Id, output)
 
-                appendToolResults messages (toolResults |> Seq.toList) |> ignore
+                appendToolResults backend messages (toolResults |> Seq.toList) |> ignore
 
         return (transcript |> List.map Tool, totalTokens)
     }

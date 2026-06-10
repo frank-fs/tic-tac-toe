@@ -53,9 +53,9 @@ let private runOneGame
             match config.Setup with
             | ERPC ->
                 let prompt = systemPrompt |> Option.defaultValue ""
-                RpcAgent.runGame model config.Temperature prompt
+                RpcAgent.runGame config.Backend model config.Temperature prompt
             | E0 | E1 ->
-                HttpAgent.runGame httpClient model config.Temperature systemPrompt baseUrl
+                HttpAgent.runGame config.Backend httpClient model config.Temperature systemPrompt baseUrl
 
         let metrics = computeMetrics transcript totalTokens
         return { Transcript = transcript; Metrics = metrics }

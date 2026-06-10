@@ -7,7 +7,7 @@ open System.Text
 open System.Text.Json.Nodes
 open System.Threading.Tasks
 open TicTacToe.Orchestrator.Types
-open TicTacToe.Orchestrator.AnthropicClient
+open TicTacToe.Orchestrator.LlmClient
 open TicTacToe.Orchestrator.Classifier
 
 let private maxTurns = 50
@@ -66,6 +66,7 @@ let private executeHttp (httpClient: HttpClient) (call: ToolCall) : Task<int * M
 /// systemPrompt: None for E0 (bare URL), Some prompt for E1.
 /// Returns (transcript entries, total tokens consumed).
 let runGame
+    (backend: Backend)
     (httpClient: HttpClient)
     (model: string)
     (temperature: float)
@@ -89,7 +90,7 @@ let runGame
         let mutable keepGoing = true
 
         while keepGoing && turn < maxTurns do
-            let! result = runTurn model temperature systemPrompt [httpRequestTool] messages
+            let! result = runTurn backend model temperature systemPrompt [httpRequestTool] messages
             match result with
             | Done(_, inp, out) ->
                 totalTokens <- totalTokens + inp + out
@@ -97,7 +98,7 @@ let runGame
 
             | ToolCalls(calls, inp, out) ->
                 totalTokens <- totalTokens + inp + out
-                appendAssistantToolUse messages calls |> ignore
+                appendAssistantToolUse backend messages calls |> ignore
 
                 let toolResults = Collections.Generic.List<string * string>()
 
@@ -148,7 +149,7 @@ let runGame
                     priorRequests <- (method, url) :: priorRequests
                     toolResults.Add(call.Id, sprintf "HTTP %d\n%s" statusCode responseBody)
 
-                appendToolResults messages (toolResults |> Seq.toList) |> ignore
+                appendToolResults backend messages (toolResults |> Seq.toList) |> ignore
 
         return (transcript |> List.map Http, totalTokens)
     }
