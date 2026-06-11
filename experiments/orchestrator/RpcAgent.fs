@@ -166,7 +166,7 @@ let runGame
         let mutable keepGoing = true
 
         while keepGoing && turn < maxTurns do
-            let! result = runTurn backend model temperature (Some systemPrompt) tools messages
+            let! result = runTurn backend model temperature (Some systemPrompt) tools false messages
             match result with
             | Done(_, inp, out) ->
                 totalTokens <- totalTokens + inp + out

@@ -17,7 +17,15 @@ let classifyOutcome (method: string) (url: string) (statusCode: int) (priorReque
 /// priorResponseBodies: all response body strings received so far in this game.
 /// urlInOpenApiDoc: true if the URL path appears in the OpenAPI document fetched this game.
 let classifyStrategy (method: string) (url: string) (priorResponseBodies: string list) (urlInOpenApiDoc: bool) : StrategyTag =
-    let appearsInBody = priorResponseBodies |> List.exists (fun body -> body.Contains(url))
+    let path = System.Uri(url).AbsolutePath
+    let appearsInBody =
+        priorResponseBodies |> List.exists (fun body ->
+            body.Contains(url)
+            || body.Contains(path)
+            || body.Contains(sprintf "@post('%s')" path)
+            || body.Contains(sprintf "@get('%s')" path)
+            || body.Contains(sprintf "@put('%s')" path)
+            || body.Contains(sprintf "@delete('%s')" path))
     if appearsInBody then HtmlFollow
     elif urlInOpenApiDoc then SpecFollow
     else BlindPost

@@ -75,7 +75,7 @@ type TurnResult =
 
 let private buildAnthropicRequest
     (model: string) (temperature: float) (systemPrompt: string option)
-    (tools: ToolDef list) (messages: JsonArray) : JsonObject =
+    (tools: ToolDef list) (forceToolUse: bool) (messages: JsonArray) : JsonObject =
 
     let req = JsonObject()
     req["model"] <- JsonValue.Create(model)
@@ -101,13 +101,17 @@ let private buildAnthropicRequest
             td["input_schema"] <- t.InputSchema.DeepClone()
             toolArr.Add(td)
         req["tools"] <- toolArr
+        if forceToolUse then
+            let tc = JsonObject()
+            tc["type"] <- JsonValue.Create("any")
+            req["tool_choice"] <- tc
 
     req["messages"] <- messages.DeepClone() :?> JsonArray
     req
 
 let private buildOpenAiRequest
     (model: string) (temperature: float) (systemPrompt: string option)
-    (tools: ToolDef list) (messages: JsonArray) : JsonObject =
+    (tools: ToolDef list) (forceToolUse: bool) (messages: JsonArray) : JsonObject =
 
     let req = JsonObject()
     req["model"] <- JsonValue.Create(model)
@@ -139,6 +143,8 @@ let private buildOpenAiRequest
             td["function"] <- fn
             toolArr.Add(td)
         req["tools"] <- toolArr
+        if forceToolUse then
+            req["tool_choice"] <- JsonValue.Create("required")
 
     req
 
@@ -242,13 +248,13 @@ let private parseOpenAiResponse (resp: JsonObject) : TurnResult =
 let runTurn
     (backend: Backend)
     (model: string) (temperature: float) (systemPrompt: string option)
-    (tools: ToolDef list) (messages: JsonArray)
+    (tools: ToolDef list) (forceToolUse: bool) (messages: JsonArray)
     : Task<TurnResult> =
     task {
         let req =
             match backend with
-            | Anthropic -> buildAnthropicRequest model temperature systemPrompt tools messages
-            | OpenAiCompat -> buildOpenAiRequest model temperature systemPrompt tools messages
+            | Anthropic -> buildAnthropicRequest model temperature systemPrompt tools forceToolUse messages
+            | OpenAiCompat -> buildOpenAiRequest model temperature systemPrompt tools forceToolUse messages
         let! resp = postMessages backend req
         return
             match backend with
