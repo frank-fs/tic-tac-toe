@@ -8,15 +8,20 @@ F# .NET 10.0 web framework demonstrating HATEOAS discovery and semantic layers (
 # Build
 dotnet build
 
-# Run unit tests
+# Run unit tests (no server required)
 dotnet test test/TicTacToe.Engine.Tests/
+dotnet test test/TicTacToe.Orchestrator.Tests/
 
-# Run server (default port 5228)
-dotnet run --project src/TicTacToe.Web/
+# Start servers (required before Playwright tests)
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/TicTacToe.Web/ --urls http://localhost:5228 &>/tmp/tictactoe-web.log &
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/TicTacToe.Web.Simple/ --urls http://localhost:5328 &>/tmp/tictactoe-web-simple.log &
 
-# Run integration tests (requires server on 5228; default TEST_BASE_URL is :5000, not :5228)
-TEST_BASE_URL=http://localhost:5228 dotnet test test/TicTacToe.Web.Tests/
+# Run Playwright tests (both servers must be running first)
+TEST_BASE_URL=http://localhost:5228 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test test/TicTacToe.Web.Tests/
+TEST_BASE_URL=http://localhost:5328 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test test/TicTacToe.Web.Simple.Tests/
 ```
+
+**Important:** `dotnet test TicTacToe.sln` runs Playwright tests against `localhost:5000` by default and will fail. Always use `TEST_BASE_URL` with the correct port.
 
 ## H-Wave Workflow
 
