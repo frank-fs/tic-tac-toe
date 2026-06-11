@@ -26,9 +26,11 @@ let private resolveBaseUrl (backend: Backend) =
         |> Option.ofObj
         |> Option.defaultValue "https://api.anthropic.com"
     | OpenAiCompat ->
-        Environment.GetEnvironmentVariable("WORKER_BASE_URL")
-        |> Option.ofObj
-        |> Option.defaultValue "http://localhost:1234"
+        let url =
+            (Environment.GetEnvironmentVariable("WORKER_BASE_URL")
+             |> Option.ofObj
+             |> Option.defaultValue "http://localhost:1234").TrimEnd('/')
+        if url.EndsWith("/v1") then url.[..url.Length - 4] else url
 
 let private resolveApiKey (backend: Backend) =
     match backend with
