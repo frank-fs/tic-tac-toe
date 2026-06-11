@@ -2,7 +2,7 @@
   "cell": {
     "commit": "HEAD",
     "variant": "proto",
-    "model": "qwen2.5-14b-instruct:2",
+    "model": "google/gemma-4-e4b",
     "persona": "beginner",
     "setup": "E_RPC"
   },
@@ -11,81 +11,89 @@
       "transcript": [
         {
           "turn": 1,
-          "tool_use_id": "583024549",
+          "tool_use_id": "666447492",
           "tool_name": "new_game",
           "input": "{}",
-          "output": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022}",
+          "output": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 2,
-          "tool_use_id": "195439340",
-          "tool_name": "get_board",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022}",
-          "output": "{\u0022board\u0022:[\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022,\u0022validMoves\u0022:[\u0022TopLeft\u0022,\u0022TopCenter\u0022,\u0022TopRight\u0022,\u0022MiddleLeft\u0022,\u0022MiddleCenter\u0022,\u0022MiddleRight\u0022,\u0022BottomLeft\u0022,\u0022BottomCenter\u0022,\u0022BottomRight\u0022]}",
+          "tool_use_id": "916232442",
+          "tool_name": "get_state",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022}",
+          "output": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022board\u0022:[\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022,\u0022validMoves\u0022:[\u0022TopLeft\u0022,\u0022TopCenter\u0022,\u0022TopRight\u0022,\u0022MiddleLeft\u0022,\u0022MiddleCenter\u0022,\u0022MiddleRight\u0022,\u0022BottomLeft\u0022,\u0022BottomCenter\u0022,\u0022BottomRight\u0022]}",
           "outcome": "Discovery"
         },
         {
           "turn": 3,
-          "tool_use_id": "559765604",
+          "tool_use_id": "941979905",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022TopLeft\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022TopLeft\u0022}",
           "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 4,
-          "tool_use_id": "655197831",
+          "tool_use_id": "649467688",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022TopRight\u0022}",
-          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022MiddleCenter\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 5,
-          "tool_use_id": "543820699",
+          "tool_use_id": "231874421",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022MiddleCenter\u0022}",
-          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022X\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022TopRight\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 6,
-          "tool_use_id": "984489700",
+          "tool_use_id": "113393668",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022MiddleRight\u0022}",
-          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022X\u0022,\u0022O\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022TopCenter\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 7,
-          "tool_use_id": "496888148",
+          "tool_use_id": "675301538",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022BottomLeft\u0022}",
-          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022BottomLeft\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022X\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
           "outcome": "ValidAction"
         },
         {
           "turn": 8,
-          "tool_use_id": "852676017",
+          "tool_use_id": "360710016",
           "tool_name": "make_move",
-          "input": "{\u0022gameId\u0022:\u0022befaa0db-4dcf-44b5-8fbd-10ab52fd5351\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022BottomRight\u0022}",
-          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022\u0022,\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022O\u0022],\u0022whoseTurn\u0022:\u0022game_over\u0022,\u0022status\u0022:\u0022won\u0022}",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022O\u0022,\u0022position\u0022:\u0022MiddleRight\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022O\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022}",
+          "outcome": "ValidAction"
+        },
+        {
+          "turn": 9,
+          "tool_use_id": "712660891",
+          "tool_name": "make_move",
+          "input": "{\u0022gameId\u0022:\u00221cd2d7dd-96b4-46e3-9394-f576da067bb1\u0022,\u0022player\u0022:\u0022X\u0022,\u0022position\u0022:\u0022MiddleLeft\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022O\u0022,\u0022X\u0022,\u0022X\u0022,\u0022O\u0022,\u0022O\u0022,\u0022X\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022game_over\u0022,\u0022status\u0022:\u0022won\u0022}",
           "outcome": "ValidAction"
         }
       ],
       "metrics": {
-        "rpva": 1.1428571428571428,
+        "rpva": 1.125,
         "invalid_rate": 0,
         "abandoned": false,
-        "tokens": 8694
+        "tokens": 12809
       }
     }
   ],
   "aggregate": {
-    "rpva": 1.1428571428571428,
+    "rpva": 1.125,
     "invalid_rate": 0,
     "abandon_rate": 0,
-    "tokens": 8694
+    "tokens": 12809
   }
 }

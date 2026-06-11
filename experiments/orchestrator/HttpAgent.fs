@@ -147,7 +147,12 @@ let runGame
                     transcript <- transcript @ [entry]
                     priorBodies <- responseBody :: priorBodies
                     priorRequests <- (method, url) :: priorRequests
-                    toolResults.Add(call.Id, sprintf "HTTP %d\n%s" statusCode responseBody)
+                    let headerStr =
+                        responseHeaders
+                        |> Map.toSeq
+                        |> Seq.map (fun (k, v) -> sprintf "%s: %s" k v)
+                        |> String.concat "\n"
+                    toolResults.Add(call.Id, sprintf "HTTP %d\n%s\n\n%s" statusCode headerStr responseBody)
 
                 appendToolResults backend messages (toolResults |> Seq.toList) |> ignore
 
