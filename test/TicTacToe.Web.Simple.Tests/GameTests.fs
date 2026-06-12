@@ -529,10 +529,9 @@ type RejectionTests() =
 
             // Reuse the same authenticated session to try a second move — it's O's turn now
             let arenaId = arenaUrl.Split('/') |> Array.last
+            let! cookies = this.Context.CookiesAsync()
             let cookieHeader =
-                this.Context.CookiesAsync()
-                |> Async.AwaitTask
-                |> Async.RunSynchronously
+                cookies
                 |> Seq.tryFind (fun (c: BrowserContextCookiesResult) -> c.Name = "TicTacToe.SimpleUser")
                 |> Option.map (fun (c: BrowserContextCookiesResult) -> $"{c.Name}={c.Value}")
                 |> Option.defaultValue ""
@@ -570,10 +569,9 @@ type RejectionTests() =
             let! _ = p3.GotoAsync($"{this.BaseUrl}/login", options)
 
             let arenaId = arenaUrl.Split('/') |> Array.last
+            let! p3CookieList = p3Ctx.CookiesAsync()
             let p3Cookies =
-                p3Ctx.CookiesAsync()
-                |> Async.AwaitTask
-                |> Async.RunSynchronously
+                p3CookieList
                 |> Seq.tryFind (fun (c: BrowserContextCookiesResult) -> c.Name = "TicTacToe.SimpleUser")
                 |> Option.map (fun (c: BrowserContextCookiesResult) -> $"{c.Name}={c.Value}")
                 |> Option.defaultValue ""
@@ -623,10 +621,9 @@ type MaxGamesTests() =
                 do! navTask
 
                 // Second create should hit the limit
+                let! maxGamesCookies = this.Context.CookiesAsync()
                 let cookieHeader =
-                    this.Context.CookiesAsync()
-                    |> Async.AwaitTask
-                    |> Async.RunSynchronously
+                    maxGamesCookies
                     |> Seq.tryFind (fun c -> c.Name = "TicTacToe.SimpleUser")
                     |> Option.map (fun c -> $"{c.Name}={c.Value}")
                     |> Option.defaultValue ""

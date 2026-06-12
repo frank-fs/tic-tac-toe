@@ -251,6 +251,8 @@ let makeMove (ctx: HttpContext) =
                             do! ctx.Response.WriteAsJsonAsync(toArenaJson arenaId nextResult)
                         else
                             do! renderArenaHtml ctx arenaId nextResult None
+                        // boardBefore is currentResult from store.Get above; store.Update is a separate call,
+                        // so a concurrent move between the two can make boardBefore stale by one move.
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 200, None, Some currentResult, Some nextResult)
                         logger.LogEvent("move_accepted", arenaId, role = playerRole, move = positionRaw)
                         match nextResult with

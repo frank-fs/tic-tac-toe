@@ -4,11 +4,11 @@ open System
 
 /// Reasons why a move was rejected
 type RejectionReason =
-    | OutOfTurn      // Right player, wrong turn order
-    | NotAPlayer     // Third user — no slot available
-    | PositionTaken  // Square already occupied
-    | GameOver       // Game already finished
-    | InvalidMove    // Malformed input
+    | OutOfTurn
+    | NotAPlayer
+    | PositionTaken
+    | GameOver
+    | InvalidMove
 
 /// Result of validating whether a user can make a move
 type MoveValidationResult =

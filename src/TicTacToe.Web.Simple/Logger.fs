@@ -6,14 +6,17 @@ open System.Text.Json
 open System.Text.Json.Nodes
 open TicTacToe.Model
 
+let private maxQueueDepth = 10_000
+
 type RequestLogger(?logPath: string) =
     let writer =
         logPath |> Option.map (fun path ->
+            let sw = new StreamWriter(path, append = true, AutoFlush = true)
             MailboxProcessor<string>.Start(fun inbox ->
                 let rec loop () =
                     async {
                         let! line = inbox.Receive()
-                        File.AppendAllText(path, line + "\n")
+                        do! sw.WriteLineAsync(line) |> Async.AwaitTask
                         return! loop ()
                     }
                 loop ()))
@@ -21,7 +24,10 @@ type RequestLogger(?logPath: string) =
     let writeJson (obj: JsonObject) =
         match writer with
         | None -> ()
-        | Some mp -> mp.Post(obj.ToJsonString())
+        | Some mp ->
+            if mp.CurrentQueueLength < maxQueueDepth then
+                mp.Post(obj.ToJsonString())
+            // drop silently when saturated — log loss acceptable over crash
 
     let boardArray (result: MoveResult) =
         let allPositions =
