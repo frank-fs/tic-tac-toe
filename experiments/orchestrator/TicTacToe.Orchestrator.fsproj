@@ -8,13 +8,16 @@
 
   <ItemGroup>
     <Compile Include="Types.fs" />
-    <Compile Include="Classifier.fs" />
-    <Compile Include="Metrics.fs" />
+    <Compile Include="Personas.fs" />
     <Compile Include="LlmClient.fs" />
-    <Compile Include="HttpAgent.fs" />
-    <Compile Include="RpcAgent.fs" />
     <Compile Include="ServerProcess.fs" />
-    <Compile Include="Runner.fs" />
+    <Compile Include="ServerLogTail.fs" />
+    <Compile Include="McpClient.fs" />
+    <Compile Include="Metrics.fs" />
+    <Compile Include="Persistence.fs" />
+    <Compile Include="Agent.fs" />
+    <Compile Include="Orchestrator.fs" />
+    <Compile Include="Matrices/Smoke.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
@@ -25,5 +28,7 @@
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="10.0.102" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
+    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
   </ItemGroup>
 </Project>

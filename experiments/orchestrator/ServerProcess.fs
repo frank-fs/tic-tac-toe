@@ -68,14 +68,14 @@ type ServerHandle = {
                     try this.Process.Kill(entireProcessTree = true) with _ -> ()
                     this.Process.Dispose()
 
-/// Start the server and wait until it responds on the health endpoint.
-let startServer (repoRoot: string) (commit: string) (variant: Variant) : Task<ServerHandle> =
+let private startServerWithEnv (repoRoot: string) (commit: string) (variant: Variant) (extraEnv: (string * string)[]) : Task<ServerHandle> =
     task {
         let publishDir = resolveOutputDir repoRoot commit variant
         let exeName =
             match variant with
             | Proto -> "TicTacToe.Web"
             | Simple -> "TicTacToe.Web.Simple"
+            | ERPC   -> failwith "ERPC variant has no server process"
         let exePath = Path.Combine(publishDir, exeName + (if OperatingSystem.IsWindows() then ".exe" else ""))
 
         let port = findFreePort()
@@ -88,10 +88,11 @@ let startServer (repoRoot: string) (commit: string) (variant: Variant) : Task<Se
             RedirectStandardError = true,
             UseShellExecute = false)
         psi.EnvironmentVariables["ASPNETCORE_ENVIRONMENT"] <- "Production"
+        for (k, v) in extraEnv do
+            psi.EnvironmentVariables[k] <- v
 
         let proc = Process.Start(psi)
 
-        // Wait for server to be ready (poll /login up to 30s)
         use httpClient = new System.Net.Http.HttpClient()
         httpClient.Timeout <- TimeSpan.FromSeconds(2.0)
         let deadline = DateTime.UtcNow.AddSeconds(30.0)
@@ -110,3 +111,17 @@ let startServer (repoRoot: string) (commit: string) (variant: Variant) : Task<Se
 
         return { Process = proc; BaseUrl = baseUrl; Disposed = false }
     }
+
+/// Start the server and wait until it responds on the health endpoint.
+let startServer (repoRoot: string) (commit: string) (variant: Variant) : Task<ServerHandle> =
+    startServerWithEnv repoRoot commit variant [||]
+
+let startServerForCell (repoRoot: string) (cell: CellSpec) : Task<ServerHandle> =
+    let logPath = Path.Combine(repoRoot, "experiments", "results", cell.Id, "server-requests.jsonl")
+    Directory.CreateDirectory(Path.GetDirectoryName(logPath)) |> ignore
+    let extraEnv = [|
+        "TICTACTOE_INITIAL_GAMES", string cell.InitialGames
+        "TICTACTOE_MAX_GAMES", string cell.MaxGames
+        "TICTACTOE_REQUEST_LOG_PATH", logPath
+    |]
+    startServerWithEnv repoRoot "HEAD" cell.Variant extraEnv
