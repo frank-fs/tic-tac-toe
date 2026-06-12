@@ -506,3 +506,141 @@ type RestartTests() =
             let filled = buttonTexts |> Array.filter (fun t -> t.Trim() = "X" || t.Trim() = "O")
             Assert.That(filled.Length, Is.EqualTo(0), $"Expected empty board after restart, found {filled.Length} filled squares")
         }
+
+// ============================================================================
+// Rejection reason tests — typed OutOfTurn and NotAPlayer
+// ============================================================================
+
+[<TestFixture>]
+type RejectionTests() =
+    inherit TestBase()
+
+    [<Test>]
+    member this.``Out-of-turn move returns 403 OutOfTurn``() : Task =
+        task {
+            use client = new HttpClient()
+            client.DefaultRequestHeaders.Add("Accept", "application/json")
+
+            // Create a fresh arena via browser (gets auth cookie)
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+
+            // X makes first move via browser, becoming player X
+            do! clickNth this.Page 1 this.TimeoutMs
+
+            // Reuse the same authenticated session to try a second move — it's O's turn now
+            let arenaId = arenaUrl.Split('/') |> Array.last
+            let cookieHeader =
+                this.Context.CookiesAsync()
+                |> Async.AwaitTask
+                |> Async.RunSynchronously
+                |> Seq.tryFind (fun (c: BrowserContextCookiesResult) -> c.Name = "TicTacToe.SimpleUser")
+                |> Option.map (fun (c: BrowserContextCookiesResult) -> $"{c.Name}={c.Value}")
+                |> Option.defaultValue ""
+
+            use req = new HttpRequestMessage(HttpMethod.Post, $"{this.BaseUrl}/arenas/{arenaId}")
+            req.Headers.Add("Cookie", cookieHeader)
+            req.Headers.Add("Accept", "application/json")
+            req.Content <- new System.Net.Http.FormUrlEncodedContent(
+                [| System.Collections.Generic.KeyValuePair("player", "X")
+                   System.Collections.Generic.KeyValuePair("position", "TopCenter") |])
+            let! resp = client.SendAsync(req)
+
+            Assert.That(int resp.StatusCode, Is.EqualTo(403), $"Expected 403, got {int resp.StatusCode}")
+            let! body = resp.Content.ReadAsStringAsync()
+            let doc = JsonDocument.Parse(body)
+            let errorVal = doc.RootElement.GetProperty("error").GetString()
+            Assert.That(errorVal, Is.EqualTo("OutOfTurn"), $"Expected OutOfTurn, got '{errorVal}'")
+        }
+
+    [<Test>]
+    member this.``Third player returns 403 NotAPlayer``() : Task =
+        task {
+            // Assign both slots: P1=X, P2=O
+            let! arenaUrl = createArena this.Page this.TimeoutMs
+            let! p2 = this.CreateSecondPlayer(arenaUrl)
+
+            do! clickNth this.Page 1 this.TimeoutMs    // P1 → X
+            let! _ = p2.GotoAsync(arenaUrl)
+            do! clickNth p2 2 this.TimeoutMs           // P2 → O
+
+            // P3: third browser context, then try to move via JSON
+            let! p3Ctx = this.Browser.NewContextAsync()
+            let! p3 = p3Ctx.NewPageAsync()
+            let options = PageGotoOptions(Timeout = Nullable(float32 this.TimeoutMs))
+            let! _ = p3.GotoAsync($"{this.BaseUrl}/login", options)
+
+            let arenaId = arenaUrl.Split('/') |> Array.last
+            let p3Cookies =
+                p3Ctx.CookiesAsync()
+                |> Async.AwaitTask
+                |> Async.RunSynchronously
+                |> Seq.tryFind (fun (c: BrowserContextCookiesResult) -> c.Name = "TicTacToe.SimpleUser")
+                |> Option.map (fun (c: BrowserContextCookiesResult) -> $"{c.Name}={c.Value}")
+                |> Option.defaultValue ""
+
+            use client = new HttpClient()
+            use req = new HttpRequestMessage(HttpMethod.Post, $"{this.BaseUrl}/arenas/{arenaId}")
+            req.Headers.Add("Cookie", p3Cookies)
+            req.Headers.Add("Accept", "application/json")
+            req.Content <- new System.Net.Http.FormUrlEncodedContent(
+                [| System.Collections.Generic.KeyValuePair("player", "X")
+                   System.Collections.Generic.KeyValuePair("position", "MiddleCenter") |])
+            let! resp = client.SendAsync(req)
+
+            Assert.That(int resp.StatusCode, Is.EqualTo(403), $"Expected 403, got {int resp.StatusCode}")
+            let! body = resp.Content.ReadAsStringAsync()
+            let doc = JsonDocument.Parse(body)
+            let errorVal = doc.RootElement.GetProperty("error").GetString()
+            Assert.That(errorVal, Is.EqualTo("NotAPlayer"), $"Expected NotAPlayer, got '{errorVal}'")
+
+            do! p3Ctx.CloseAsync()
+        }
+
+// ============================================================================
+// MaxGames test — skips unless TICTACTOE_TEST_MAX_GAMES_ENABLED=1
+// ============================================================================
+
+[<TestFixture>]
+type MaxGamesTests() =
+    inherit TestBase()
+
+    [<Test>]
+    member this.``POST /arenas returns 409 when MaxGames reached``() : Task =
+        task {
+            let enabled =
+                Environment.GetEnvironmentVariable("TICTACTOE_TEST_MAX_GAMES_ENABLED")
+                |> Option.ofObj
+                |> Option.map (fun s -> s = "1")
+                |> Option.defaultValue false
+
+            if not enabled then
+                Assert.Ignore("Set TICTACTOE_TEST_MAX_GAMES_ENABLED=1 to run this test")
+            else
+                // Drain slots: the server should have been started with TICTACTOE_MAX_GAMES=1
+                let arenaId1 = this.Page.Url
+                let navTask = this.Page.WaitForURLAsync("**/arenas/**", PageWaitForURLOptions(Timeout = Nullable(float32 this.TimeoutMs)))
+                do! this.Page.ClickAsync("button[type='submit']")
+                do! navTask
+
+                // Second create should hit the limit
+                let cookieHeader =
+                    this.Context.CookiesAsync()
+                    |> Async.AwaitTask
+                    |> Async.RunSynchronously
+                    |> Seq.tryFind (fun c -> c.Name = "TicTacToe.SimpleUser")
+                    |> Option.map (fun c -> $"{c.Name}={c.Value}")
+                    |> Option.defaultValue ""
+
+                use client = new HttpClient()
+                use req = new HttpRequestMessage(HttpMethod.Post, $"{this.BaseUrl}/arenas")
+                req.Headers.Add("Cookie", cookieHeader)
+                req.Headers.Add("Accept", "application/json")
+                req.Content <- new System.Net.Http.FormUrlEncodedContent([||])
+                let! resp = client.SendAsync(req)
+
+                Assert.That(int resp.StatusCode, Is.EqualTo(409), $"Expected 409, got {int resp.StatusCode}")
+                let! body = resp.Content.ReadAsStringAsync()
+                let doc = JsonDocument.Parse(body)
+                let errorVal = doc.RootElement.GetProperty("error").GetString()
+                Assert.That(errorVal, Is.EqualTo("MaxGamesReached"), $"Expected MaxGamesReached, got '{errorVal}'")
+        }
