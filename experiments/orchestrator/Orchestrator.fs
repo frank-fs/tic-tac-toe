@@ -62,10 +62,17 @@ let private waitForErpcGameOver (clients: McpClientSet) (gameId: string) (maxWai
                 if attempt >= maxWaitSeconds then return false
                 else
                     let! json = clients.CallToolAsync("get_state", args) |> Async.AwaitTask
-                    let status =
-                        try (JsonNode.Parse(json) :?> JsonObject).["status"].GetValue<string>()
-                        with _ -> "in_progress"
-                    if status = "won" || status = "draw" then return true
+                    let isDone =
+                        try
+                            let obj = JsonNode.Parse(json) :?> JsonObject
+                            let mutable statusNode: JsonNode = null
+                            let mutable errorNode: JsonNode = null
+                            (obj.TryGetPropertyValue("status", &statusNode) &&
+                             (statusNode.GetValue<string>() = "won" || statusNode.GetValue<string>() = "draw"))
+                            || (obj.TryGetPropertyValue("error", &errorNode) &&
+                                errorNode.GetValue<string>() = "GameNotFound")
+                        with _ -> false
+                    if isDone then return true
                     else
                         do! Async.Sleep(1000)
                         return! poll (attempt + 1)
@@ -73,25 +80,36 @@ let private waitForErpcGameOver (clients: McpClientSet) (gameId: string) (maxWai
         return! poll 0
     }
 
-let private erpcFinalEvent (clients: McpClientSet) (gameId: string) : Async<ServerLogEvent list> =
-    async {
-        let args = Map.ofList [("gameId", JsonValue.Create(gameId) :> JsonNode)]
-        let! json = clients.CallToolAsync("get_state", args) |> Async.AwaitTask
-        return
+// Scans agent transcripts for the last tool result containing a terminal game status.
+// Used for ERPC where the game is removed from engine state once complete.
+let private erpcFinalEvent (gameId: string) (transcripts: AgentTranscript list) : ServerLogEvent list =
+    let terminal =
+        transcripts
+        |> List.collect (fun t -> t.LlmTurns)
+        |> List.collect (fun turn -> turn.ToolCalls)
+        |> List.tryPick (fun tc ->
+            let out = tc.Output |> Option.defaultValue ""
             try
-                let obj = JsonNode.Parse(json) :?> JsonObject
-                let status = obj.["status"].GetValue<string>()
-                let board = obj.["board"] :?> JsonArray
-                let moveCount =
-                    board
-                    |> Seq.cast<JsonNode>
-                    |> Seq.filter (fun n -> try n <> null && n.GetValue<string>() <> "" with _ -> false)
-                    |> Seq.length
-                if status = "won" || status = "draw" then
-                    [GameOver(gameId, status, moveCount, DateTimeOffset.UtcNow)]
-                else []
-            with _ -> []
-    }
+                let obj = JsonNode.Parse(out) :?> JsonObject
+                let mutable statusNode: JsonNode = null
+                if obj.TryGetPropertyValue("status", &statusNode) then
+                    let status = statusNode.GetValue<string>()
+                    if status = "won" || status = "draw" then
+                        let moveCount =
+                            try
+                                let board = obj.["board"] :?> JsonArray
+                                board
+                                |> Seq.cast<JsonNode>
+                                |> Seq.filter (fun n -> try n <> null && n.GetValue<string>() <> "" with _ -> false)
+                                |> Seq.length
+                            with _ -> 0
+                        Some (status, moveCount)
+                    else None
+                else None
+            with _ -> None)
+    match terminal with
+    | Some (status, moveCount) -> [GameOver(gameId, status, moveCount, DateTimeOffset.UtcNow)]
+    | None -> []
 
 let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
     async {
@@ -162,14 +180,14 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         sw.Stop()
 
-        let! erpcEvents =
-            match sharedClientsOpt, erpcGameId with
-            | Some clients, Some gameId -> erpcFinalEvent clients gameId
-            | _ -> async { return [] }
-
         sharedClientsOpt |> Option.iter (fun c -> (c :> IDisposable).Dispose())
 
         let transcripts = transcriptList |> Seq.map (fun t -> t.AgentId, t) |> Map.ofSeq
+
+        let erpcEvents =
+            match erpcGameId with
+            | Some gameId -> erpcFinalEvent gameId (transcriptList |> Seq.toList)
+            | None -> []
 
         let events = (startTail logPath).GetEvents() @ erpcEvents
 
