@@ -12,7 +12,29 @@ open Frank.OpenApi
 open TicTacToe.Web.Simple
 open TicTacToe.Web.Simple.GameStore
 open TicTacToe.Web.Simple.Model
+open TicTacToe.Web.Simple.Logger
 open TicTacToe.Web.Simple.Extensions
+
+let private initialGames () =
+    match System.Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
+    | null | "" -> 6
+    | s ->
+        match System.Int32.TryParse(s) with
+        | true, n when n > 0 -> n
+        | _ -> 6
+
+let private maxGames () =
+    match System.Environment.GetEnvironmentVariable("TICTACTOE_MAX_GAMES") with
+    | null | "" -> None
+    | s ->
+        match System.Int32.TryParse(s) with
+        | true, n when n > 0 -> Some n
+        | _ -> None
+
+let private requestLogPath () =
+    match System.Environment.GetEnvironmentVariable("TICTACTOE_REQUEST_LOG_PATH") with
+    | null | "" -> None
+    | s -> Some s
 
 let configureLogging (builder: ILoggingBuilder) =
     builder.AddFilter("Microsoft.AspNetCore", LogLevel.Warning) |> ignore
@@ -24,7 +46,8 @@ let configureServices (services: IServiceCollection) =
     services.AddAntiforgery() |> ignore
 
     services
-        .AddSingleton<GameStore>(fun _ -> GameStore())
+        .AddSingleton<GameStore>(fun _ -> GameStore(?maxGames = maxGames()))
+        .AddSingleton<RequestLogger>(fun _ -> RequestLogger(?logPath = requestLogPath()))
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
         .AddSingleton<IClaimsTransformation, GameUserClaimsTransformation>()
     |> ignore
@@ -90,7 +113,7 @@ let createInitialArenas (app: IApplicationBuilder) =
     let store = app.ApplicationServices.GetRequiredService<GameStore>()
 
     lifetime.ApplicationStarted.Register(fun () ->
-        for _ in 1..6 do
+        for _ in 1..initialGames() do
             store.Create() |> ignore
         )
     |> ignore
