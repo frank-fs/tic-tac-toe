@@ -9,6 +9,7 @@ open Microsoft.Extensions.DependencyInjection
 open Oxpecker.ViewEngine
 open TicTacToe.Model
 open TicTacToe.Web.Simple.GameStore
+open TicTacToe.Web.Simple.Logger
 open TicTacToe.Web.Simple.Model
 open TicTacToe.Web.Simple.templates.shared
 open TicTacToe.Web.Simple.templates.game
@@ -21,6 +22,12 @@ open TicTacToe.Web.Simple.templates.home
 let private acceptsJson (ctx: HttpContext) =
     ctx.Request.Headers.Accept
     |> Seq.exists (fun v -> v.Contains("application/json"))
+
+let private sessionId (ctx: HttpContext) =
+    ctx.Request.Cookies.TryGetValue("TicTacToe.SimpleUser")
+    |> function true, v -> v | _ -> "anonymous"
+
+let private requestId () = Guid.NewGuid().ToString()
 
 // ============================================================================
 // Auth
@@ -146,12 +153,18 @@ let private toArenaJson (arenaId: string) (result: MoveResult) : ArenaJson =
 let createArena (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
+        let logger = ctx.RequestServices.GetRequiredService<RequestLogger>()
+        let sid = sessionId ctx
+        let rid = requestId ()
         match store.Create() with
         | None ->
             ctx.Response.StatusCode <- 409
             ctx.Response.ContentType <- "application/json"
             do! ctx.Response.WriteAsJsonAsync({| error = "MaxGamesReached" |})
+            logger.LogRequest(rid, sid, None, "unassigned", "POST", "/arenas", 409, Some "MaxGamesReached", None, None)
         | Some (arenaId, _) ->
+            logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", "/arenas", 302, None, None, None)
+            logger.LogEvent("game_created", arenaId)
             ctx.Response.Redirect($"/arenas/{arenaId}")
     }
 
@@ -177,16 +190,21 @@ let makeMove (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let logger = ctx.RequestServices.GetRequiredService<RequestLogger>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
         let userId = ctx.User.TryGetUserId()
+        let sid = sessionId ctx
+        let rid = requestId ()
+        let path = $"/arenas/{arenaId}"
 
         match store.Get(arenaId), userId with
         | None, _ ->
             ctx.Response.StatusCode <- 404
+            logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 404, None, None, None)
         | _, None ->
             ctx.Response.StatusCode <- 401
+            logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 401, None, None, None)
         | Some currentResult, Some uid ->
-            // Parse form fields
             let playerRaw =
                 match ctx.Request.Form.TryGetValue("player") with
                 | true, v -> v.ToString()
@@ -198,22 +216,27 @@ let makeMove (ctx: HttpContext) =
 
             match Move.TryParse(playerRaw, positionRaw) with
             | None ->
-                // Bad form data — re-render with error
                 if acceptsJson ctx then
                     ctx.Response.StatusCode <- 400
                 else
                     do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
+                logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 400, Some "InvalidMove", Some currentResult, None)
             | Some move ->
                 let xTurn = isXTurn currentResult
+                let (validationResult, assignment) = assignmentManager.TryAssignAndValidate(arenaId, uid, xTurn)
 
-                // Validate and potentially assign player
-                let (validationResult, _) = assignmentManager.TryAssignAndValidate(arenaId, uid, xTurn)
+                let playerRole =
+                    match assignment.PlayerXId, assignment.PlayerOId with
+                    | Some xId, _ when xId = uid -> "X"
+                    | _, Some oId when oId = uid -> "O"
+                    | _ -> "unassigned"
 
                 match validationResult with
                 | Allowed ->
                     match store.Update(arenaId, move) with
                     | None ->
                         ctx.Response.StatusCode <- 404
+                        logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 404, None, Some currentResult, None)
                     | Some (Error(_, _)) ->
                         if acceptsJson ctx then
                             ctx.Response.StatusCode <- 422
@@ -221,12 +244,22 @@ let makeMove (ctx: HttpContext) =
                             do! ctx.Response.WriteAsJsonAsync({| error = "PositionTaken" |})
                         else
                             do! renderArenaHtml ctx arenaId currentResult (Some "That square is already taken.")
+                        logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 422, Some "PositionTaken", Some currentResult, None)
                     | Some nextResult ->
                         if acceptsJson ctx then
                             ctx.Response.ContentType <- "application/json"
                             do! ctx.Response.WriteAsJsonAsync(toArenaJson arenaId nextResult)
                         else
                             do! renderArenaHtml ctx arenaId nextResult None
+                        logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 200, None, Some currentResult, Some nextResult)
+                        logger.LogEvent("move_accepted", arenaId, role = playerRole, move = positionRaw)
+                        match nextResult with
+                        | Won(gs, winner) ->
+                            let moveCount = gs |> Seq.filter (fun kv -> kv.Value <> Empty) |> Seq.length
+                            logger.LogEvent("game_over", arenaId, outcome = $"{winner.ToString().ToLower()}_wins", moveCount = moveCount)
+                        | Draw _ ->
+                            logger.LogEvent("game_over", arenaId, outcome = "draw", moveCount = 9)
+                        | _ -> ()
 
                 | Rejected reason ->
                     let msg =
@@ -243,6 +276,7 @@ let makeMove (ctx: HttpContext) =
                         do! ctx.Response.WriteAsJsonAsync({| error = reason.ToString() |})
                     else
                         do! renderArenaHtml ctx arenaId currentResult (Some msg)
+                    logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 403, Some (reason.ToString()), Some currentResult, None)
     }
 
 /// DELETE /arenas/{id} (via POST /arenas/{id}/delete form workaround)
