@@ -6,7 +6,7 @@ open TicTacToe.Model
 
 /// Messages for the GameStore MailboxProcessor
 type GameStoreMsg =
-    | Create of AsyncReplyChannel<string * MoveResult>
+    | Create of AsyncReplyChannel<(string * MoveResult) option>
     | Get    of string * AsyncReplyChannel<MoveResult option>
     | Update of string * Move * AsyncReplyChannel<MoveResult option>
     | Delete of string
@@ -15,7 +15,7 @@ type GameStoreMsg =
 
 /// MailboxProcessor-backed store imitating a database
 /// No IObservable — purely request/response
-type GameStore() =
+type GameStore(?maxGames: int) =
     let agent =
         MailboxProcessor<GameStoreMsg>.Start(fun inbox ->
             let state = Dictionary<string, MoveResult>()
@@ -26,10 +26,14 @@ type GameStore() =
 
                     match msg with
                     | Create reply ->
-                        let id = Guid.NewGuid().ToString()
-                        let result = startGame ()
-                        state.[id] <- result
-                        reply.Reply(id, result)
+                        match maxGames with
+                        | Some limit when state.Count >= limit ->
+                            reply.Reply(None)
+                        | _ ->
+                            let id = Guid.NewGuid().ToString()
+                            let result = startGame ()
+                            state.[id] <- result
+                            reply.Reply(Some(id, result))
                         return! loop ()
 
                     | Get(id, reply) ->
@@ -72,7 +76,7 @@ type GameStore() =
 
             loop ())
 
-    member _.Create() =
+    member _.Create() : (string * MoveResult) option =
         agent.PostAndReply(fun ch -> Create ch)
 
     member _.Get(id: string) =

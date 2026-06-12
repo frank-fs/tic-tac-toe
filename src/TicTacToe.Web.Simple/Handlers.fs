@@ -146,8 +146,13 @@ let private toArenaJson (arenaId: string) (result: MoveResult) : ArenaJson =
 let createArena (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
-        let (arenaId, _) = store.Create()
-        ctx.Response.Redirect($"/arenas/{arenaId}")
+        match store.Create() with
+        | None ->
+            ctx.Response.StatusCode <- 409
+            ctx.Response.ContentType <- "application/json"
+            do! ctx.Response.WriteAsJsonAsync({| error = "MaxGamesReached" |})
+        | Some (arenaId, _) ->
+            ctx.Response.Redirect($"/arenas/{arenaId}")
     }
 
 /// GET /arenas/{id} — get arena (HTML or JSON)

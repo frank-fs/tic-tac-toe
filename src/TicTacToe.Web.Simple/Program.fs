@@ -91,7 +91,8 @@ let createInitialArenas (app: IApplicationBuilder) =
 
     lifetime.ApplicationStarted.Register(fun () ->
         for _ in 1..6 do
-            store.Create() |> ignore)
+            store.Create() |> ignore
+        )
     |> ignore
 
     app
