@@ -54,6 +54,45 @@ let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool
         return! poll 0
     }
 
+let private waitForErpcGameOver (clients: McpClientSet) (gameId: string) (maxWaitSeconds: int) : Async<bool> =
+    async {
+        let args = Map.ofList [("gameId", JsonValue.Create(gameId) :> JsonNode)]
+        let rec poll attempt =
+            async {
+                if attempt >= maxWaitSeconds then return false
+                else
+                    let! json = clients.CallToolAsync("get_state", args) |> Async.AwaitTask
+                    let status =
+                        try (JsonNode.Parse(json) :?> JsonObject).["status"].GetValue<string>()
+                        with _ -> "in_progress"
+                    if status = "won" || status = "draw" then return true
+                    else
+                        do! Async.Sleep(1000)
+                        return! poll (attempt + 1)
+            }
+        return! poll 0
+    }
+
+let private erpcFinalEvent (clients: McpClientSet) (gameId: string) : Async<ServerLogEvent list> =
+    async {
+        let args = Map.ofList [("gameId", JsonValue.Create(gameId) :> JsonNode)]
+        let! json = clients.CallToolAsync("get_state", args) |> Async.AwaitTask
+        return
+            try
+                let obj = JsonNode.Parse(json) :?> JsonObject
+                let status = obj.["status"].GetValue<string>()
+                let board = obj.["board"] :?> JsonArray
+                let moveCount =
+                    board
+                    |> Seq.cast<JsonNode>
+                    |> Seq.filter (fun n -> try n <> null && n.GetValue<string>() <> "" with _ -> false)
+                    |> Seq.length
+                if status = "won" || status = "draw" then
+                    [GameOver(gameId, status, moveCount, DateTimeOffset.UtcNow)]
+                else []
+            with _ -> []
+    }
+
 let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
     async {
         let cellStart = DateTimeOffset.UtcNow
@@ -109,8 +148,10 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         for agent in agents do agent.Post(StartAgent)
 
-        // ERPC has no server log — waitForGameOver returns false immediately; agents run for the full window.
-        let! gameOver = waitForGameOver logPath 180
+        let! gameOver =
+            match sharedClientsOpt, erpcGameId with
+            | Some clients, Some gameId -> waitForErpcGameOver clients gameId 600
+            | _ -> waitForGameOver logPath 180
 
         if gameOver then do! Async.Sleep(5000)
 
@@ -121,11 +162,16 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         sw.Stop()
 
+        let! erpcEvents =
+            match sharedClientsOpt, erpcGameId with
+            | Some clients, Some gameId -> erpcFinalEvent clients gameId
+            | _ -> async { return [] }
+
         sharedClientsOpt |> Option.iter (fun c -> (c :> IDisposable).Dispose())
 
         let transcripts = transcriptList |> Seq.map (fun t -> t.AgentId, t) |> Map.ofSeq
 
-        let events = (startTail logPath).GetEvents()
+        let events = (startTail logPath).GetEvents() @ erpcEvents
 
         let sessionMap = Map.empty
         let roles = resolveRoles events sessionMap
