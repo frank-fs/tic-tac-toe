@@ -7,6 +7,7 @@ open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.Metrics
 open TicTacToe.Orchestrator.Persistence
 open TicTacToe.Orchestrator.ServerLogTail
+open TicTacToe.Orchestrator.McpClient
 open TicTacToe.Orchestrator.ServerProcess
 open TicTacToe.Orchestrator.Agent
 
@@ -57,11 +58,21 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             |> Option.map (fun h -> h.BaseUrl)
             |> Option.defaultValue ""
 
+        // ERPC: one shared MCP server process for all 3 agents so they see the same game state.
+        let! sharedClientsOpt =
+            if cell.Variant = ERPC then
+                async {
+                    let clients = new McpClientSet(cell.McpServers)
+                    do! clients.InitializeAsync() |> Async.AwaitTask
+                    return Some clients
+                }
+            else async { return None }
+
         let (p1, p2, p3) = cell.Personas
         let agents =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                createAgent (makeAgentConfig cell slot persona baseUrl))
+                createAgent (makeAgentConfig cell slot persona baseUrl) sharedClientsOpt)
 
         let sw = Stopwatch.StartNew()
 
@@ -77,6 +88,9 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             transcriptList.Add(t)
 
         sw.Stop()
+
+        sharedClientsOpt |> Option.iter (fun c -> (c :> IDisposable).Dispose())
+
         let transcripts = transcriptList |> Seq.map (fun t -> t.AgentId, t) |> Map.ofSeq
 
         let events = (startTail logPath).GetEvents()

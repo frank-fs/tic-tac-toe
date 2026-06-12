@@ -119,6 +119,7 @@ type GameSupervisor =
     abstract CreateGame: unit -> string * Game
     abstract GetGame: gameId: string -> Game option
     abstract GetActiveGameCount: unit -> int
+    abstract ListActiveGames: unit -> string list
 
 type GameRef =
     { Game: Game
@@ -127,6 +128,7 @@ type GameRef =
 
 type GameSupervisorMessage =
     | CountActive of AsyncReplyChannel<int>
+    | ListGames of AsyncReplyChannel<string list>
     | CreateGame of AsyncReplyChannel<string * Game>
     | GetGame of string * AsyncReplyChannel<Game option>
     | RemoveGame of string
@@ -148,6 +150,10 @@ type GameSupervisorImpl() as this =
                     match message with
                     | CountActive reply ->
                         reply.Reply(Map.count state)
+                        return! messageLoop state
+
+                    | ListGames reply ->
+                        reply.Reply(state |> Map.toList |> List.map fst)
                         return! messageLoop state
 
                     | CreateGame reply ->
@@ -232,6 +238,8 @@ type GameSupervisorImpl() as this =
             agent.PostAndReply(fun reply -> GetGame(gameId, reply))
 
         member _.GetActiveGameCount() = agent.PostAndReply(CountActive)
+
+        member _.ListActiveGames() = agent.PostAndReply(ListGames)
 
         member _.Dispose() =
             if not disposed then

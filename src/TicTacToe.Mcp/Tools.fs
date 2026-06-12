@@ -93,6 +93,24 @@ type GameTools(supervisor: GameSupervisor) =
             | _ -> None
 
     [<McpServerTool>]
+    [<Description("List all active in-progress games. Returns array of {gameId, whoseTurn, status}. Call this first — if a game exists, join it instead of creating a new one.")>]
+    member _.``list_games``() : string =
+        let gameIds = supervisor.ListActiveGames()
+        let games =
+            gameIds
+            |> List.choose (fun id ->
+                match supervisor.GetGame(id) with
+                | Some game ->
+                    let state = game.GetState()
+                    let obj = JsonObject()
+                    obj["gameId"] <- JsonValue.Create(id)
+                    obj["whoseTurn"] <- JsonValue.Create(whoseTurnStr state)
+                    obj["status"] <- JsonValue.Create(statusStr state)
+                    Some (obj :> JsonNode)
+                | None -> None)
+        JsonSerializer.Serialize(games)
+
+    [<McpServerTool>]
     [<Description("Create a new tic-tac-toe game. Returns gameId, board (9 cells), whoseTurn, status, and validMoves. X always moves first.")>]
     member _.``new_game``() : string =
         let gameId, _ = supervisor.CreateGame()

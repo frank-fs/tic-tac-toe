@@ -25,5 +25,8 @@ type GameSupervisor =
     /// Get count of active games
     abstract GetActiveGameCount: unit -> int
 
+    /// List IDs of all active in-progress games
+    abstract ListActiveGames: unit -> string list
+
 /// Create a new game supervisor
 val createGameSupervisor: unit -> GameSupervisor

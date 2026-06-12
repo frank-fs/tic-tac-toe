@@ -79,13 +79,19 @@ let private executeTurn
             return (currentTurns @ [turn], true)
     }
 
-let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
+/// sharedClients: if Some, agent uses these and does NOT dispose them (orchestrator owns lifecycle).
+/// If None, agent creates its own McpClientSet and disposes on stop.
+let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : MailboxProcessor<AgentMsg> =
     MailboxProcessor.Start(fun inbox ->
         let backend = Backend.autoDetect()
         let messages = JsonArray()
         let initialMsg =
             if String.IsNullOrEmpty(config.BaseUrl) then
-                "Use the available MCP tools to play a tic-tac-toe game. Call new_game to start, then make_move to play."
+                "You are playing tic-tac-toe using MCP tools. First call list_games to check for an active game. " +
+                "If a game exists, use its gameId and call get_board to see the state, then make_move when it is your turn. " +
+                "If no game exists, call list_games again up to 3 times before giving up. " +
+                "Only call new_game if list_games is still empty after all retries. " +
+                "Once in a game, keep making moves until the game is over."
             else
                 $"Here is a URL: {config.BaseUrl}"
         appendUserText messages initialMsg |> ignore
@@ -98,7 +104,7 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
                 let! maybeStop = inbox.TryReceive(timeout = 0)
                 match maybeStop with
                 | Some (StopAgent reply) ->
-                    (clients :> IDisposable).Dispose()
+                    if sharedClients.IsNone then (clients :> IDisposable).Dispose()
                     reply.Reply(buildTranscript config.Id config.Persona turns aborted)
 
                 | Some (GetSnapshot reply) ->
@@ -112,7 +118,7 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
                             let! msg = inbox.Receive()
                             match msg with
                             | StopAgent reply ->
-                                (clients :> IDisposable).Dispose()
+                                if sharedClients.IsNone then (clients :> IDisposable).Dispose()
                                 reply.Reply(buildTranscript config.Id config.Persona turns true)
                             | GetSnapshot reply ->
                                 reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = true })
@@ -135,7 +141,7 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
                                 let! msg = inbox.Receive()
                                 match msg with
                                 | StopAgent reply ->
-                                    (clients :> IDisposable).Dispose()
+                                    if sharedClients.IsNone then (clients :> IDisposable).Dispose()
                                     reply.Reply(buildTranscript config.Id config.Persona turns aborted)
                                 | GetSnapshot reply ->
                                     reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = false })
@@ -150,8 +156,15 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
             let! msg = inbox.Receive()
             match msg with
             | StartAgent ->
-                let clients = McpClientSet(config.McpServers)
-                do! clients.InitializeAsync() |> Async.AwaitTask
+                let! clients =
+                    match sharedClients with
+                    | Some c -> async { return c }
+                    | None ->
+                        async {
+                            let c = new McpClientSet(config.McpServers)
+                            do! c.InitializeAsync() |> Async.AwaitTask
+                            return c
+                        }
                 return! runLoop 0 clients
             | StopAgent reply ->
                 reply.Reply(buildTranscript config.Id config.Persona [] false)
