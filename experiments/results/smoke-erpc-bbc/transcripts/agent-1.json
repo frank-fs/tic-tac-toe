@@ -1,0 +1,52 @@
+{
+  "agent_id": "agent-1",
+  "persona": "beginner",
+  "llm_turns": [
+    {
+      "turn_index": 0,
+      "stop_reason": "tool_use",
+      "input_tokens": 415,
+      "output_tokens": 87,
+      "tool_calls": [
+        {
+          "tool_name": "new_game",
+          "input": "{}",
+          "output": "{\u0022board\u0022:[\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022X\u0022,\u0022status\u0022:\u0022in_progress\u0022,\u0022validMoves\u0022:[\u0022TopLeft\u0022,\u0022TopCenter\u0022,\u0022TopRight\u0022,\u0022MiddleLeft\u0022,\u0022MiddleCenter\u0022,\u0022MiddleRight\u0022,\u0022BottomLeft\u0022,\u0022BottomCenter\u0022,\u0022BottomRight\u0022],\u0022gameId\u0022:\u0022fa10f7ea-e6ff-48e6-a0e4-b19ea62e92bf\u0022}",
+          "error": null,
+          "duration_ms": 34,
+          "timestamp": "2026-06-12T17:19:15.073088+00:00"
+        }
+      ],
+      "text_output": null,
+      "timestamp": "2026-06-12T17:19:15.073097+00:00"
+    },
+    {
+      "turn_index": 1,
+      "stop_reason": "tool_use",
+      "input_tokens": 558,
+      "output_tokens": 289,
+      "tool_calls": [
+        {
+          "tool_name": "make_move",
+          "input": "{\u0022gameId\u0022:\u0022fa10f7ea-e6ff-48e6-a0e4-b19ea62e92bf\u0022,\u0022position\u0022:\u0022TopLeft\u0022}",
+          "output": "{\u0022board\u0022:[\u0022X\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022,\u0022\u0022],\u0022whoseTurn\u0022:\u0022O\u0022,\u0022status\u0022:\u0022in_progress\u0022,\u0022validMoves\u0022:[\u0022TopCenter\u0022,\u0022TopRight\u0022,\u0022MiddleLeft\u0022,\u0022MiddleCenter\u0022,\u0022MiddleRight\u0022,\u0022BottomLeft\u0022,\u0022BottomCenter\u0022,\u0022BottomRight\u0022]}",
+          "error": null,
+          "duration_ms": 12,
+          "timestamp": "2026-06-12T17:19:30.335364+00:00"
+        }
+      ],
+      "text_output": null,
+      "timestamp": "2026-06-12T17:19:30.335377+00:00"
+    },
+    {
+      "turn_index": 2,
+      "stop_reason": "end_turn",
+      "input_tokens": 707,
+      "output_tokens": 351,
+      "tool_calls": [],
+      "text_output": null,
+      "timestamp": "2026-06-12T17:19:43.526827+00:00"
+    }
+  ],
+  "aborted": false
+}
