@@ -9,6 +9,7 @@
   <ItemGroup>
     <Compile Include="GameStore.fs" />
     <Compile Include="Model.fs" />
+    <Compile Include="Logger.fs" />
     <Compile Include="Extensions.fs" />
     <Compile Include="Auth.fs" />
     <Compile Include="templates/shared/layout.fs" />
