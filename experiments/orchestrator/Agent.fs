@@ -23,7 +23,7 @@ let private executeTurn
         let tools = mcpClients.GetAllTools()
         let! result =
             runTurn backend config.Model config.Temperature
-                (Some config.Persona.SystemPrompt) tools false messages
+                (Some config.Persona.SystemPrompt) tools config.ForceToolUse messages
 
         match result with
         | Done(text, inp, out) ->

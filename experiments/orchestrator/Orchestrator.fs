@@ -19,6 +19,7 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       BaseUrl = baseUrl
       McpServers = cell.McpServers
       InitialMessage = initialMessage
+      ForceToolUse = (cell.Variant = ERPC)
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
