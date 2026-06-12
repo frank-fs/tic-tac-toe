@@ -6,7 +6,7 @@ open TicTacToe.Orchestrator.Personas
 let private playwrightServer = {
     Name = "playwright"
     Command = "npx"
-    Arguments = [| "@playwright/mcp"; "--headless" |]
+    Arguments = [| "@playwright/mcp"; "--headless"; "--isolated" |]
 }
 
 let private mcpServer = {

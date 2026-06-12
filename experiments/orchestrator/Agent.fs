@@ -83,7 +83,12 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
     MailboxProcessor.Start(fun inbox ->
         let backend = Backend.autoDetect()
         let messages = JsonArray()
-        appendUserText messages $"Here is a URL: {config.BaseUrl}" |> ignore
+        let initialMsg =
+            if String.IsNullOrEmpty(config.BaseUrl) then
+                "Use the available MCP tools to play a tic-tac-toe game. Call new_game to start, then make_move to play."
+            else
+                $"Here is a URL: {config.BaseUrl}"
+        appendUserText messages initialMsg |> ignore
 
         let mutable turns: LlmTurn list = []
         let mutable aborted = false
