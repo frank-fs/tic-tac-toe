@@ -86,14 +86,17 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
         let backend = Backend.autoDetect()
         let messages = JsonArray()
         let initialMsg =
-            if String.IsNullOrEmpty(config.BaseUrl) then
-                "You are playing tic-tac-toe using MCP tools. First call list_games to check for an active game. " +
-                "If a game exists, use its gameId and call get_board to see the state, then make_move when it is your turn. " +
-                "If no game exists, call list_games again up to 3 times before giving up. " +
-                "Only call new_game if list_games is still empty after all retries. " +
-                "Once in a game, keep making moves until the game is over."
-            else
-                $"Here is a URL: {config.BaseUrl}"
+            match config.InitialMessage with
+            | Some msg -> msg
+            | None ->
+                if String.IsNullOrEmpty(config.BaseUrl) then
+                    "You are playing tic-tac-toe using MCP tools. First call list_games to check for an active game. " +
+                    "If a game exists, use its gameId and call get_board to see the state, then make_move when it is your turn. " +
+                    "If no game exists, call list_games again up to 3 times before giving up. " +
+                    "Only call new_game if list_games is still empty after all retries. " +
+                    "Once in a game, keep making moves until the game is over."
+                else
+                    $"Here is a URL: {config.BaseUrl}"
         appendUserText messages initialMsg |> ignore
 
         let mutable turns: LlmTurn list = []

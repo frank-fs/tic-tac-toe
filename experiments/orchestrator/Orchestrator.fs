@@ -3,6 +3,7 @@ module TicTacToe.Orchestrator.Orchestrator
 open System
 open System.Diagnostics
 open System.IO
+open System.Text.Json.Nodes
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.Metrics
 open TicTacToe.Orchestrator.Persistence
@@ -11,14 +12,29 @@ open TicTacToe.Orchestrator.McpClient
 open TicTacToe.Orchestrator.ServerProcess
 open TicTacToe.Orchestrator.Agent
 
-let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) : AgentConfig =
+let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string option) : AgentConfig =
     { Id = $"agent-{slot}"
       Persona = persona
       Model = cell.Model
       BaseUrl = baseUrl
       McpServers = cell.McpServers
+      InitialMessage = initialMessage
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
+
+let private erpcSlotMessage (slot: int) (gameId: string) : string =
+    match slot with
+    | 1 ->
+        $"You are player X in tic-tac-toe game {gameId}. It is X's turn first. " +
+        "Call make_move to play your move. After playing, call get_state to check if it is your turn again (whoseTurn = X). " +
+        "Keep playing until the game status is won or draw."
+    | 2 ->
+        $"You are player O in tic-tac-toe game {gameId}. " +
+        "Call get_state to check the board. When whoseTurn = O it is your turn — call make_move. " +
+        "Keep polling get_state and playing when it is your turn until the game ends."
+    | _ ->
+        $"You are observing tic-tac-toe game {gameId}. " +
+        "Call get_state periodically to watch the game. Stop when status is won or draw."
 
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {
@@ -59,6 +75,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             |> Option.defaultValue ""
 
         // ERPC: one shared MCP server process for all 3 agents so they see the same game state.
+        // Pre-create a game so agents find it immediately via list_games and get explicit role assignments.
         let! sharedClientsOpt =
             if cell.Variant = ERPC then
                 async {
@@ -68,16 +85,30 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
                 }
             else async { return None }
 
+        let! erpcGameId =
+            match sharedClientsOpt with
+            | None -> async { return None }
+            | Some clients ->
+                async {
+                    let! json = clients.CallToolAsync("new_game", Map.empty) |> Async.AwaitTask
+                    let gameId =
+                        try (JsonNode.Parse(json) :?> JsonObject).["gameId"].GetValue<string>()
+                        with _ -> failwith $"ERPC pre-create game failed: {json}"
+                    return Some gameId
+                }
+
         let (p1, p2, p3) = cell.Personas
         let agents =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                createAgent (makeAgentConfig cell slot persona baseUrl) sharedClientsOpt)
+                let initialMsg = erpcGameId |> Option.map (erpcSlotMessage slot)
+                createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt)
 
         let sw = Stopwatch.StartNew()
 
         for agent in agents do agent.Post(StartAgent)
 
+        // ERPC has no server log — waitForGameOver returns false immediately; agents run for the full window.
         let! gameOver = waitForGameOver logPath 180
 
         if gameOver then do! Async.Sleep(5000)

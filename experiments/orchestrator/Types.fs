@@ -37,6 +37,7 @@ type AgentConfig = {
     Model: string
     BaseUrl: string
     McpServers: McpServerConfig list
+    InitialMessage: string option  // if Some, overrides the URL/ERPC default prompt
     MaxTurns: int
     Temperature: float
 }
