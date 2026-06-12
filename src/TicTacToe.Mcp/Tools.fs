@@ -64,8 +64,24 @@ let private isTerminal = function
     | Won _ | Draw _ -> true
     | _ -> false
 
+let private applyMove (game: Game) (currentResult: MoveResult) (position: string) : string =
+    match SquarePosition.TryParse(position) with
+    | None -> errorJson InvalidPosition
+    | Some pos ->
+        let gs = getGs currentResult
+        match gs.TryGetValue(pos) with
+        | true, Taken _ -> errorJson PositionTaken
+        | _ ->
+            let move =
+                match currentResult with
+                | XTurn _ -> XMove pos
+                | _ -> OMove pos
+            game.MakeMove(move)
+            (stateJson (game.GetState())).ToJsonString()
+
 [<McpServerToolType>]
 type GameTools(supervisor: GameSupervisor) =
+    // stdio transport is sequential (one request at a time), so TryAdd and RemoveGame cannot interleave.
     let completedGames = ConcurrentDictionary<string, MoveResult>()
 
     let resolveGame gameId =
@@ -110,23 +126,12 @@ type GameTools(supervisor: GameSupervisor) =
             | Won _ | Draw _ ->
                 completedGames.TryAdd(gameId, currentResult) |> ignore
                 errorJson GameOver
-            | _ ->
-                match SquarePosition.TryParse(position) with
-                | None -> errorJson InvalidPosition
-                | Some pos ->
-                    let gs = getGs currentResult
-                    match gs.TryGetValue(pos) with
-                    | true, Taken _ -> errorJson PositionTaken
-                    | _ ->
-                        let move =
-                            match currentResult with
-                            | XTurn _ -> XMove pos
-                            | _ -> OMove pos
-                        game.MakeMove(move)
-                        let nextResult = game.GetState()
-                        if isTerminal nextResult then
-                            completedGames.TryAdd(gameId, nextResult) |> ignore
-                        (stateJson nextResult).ToJsonString()
+            | currentResult ->
+                let json = applyMove game currentResult position
+                let nextResult = game.GetState()
+                if isTerminal nextResult then
+                    completedGames.TryAdd(gameId, nextResult) |> ignore
+                json
 
     [<McpServerTool>]
     [<Description("Get full game state including gameId, board, whoseTurn, status, and validMoves.")>]
