@@ -36,7 +36,11 @@ let private executeTurn
                 TextOutput = if String.IsNullOrEmpty(text) then None else Some text
                 Timestamp = DateTimeOffset.UtcNow
             }
-            return (currentTurns @ [turn], false)
+            if config.ForceToolUse then
+                appendUserText messages "The game is still in progress. Call get_state or make_move to continue." |> ignore
+                return (currentTurns @ [turn], true)
+            else
+                return (currentTurns @ [turn], false)
 
         | ToolCalls(calls, inp, out) ->
             appendAssistantToolUse backend messages calls |> ignore
