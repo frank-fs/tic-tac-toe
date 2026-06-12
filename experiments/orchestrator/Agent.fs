@@ -102,12 +102,20 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
 
                 | _ when turnIndex >= config.MaxTurns ->
                     aborted <- true
-                    let! msg = inbox.Receive()
-                    match msg with
-                    | StopAgent reply ->
-                        (clients :> IDisposable).Dispose()
-                        reply.Reply(buildTranscript config.Id config.Persona turns true)
-                    | _ -> ()
+                    let rec waitStop () =
+                        async {
+                            let! msg = inbox.Receive()
+                            match msg with
+                            | StopAgent reply ->
+                                (clients :> IDisposable).Dispose()
+                                reply.Reply(buildTranscript config.Id config.Persona turns true)
+                            | GetSnapshot reply ->
+                                reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = true })
+                                return! waitStop()
+                            | StartAgent ->
+                                return! waitStop()
+                        }
+                    return! waitStop()
 
                 | _ ->
                     let! (newTurns, keepGoing) =

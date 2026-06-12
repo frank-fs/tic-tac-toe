@@ -22,14 +22,18 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {
         let tail = startTail logPath
-        let sw = Stopwatch.StartNew()
-        let mutable found = false
-        while not found && sw.Elapsed.TotalSeconds < float maxWaitSeconds do
-            let events = tail.GetEvents()
-            found <- events |> List.exists (function GameOver _ -> true | _ -> false)
-            if not found then
-                do! Async.Sleep(1000)
-        return found
+        let rec poll attempt =
+            async {
+                if attempt >= maxWaitSeconds then return false
+                else
+                    let events = tail.GetEvents()
+                    if events |> List.exists (function GameOver _ -> true | _ -> false) then
+                        return true
+                    else
+                        do! Async.Sleep(1000)
+                        return! poll (attempt + 1)
+            }
+        return! poll 0
     }
 
 let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
