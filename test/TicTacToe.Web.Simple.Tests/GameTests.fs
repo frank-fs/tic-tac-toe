@@ -387,13 +387,11 @@ type ErrorBehaviorTests() =
             let! _ = this.Page.GotoAsync(arenaUrl)
             do! clickNth this.Page 1 this.TimeoutMs // position already taken
 
-            let! statusEl = this.Page.QuerySelectorAsync(".status")
-            Assert.That(statusEl, Is.Not.Null)
-            let! statusText = statusEl.InnerTextAsync()
-            // Engine returns Error(state, "Invalid move") for occupied squares;
-            // the handler renders it via statusText as "Error: Invalid move"
-            Assert.That(statusText, Does.Contain("Error"),
-                $"Expected error status for occupied square, got '{statusText}'")
+            let! errorDiv = this.Page.QuerySelectorAsync(".error-msg")
+            Assert.That(errorDiv, Is.Not.Null, "Expected .error-msg after occupied-square move")
+            let! errorText = errorDiv.InnerTextAsync()
+            Assert.That(errorText, Does.Contain("already taken").Or.Contain("PositionTaken"),
+                $"Expected occupied-square error message, got '{errorText}'")
 
             let! squares = this.Page.QuerySelectorAllAsync(".board button[type='submit']")
             Assert.That(squares.Count, Is.EqualTo(9), "Squares still visible after occupied-square error")

@@ -4,10 +4,11 @@ open System
 
 /// Reasons why a move was rejected
 type RejectionReason =
-    | NotYourTurn   // Correct player, wrong turn
-    | NotAPlayer    // User is spectator
-    | WrongPlayer   // User is X but O's turn (or vice versa)
-    | GameOver      // Game already finished
+    | OutOfTurn      // Right player, wrong turn order
+    | NotAPlayer     // Third user — no slot available
+    | PositionTaken  // Square already occupied
+    | GameOver       // Game already finished
+    | InvalidMove    // Malformed input
 
 /// Result of validating whether a user can make a move
 type MoveValidationResult =
@@ -55,39 +56,25 @@ type PlayerAssignmentManager() =
 
                         let result, newAssignment =
                             match assignment.PlayerXId, assignment.PlayerOId, isXTurn with
-                            // X slot open and it's X's turn - assign user as X
                             | None, _, true ->
                                 let updated = { assignment with PlayerXId = Some userId }
                                 Allowed, updated
 
-                            // O slot open, it's O's turn, and user is not X - assign user as O
                             | Some xId, None, false when xId <> userId ->
                                 let updated = { assignment with PlayerOId = Some userId }
                                 Allowed, updated
 
-                            // User is X and it's X's turn - allow
                             | Some xId, _, true when xId = userId -> Allowed, assignment
-
-                            // User is O and it's O's turn - allow
                             | _, Some oId, false when oId = userId -> Allowed, assignment
 
-                            // User is X but it's O's turn - not your turn
-                            | Some xId, Some _, false when xId = userId -> Rejected NotYourTurn, assignment
+                            | Some xId, Some _, false when xId = userId -> Rejected OutOfTurn, assignment
+                            | Some _, Some oId, true when oId = userId -> Rejected OutOfTurn, assignment
 
-                            // User is O but it's X's turn - not your turn
-                            | Some _, Some oId, true when oId = userId -> Rejected NotYourTurn, assignment
-
-                            // Both slots filled and user is neither - spectator trying to play
                             | Some xId, Some oId, _ when xId <> userId && oId <> userId ->
                                 Rejected NotAPlayer, assignment
 
-                            // Same user trying to claim O when they're X
-                            | Some xId, None, false when xId = userId -> Rejected NotYourTurn, assignment
-
-                            // X slot open but O's turn
+                            | Some xId, None, false when xId = userId -> Rejected OutOfTurn, assignment
                             | None, _, false -> Rejected NotAPlayer, assignment
-
-                            // Catch-all
                             | _ -> Rejected NotAPlayer, assignment
 
                         reply.Reply(result, newAssignment)

@@ -209,6 +209,13 @@ let makeMove (ctx: HttpContext) =
                     match store.Update(arenaId, move) with
                     | None ->
                         ctx.Response.StatusCode <- 404
+                    | Some (Error(_, _)) ->
+                        if acceptsJson ctx then
+                            ctx.Response.StatusCode <- 422
+                            ctx.Response.ContentType <- "application/json"
+                            do! ctx.Response.WriteAsJsonAsync({| error = "PositionTaken" |})
+                        else
+                            do! renderArenaHtml ctx arenaId currentResult (Some "That square is already taken.")
                     | Some nextResult ->
                         if acceptsJson ctx then
                             ctx.Response.ContentType <- "application/json"
@@ -219,17 +226,17 @@ let makeMove (ctx: HttpContext) =
                 | Rejected reason ->
                     let msg =
                         match reason with
-                        | NotYourTurn -> "It's not your turn."
+                        | OutOfTurn -> "It's not your turn."
                         | NotAPlayer -> "You are not a player in this arena."
-                        | WrongPlayer -> "You are not the correct player."
+                        | PositionTaken -> "That square is already taken."
                         | GameOver -> "This game is already over."
+                        | InvalidMove -> "Invalid move."
 
                     if acceptsJson ctx then
                         ctx.Response.StatusCode <- 403
                         ctx.Response.ContentType <- "application/json"
-                        do! ctx.Response.WriteAsJsonAsync({| error = msg |})
+                        do! ctx.Response.WriteAsJsonAsync({| error = reason.ToString() |})
                     else
-                        // Re-render same page with inline error — do NOT hide buttons
                         do! renderArenaHtml ctx arenaId currentResult (Some msg)
     }
 
