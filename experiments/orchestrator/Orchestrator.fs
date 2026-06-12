@@ -44,11 +44,13 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let logPath = Path.Combine(repoRoot, "experiments", "results", cell.Id, "server-requests.jsonl")
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)) |> ignore
 
-        let serverHandleOpt =
-            if cell.Variant = ERPC then None
+        let! serverHandleOpt =
+            if cell.Variant = ERPC then async { return None }
             else
-                let handle = startServerForCell repoRoot cell |> Async.AwaitTask |> Async.RunSynchronously
-                Some handle
+                async {
+                    let! handle = startServerForCell repoRoot cell |> Async.AwaitTask
+                    return Some handle
+                }
 
         let baseUrl =
             serverHandleOpt

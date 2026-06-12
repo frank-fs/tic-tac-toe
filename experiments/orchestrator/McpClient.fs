@@ -36,13 +36,15 @@ type McpConnection(client: McpClient, tools: ToolDef list) =
             return extractText result
         }
     interface IDisposable with
-        member _.Dispose() = client.DisposeAsync().AsTask() |> ignore
+        member _.Dispose() = client.DisposeAsync().AsTask().GetAwaiter().GetResult()
 
 type McpClientSet(configs: McpServerConfig list) =
     let mutable connections: McpConnection list = []
 
     member _.InitializeAsync() : Task =
         task {
+            if not (List.isEmpty connections) then
+                failwith "McpClientSet.InitializeAsync called more than once"
             for cfg in configs do
                 let opts = StdioClientTransportOptions(
                     Name = cfg.Name,

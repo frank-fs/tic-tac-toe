@@ -125,12 +125,20 @@ let createAgent (config: AgentConfig) : MailboxProcessor<AgentMsg> =
                     if keepGoing then
                         return! runLoop (turnIndex + 1) clients
                     else
-                        let! msg = inbox.Receive()
-                        match msg with
-                        | StopAgent reply ->
-                            (clients :> IDisposable).Dispose()
-                            reply.Reply(buildTranscript config.Id config.Persona turns aborted)
-                        | _ -> ()
+                        let rec waitStop () =
+                            async {
+                                let! msg = inbox.Receive()
+                                match msg with
+                                | StopAgent reply ->
+                                    (clients :> IDisposable).Dispose()
+                                    reply.Reply(buildTranscript config.Id config.Persona turns aborted)
+                                | GetSnapshot reply ->
+                                    reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = false })
+                                    return! waitStop()
+                                | StartAgent ->
+                                    return! waitStop()
+                            }
+                        return! waitStop()
             }
 
         async {
