@@ -35,6 +35,7 @@ type AgentConfig = {
     Id: string          // "agent-1" | "agent-2" | "agent-3"
     Persona: Persona
     Model: string
+    Variant: Variant
     BaseUrl: string
     McpServers: McpServerConfig list
     InitialMessage: string

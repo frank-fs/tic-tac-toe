@@ -17,6 +17,7 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
     { Id = $"agent-{slot}"
       Persona = persona
       Model = cell.Model
+      Variant = cell.Variant
       BaseUrl = baseUrl
       McpServers = cell.McpServers
       InitialMessage = initialMessage
@@ -24,11 +25,16 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
-let private erpcSlotMessage () : string =
-    "The game server is ready."
-
-let private httpSlotMessage (baseUrl: string) : string =
-    $"The game server is at {baseUrl}."
+let private slotMessage (variant: Variant) (baseUrl: string) : string =
+    match variant with
+    | ERPC ->
+        "The game server is ready. Call get_state to read the current board; " +
+        "it only reflects new moves when you call it again."
+    | Simple ->
+        $"The game server is at {baseUrl}. The page is static — reload it to see new moves."
+    | Proto ->
+        $"The game server is at {baseUrl}. The page updates without reloading — " +
+        "take a fresh snapshot to see new moves."
 
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {
@@ -146,10 +152,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let agents =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                let initialMsg =
-                    match cell.Variant with
-                    | ERPC -> erpcSlotMessage ()
-                    | _    -> httpSlotMessage baseUrl
+                let initialMsg = slotMessage cell.Variant baseUrl
                 createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt)
 
         let sw = Stopwatch.StartNew()

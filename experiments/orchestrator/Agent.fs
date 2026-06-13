@@ -63,9 +63,10 @@ let private executeTurn
             }
             if config.ForceToolUse then
                 let nudge =
-                    if String.IsNullOrEmpty(config.BaseUrl)
-                    then "The game is still in progress. Call get_state or make_move to continue."
-                    else "Continue interacting with the web page. Use browser tools to take the next action."
+                    match config.Variant with
+                    | ERPC -> "The game is in progress. Call get_state to see the current board, then make your move."
+                    | Simple -> "The game is in progress. Reload the page to see the current board, then take your next action."
+                    | Proto -> "The game is in progress. Take a fresh snapshot to see the current board, then take your next action."
                 appendUserText messages nudge |> ignore
                 return (currentTurns @ [turn], true)
             else
