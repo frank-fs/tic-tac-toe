@@ -1,6 +1,7 @@
 module TicTacToe.Web.Simple.templates.game
 
 open Oxpecker.ViewEngine
+open Oxpecker.ViewEngine.Aria
 open TicTacToe.Model
 open TicTacToe.Web.Simple.Model
 
@@ -74,7 +75,8 @@ let private renderSquare (arenaId: string) (playerStr: string) (state: GameState
         input (type' = "hidden", name = "position", value = posStr)
         button (
             class' = (if isActive then "square square-clickable" else "square"),
-            type' = "submit"
+            type' = "submit",
+            ariaLabel = posStr
         ) { label }
     }
     :> HtmlElement
