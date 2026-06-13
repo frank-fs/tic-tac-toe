@@ -27,11 +27,11 @@ type NewGameTests() =
         Assert.That(str obj["status"], Is.EqualTo("in_progress"))
 
     [<Test>]
-    member _.``each call produces a distinct gameId``() =
+    member _.``second call returns MaxGamesReached``() =
         let tools = makeTools()
-        let id1 = str (parseObj (tools.``new_game``())["gameId"])
-        let id2 = str (parseObj (tools.``new_game``())["gameId"])
-        Assert.That(id1, Is.Not.EqualTo(id2))
+        tools.``new_game``() |> ignore
+        let obj = parseObj (tools.``new_game``())
+        Assert.That(str obj["error"], Is.EqualTo("MaxGamesReached"))
 
 [<TestFixture>]
 type GetBoardTests() =

@@ -15,7 +15,7 @@ let private arenaStatusText = function
     | Error(_, msg) -> $"Error: {msg}"
 
 let homePage (ctx: HttpContext) (arenas: (string * MoveResult) list) =
-    ctx.Items["Title"] <- "Tic Tac Toe — Arenas"
+    ctx.Items["Title"] <- "Tic Tac Toe — Games"
 
     Fragment() {
         homeStyles
@@ -24,12 +24,12 @@ let homePage (ctx: HttpContext) (arenas: (string * MoveResult) list) =
 
         div (class' = "new-arena-container") {
             form (method = "post", action = "/arenas") {
-                button (class' = "new-arena-btn", type' = "submit") { "New Arena" }
+                button (class' = "new-arena-btn", type' = "submit") { "New Game" }
             }
         }
 
         if arenas.IsEmpty then
-            p (class' = "no-arenas") { "No arenas yet. Create one to start playing!" }
+            p (class' = "no-arenas") { "No games yet. Create one to start playing!" }
         else
             ul (class' = "arenas-list") {
                 for (arenaId, result) in arenas do

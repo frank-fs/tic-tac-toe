@@ -110,13 +110,18 @@ type GameTools(supervisor: GameSupervisor) =
     [<McpServerTool>]
     [<Description("Create a new tic-tac-toe game. Returns gameId, board (9 squares keyed by name), whoseTurn, and status.")>]
     member _.``new_game``() : string =
-        let gameId, _ = supervisor.CreateGame()
-        match supervisor.GetGame(gameId) with
-        | None -> errorJson GameNotFound
-        | Some game ->
-            let obj = stateJson (game.GetState())
-            obj["gameId"] <- JsonValue.Create(gameId)
+        if supervisor.ListActiveGames() |> List.length >= 1 then
+            let obj = JsonObject()
+            obj["error"] <- JsonValue.Create("MaxGamesReached")
             obj.ToJsonString()
+        else
+            let gameId, _ = supervisor.CreateGame()
+            match supervisor.GetGame(gameId) with
+            | None -> errorJson GameNotFound
+            | Some game ->
+                let obj = stateJson (game.GetState())
+                obj["gameId"] <- JsonValue.Create(gameId)
+                obj.ToJsonString()
 
     [<McpServerTool>]
     [<Description("Get board state for a game. Returns board (9 squares keyed by name, value \"X\"/\"O\"/\"\"), whoseTurn, and status.")>]

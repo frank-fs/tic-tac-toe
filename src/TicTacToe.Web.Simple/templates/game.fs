@@ -105,10 +105,10 @@ let private renderLegend (assignment: PlayerAssignment option) (result: MoveResu
 let private renderControls (arenaId: string) =
     div (class' = "controls") {
         form (method = "post", action = $"/arenas/{arenaId}/restart") {
-            button (class' = "reset-game-btn", type' = "submit") { "Restart Arena" }
+            button (class' = "reset-game-btn", type' = "submit") { "Restart Game" }
         }
         form (method = "post", action = $"/arenas/{arenaId}/delete") {
-            button (class' = "delete-game-btn", type' = "submit") { "Delete Arena" }
+            button (class' = "delete-game-btn", type' = "submit") { "Delete Game" }
         }
     }
 
@@ -149,7 +149,7 @@ let renderArenaPage (arenaId: string) (result: MoveResult) (userId: string) (ass
 
         div (class' = "arena-header") {
             h1 () { "Tic Tac Toe" }
-            p () { $"Arena: {arenaId.[..7]}" }
+            p () { $"Game: {arenaId.[..7]}" }
         }
 
         match errorMsg with
@@ -167,7 +167,7 @@ let renderArenaPage (arenaId: string) (result: MoveResult) (userId: string) (ass
         renderLegend assignment result
         renderControls arenaId
 
-        a (class' = "back-link", href = "/") { "Back to arena list" }
+        a (class' = "back-link", href = "/") { "Back to game list" }
     }
 
 /// CSS styles for the home page (arena list)
