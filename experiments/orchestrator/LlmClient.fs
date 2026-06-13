@@ -5,6 +5,7 @@ open System.Net.Http
 open System.Net.Http.Json
 open System.Text.Json
 open System.Text.Json.Nodes
+open System.Threading
 open System.Threading.Tasks
 open TicTacToe.Orchestrator.Types
 
@@ -150,7 +151,7 @@ let private buildOpenAiRequest
 
 // ── HTTP dispatch ──────────────────────────────────────────────────────────────
 
-let private postMessages (backend: Backend) (req: JsonObject) : Task<JsonObject> =
+let private postMessages (backend: Backend) (req: JsonObject) (ct: CancellationToken) : Task<JsonObject> =
     task {
         let baseUrl = resolveBaseUrl backend
         let apiKey = resolveApiKey backend
@@ -172,7 +173,7 @@ let private postMessages (backend: Backend) (req: JsonObject) : Task<JsonObject>
             request.Headers.Add("Authorization", $"Bearer {apiKey}")
 
         request.Content <- JsonContent.Create(req)
-        let! response = httpClient.SendAsync(request)
+        let! response = httpClient.SendAsync(request, ct)
         let! json = response.Content.ReadAsStringAsync()
         if not response.IsSuccessStatusCode then
             failwithf "LLM API error %d: %s" (int response.StatusCode) json
@@ -249,13 +250,14 @@ let runTurn
     (backend: Backend)
     (model: string) (temperature: float) (systemPrompt: string option)
     (tools: ToolDef list) (forceToolUse: bool) (messages: JsonArray)
+    (ct: CancellationToken)
     : Task<TurnResult> =
     task {
         let req =
             match backend with
             | Anthropic -> buildAnthropicRequest model temperature systemPrompt tools forceToolUse messages
             | OpenAiCompat -> buildOpenAiRequest model temperature systemPrompt tools forceToolUse messages
-        let! resp = postMessages backend req
+        let! resp = postMessages backend req ct
         return
             match backend with
             | Anthropic -> parseAnthropicResponse resp

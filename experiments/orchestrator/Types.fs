@@ -42,6 +42,7 @@ type AgentConfig = {
     ForceToolUse: bool             // true = model must call a tool every turn (keeps agent looping)
     MaxTurns: int
     Temperature: float
+    Cancellation: System.Threading.CancellationToken   // per-cell; cancelled at wall-clock cap to abort in-flight turns
 }
 
 // ── Instrumentation: Layer 2 (tool calls) ────────────────────────────────────

@@ -5,6 +5,7 @@ open System.Diagnostics
 open System.IO
 open System.Text.Json.Nodes
 open System.Text.RegularExpressions
+open System.Threading
 open System.Threading.Tasks
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.LlmClient
@@ -46,7 +47,7 @@ let private executeTurn
         let tools = mcpClients.GetAllTools()
         let! result =
             runTurn backend config.Model config.Temperature
-                (Some config.Persona.SystemPrompt) tools config.ForceToolUse messages
+                (Some config.Persona.SystemPrompt) tools config.ForceToolUse messages config.Cancellation
 
         match result with
         | Done(text, inp, out) ->
@@ -84,7 +85,7 @@ let private executeTurn
                     |> Map.ofSeq
 
                 sw.Restart()
-                let! rawOutput = mcpClients.CallToolAsync(call.Name, args)
+                let! rawOutput = mcpClients.CallToolAsync(call.Name, args, config.Cancellation)
                 sw.Stop()
                 let output = inlineSnapshots rawOutput
 
@@ -124,73 +125,87 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
         let mutable turns: LlmTurn list = []
         let mutable aborted = false
 
+        let disposeIfOwned (clientsOpt: McpClientSet option) =
+            match clientsOpt with
+            | Some c when sharedClients.IsNone -> (c :> IDisposable).Dispose()
+            | _ -> ()
+
+        // Idle until the orchestrator collects the transcript. Replies Done=true so the
+        // cell-wait poll can short-circuit. Holds the real accumulated turns.
+        let rec waitStop (clientsOpt: McpClientSet option) =
+            async {
+                let! msg = inbox.Receive()
+                match msg with
+                | StopAgent reply ->
+                    disposeIfOwned clientsOpt
+                    reply.Reply(buildTranscript config.Id config.Persona turns aborted)
+                | GetSnapshot reply ->
+                    reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = aborted; Done = true })
+                    return! waitStop clientsOpt
+                | StartAgent ->
+                    return! waitStop clientsOpt
+            }
+
+        // One turn, guarded: cell-cap cancellation or an LLM/tool fault aborts the agent
+        // with its real turns intact — never a fabricated empty transcript. Returns keepGoing.
+        let runOneTurn (clients: McpClientSet) (turnIndex: int) : Async<bool> =
+            async {
+                try
+                    let! (newTurns, keepGoing) =
+                        executeTurn config backend clients messages turnIndex turns |> Async.AwaitTask
+                    turns <- newTurns
+                    return keepGoing
+                with
+                | :? OperationCanceledException ->
+                    aborted <- true
+                    return false
+                | ex ->
+                    eprintfn $"[agent {config.Id}] turn {turnIndex} faulted: {ex.Message}"
+                    aborted <- true
+                    return false
+            }
+
         let rec runLoop (turnIndex: int) (clients: McpClientSet) =
             async {
                 let! maybeStop = inbox.TryReceive(timeout = 0)
                 match maybeStop with
                 | Some (StopAgent reply) ->
-                    if sharedClients.IsNone then (clients :> IDisposable).Dispose()
+                    disposeIfOwned (Some clients)
                     reply.Reply(buildTranscript config.Id config.Persona turns aborted)
-
                 | Some (GetSnapshot reply) ->
                     reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = aborted; Done = false })
                     return! runLoop turnIndex clients
-
                 | _ when turnIndex >= config.MaxTurns ->
                     aborted <- true
-                    let rec waitStop () =
-                        async {
-                            let! msg = inbox.Receive()
-                            match msg with
-                            | StopAgent reply ->
-                                if sharedClients.IsNone then (clients :> IDisposable).Dispose()
-                                reply.Reply(buildTranscript config.Id config.Persona turns true)
-                            | GetSnapshot reply ->
-                                reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = true; Done = true })
-                                return! waitStop()
-                            | StartAgent ->
-                                return! waitStop()
-                        }
-                    return! waitStop()
-
+                    return! waitStop (Some clients)
                 | _ ->
-                    let! (newTurns, keepGoing) =
-                        executeTurn config backend clients messages turnIndex turns
-                        |> Async.AwaitTask
-                    turns <- newTurns
-                    if keepGoing then
-                        return! runLoop (turnIndex + 1) clients
-                    else
-                        let rec waitStop () =
-                            async {
-                                let! msg = inbox.Receive()
-                                match msg with
-                                | StopAgent reply ->
-                                    if sharedClients.IsNone then (clients :> IDisposable).Dispose()
-                                    reply.Reply(buildTranscript config.Id config.Persona turns aborted)
-                                | GetSnapshot reply ->
-                                    reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = false; Done = true })
-                                    return! waitStop()
-                                | StartAgent ->
-                                    return! waitStop()
-                            }
-                        return! waitStop()
+                    let! keepGoing = runOneTurn clients turnIndex
+                    if keepGoing then return! runLoop (turnIndex + 1) clients
+                    else return! waitStop (Some clients)
             }
 
         async {
             let! msg = inbox.Receive()
             match msg with
             | StartAgent ->
-                let! clients =
+                let! clientsOpt =
                     match sharedClients with
-                    | Some c -> async { return c }
+                    | Some c -> async { return Some c }
                     | None ->
                         async {
-                            let c = new McpClientSet(config.McpServers)
-                            do! c.InitializeAsync() |> Async.AwaitTask
-                            return c
+                            try
+                                let c = new McpClientSet(config.McpServers)
+                                do! c.InitializeAsync(config.Cancellation) |> Async.AwaitTask
+                                return Some c
+                            with ex ->
+                                eprintfn $"[agent {config.Id}] MCP init failed: {ex.Message}"
+                                return None
                         }
-                return! runLoop 0 clients
+                match clientsOpt with
+                | Some clients -> return! runLoop 0 clients
+                | None ->
+                    aborted <- true
+                    return! waitStop None
             | StopAgent reply ->
                 reply.Reply(buildTranscript config.Id config.Persona [] false)
             | GetSnapshot reply ->

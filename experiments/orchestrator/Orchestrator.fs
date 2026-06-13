@@ -4,6 +4,7 @@ open System
 open System.Diagnostics
 open System.IO
 open System.Net.Http
+open System.Threading
 open System.Text.Json.Nodes
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.Metrics
@@ -18,7 +19,7 @@ open TicTacToe.Orchestrator.Agent
 [<Literal>]
 let private cellWaitSeconds = 300
 
-let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) : AgentConfig =
+let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) (cancellation: CancellationToken) : AgentConfig =
     { Id = $"agent-{slot}"
       Persona = persona
       Model = cell.Model
@@ -28,7 +29,8 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       InitialMessage = initialMessage
       ForceToolUse = true
       MaxTurns = cell.MaxTurnsPerAgent
-      Temperature = cell.Temperature }
+      Temperature = cell.Temperature
+      Cancellation = cancellation }
 
 // Snapshots annotate each element as [ref=eN]. browser_click needs that bare id in `target`.
 let private clickHint =
@@ -55,9 +57,10 @@ let private waitForGameOverOrAgentsDone
     (logPath: string) (agents: MailboxProcessor<AgentMsg> list) (maxWaitSeconds: int) : Async<bool> =
     async {
         let tail = startTail logPath
-        let rec poll attempt =
+        let deadline = DateTimeOffset.UtcNow.AddSeconds(float maxWaitSeconds)
+        let rec poll () =
             async {
-                if attempt >= maxWaitSeconds then return false
+                if DateTimeOffset.UtcNow >= deadline then return false
                 else
                     let gameOver = tail.GetEvents() |> List.exists (function GameOver _ -> true | _ -> false)
                     if gameOver then return true
@@ -70,29 +73,30 @@ let private waitForGameOverOrAgentsDone
                         then return false
                         else
                             do! Async.Sleep(1000)
-                            return! poll (attempt + 1)
+                            return! poll ()
             }
-        return! poll 0
+        return! poll ()
     }
 
 // Polls agents via GetSnapshot (no shared MCP access) until all have entered waitStop.
 // Agents self-terminate when isTerminalErpcState detects a game-over tool result.
 let private waitForAgentsDone (agents: MailboxProcessor<AgentMsg> list) (maxWaitSeconds: int) : Async<bool> =
     async {
-        let rec poll elapsed =
+        let deadline = DateTimeOffset.UtcNow.AddSeconds(float maxWaitSeconds)
+        let rec poll () =
             async {
-                if elapsed >= maxWaitSeconds then return true
+                if DateTimeOffset.UtcNow >= deadline then return true
                 else
                     let! snapshots =
                         agents
-                        |> List.map (fun a -> a.PostAndAsyncReply(fun r -> GetSnapshot r))
+                        |> List.map (fun a -> a.PostAndTryAsyncReply((fun r -> GetSnapshot r), timeout = 2000))
                         |> Async.Parallel
-                    if snapshots |> Array.forall (fun s -> s.Done) then return true
+                    if snapshots |> Array.forall (fun s -> s |> Option.map (fun x -> x.Done) |> Option.defaultValue false) then return true
                     else
                         do! Async.Sleep(1000)
-                        return! poll (elapsed + 1)
+                        return! poll ()
             }
-        return! poll 0
+        return! poll ()
     }
 
 // Scans agent transcripts for the last tool result containing a terminal game status.
@@ -131,6 +135,10 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let cellStart = DateTimeOffset.UtcNow
         printfn $"[cell] starting: {cell.Id}"
 
+        // Master fail-fast signal: cancelled at the wall-clock cap to abort in-flight LLM/MCP
+        // calls so agents return their real accumulated turns instead of a fabricated placeholder.
+        use cellCts = new CancellationTokenSource()
+
         let logPath = Path.Combine(repoRoot, "experiments", "results", cell.Id, "server-requests.jsonl")
         Directory.CreateDirectory(Path.GetDirectoryName(logPath)) |> ignore
 
@@ -153,7 +161,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             if cell.Variant = ERPC then
                 async {
                     let clients = new McpClientSet(cell.McpServers)
-                    do! clients.InitializeAsync() |> Async.AwaitTask
+                    do! clients.InitializeAsync(cellCts.Token) |> Async.AwaitTask
                     return Some clients
                 }
             else async { return None }
@@ -163,7 +171,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             | None -> async { return None }
             | Some clients ->
                 async {
-                    let! json = clients.CallToolAsync("new_game", Map.empty) |> Async.AwaitTask
+                    let! json = clients.CallToolAsync("new_game", Map.empty, cellCts.Token) |> Async.AwaitTask
                     let gameId =
                         try (JsonNode.Parse(json) :?> JsonObject).["gameId"].GetValue<string>()
                         with _ -> failwith $"ERPC pre-create game failed: {json}"
@@ -175,7 +183,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
                 let initialMsg = slotMessage cell.Variant baseUrl
-                let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt
+                let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg cellCts.Token) sharedClientsOpt
                 slot, persona, agent)
         let agents = agentsWithMeta |> List.map (fun (_, _, a) -> a)
 
@@ -190,8 +198,12 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         if gameOver then do! Async.Sleep(5000)
 
-        // Net: if an agent is wedged mid-turn it cannot answer StopAgent; fall back to an
-        // aborted placeholder so the matrix never hangs collecting transcripts.
+        // Cap reached (or game over): cancel in-flight LLM/MCP calls so each agent unwinds to
+        // waitStop and answers StopAgent promptly with its real accumulated turns. The 60s
+        // StopAgent budget is now slack — agents respond in well under a second once cancelled.
+        // The aborted placeholder below remains only as a last-resort safety.
+        cellCts.Cancel()
+
         let transcriptList = System.Collections.Generic.List<AgentTranscript>()
         for (slot, persona, agent) in agentsWithMeta do
             let! tOpt = agent.PostAndTryAsyncReply((fun r -> StopAgent r), timeout = 60000)
