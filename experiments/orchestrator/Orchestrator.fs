@@ -42,19 +42,30 @@ let private slotMessage (variant: Variant) (baseUrl: string) : string =
         $"The game server is at {baseUrl}. The page updates without reloading — " +
         $"take a fresh snapshot to see new moves. {clickHint}"
 
-let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
+// HTTP cells: stop waiting on the FIRST of — a GameOver in the server log (a real
+// win/draw), or all agents having given up (hit MaxTurns) — capped at maxWaitSeconds.
+// Without the agents-done check a dead cell idles the full cap. GetSnapshot is polled
+// with a short timeout so a wedged agent can't block the poll itself.
+let private waitForGameOverOrAgentsDone
+    (logPath: string) (agents: MailboxProcessor<AgentMsg> list) (maxWaitSeconds: int) : Async<bool> =
     async {
         let tail = startTail logPath
         let rec poll attempt =
             async {
                 if attempt >= maxWaitSeconds then return false
                 else
-                    let events = tail.GetEvents()
-                    if events |> List.exists (function GameOver _ -> true | _ -> false) then
-                        return true
+                    let gameOver = tail.GetEvents() |> List.exists (function GameOver _ -> true | _ -> false)
+                    if gameOver then return true
                     else
-                        do! Async.Sleep(1000)
-                        return! poll (attempt + 1)
+                        let! snapshots =
+                            agents
+                            |> List.map (fun a -> a.PostAndTryAsyncReply((fun r -> GetSnapshot r), timeout = 2000))
+                            |> Async.Parallel
+                        if snapshots |> Array.forall (fun s -> s |> Option.map (fun x -> x.Done) |> Option.defaultValue false)
+                        then return false
+                        else
+                            do! Async.Sleep(1000)
+                            return! poll (attempt + 1)
             }
         return! poll 0
     }
@@ -155,11 +166,13 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
                 }
 
         let (p1, p2, p3) = cell.Personas
-        let agents =
+        let agentsWithMeta =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
                 let initialMsg = slotMessage cell.Variant baseUrl
-                createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt)
+                let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt
+                slot, persona, agent)
+        let agents = agentsWithMeta |> List.map (fun (_, _, a) -> a)
 
         let sw = Stopwatch.StartNew()
 
@@ -168,13 +181,19 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let! gameOver =
             match cell.Variant with
             | ERPC -> waitForAgentsDone agents 600
-            | _ -> waitForGameOver logPath 600
+            | _ -> waitForGameOverOrAgentsDone logPath agents 600
 
         if gameOver then do! Async.Sleep(5000)
 
+        // Net: if an agent is wedged mid-turn it cannot answer StopAgent; fall back to an
+        // aborted placeholder so the matrix never hangs collecting transcripts.
         let transcriptList = System.Collections.Generic.List<AgentTranscript>()
-        for agent in agents do
-            let! t = agent.PostAndAsyncReply(fun r -> StopAgent r)
+        for (slot, persona, agent) in agentsWithMeta do
+            let! tOpt = agent.PostAndTryAsyncReply((fun r -> StopAgent r), timeout = 60000)
+            let t =
+                tOpt
+                |> Option.defaultValue
+                    { AgentId = $"agent-{slot}"; PersonaName = persona.Name; LlmTurns = []; Aborted = true }
             transcriptList.Add(t)
 
         sw.Stop()

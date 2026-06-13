@@ -25,6 +25,9 @@ let private extractText (result: CallToolResult) : string =
         | _ -> None)
     |> Option.defaultValue ""
 
+[<Literal>]
+let private toolCallTimeoutSeconds = 120.0
+
 type McpConnection(client: McpClient, tools: ToolDef list) =
     member _.Tools = tools
     member _.CallToolAsync(name: string, args: Map<string, JsonNode>) : Task<string> =
@@ -32,8 +35,16 @@ type McpConnection(client: McpClient, tools: ToolDef list) =
             let argsDict = Dictionary<string, obj>()
             for kvp in args do
                 argsDict.[kvp.Key] <- kvp.Value :> obj
-            let! result = client.CallToolAsync(name, argsDict :> IReadOnlyDictionary<string, obj>)
-            return extractText result
+            use cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds toolCallTimeoutSeconds)
+            try
+                let! result =
+                    client.CallToolAsync(
+                        name,
+                        argsDict :> IReadOnlyDictionary<string, obj>,
+                        cancellationToken = cts.Token)
+                return extractText result
+            with :? OperationCanceledException ->
+                return $"""{{ "error": "tool_timeout: {name} exceeded {toolCallTimeoutSeconds}s" }}"""
         }
     interface IDisposable with
         member _.Dispose() = client.DisposeAsync().AsTask().GetAwaiter().GetResult()
