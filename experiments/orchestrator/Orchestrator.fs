@@ -25,16 +25,22 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
+// Snapshots annotate each element as [ref=eN]. browser_click needs that bare id in `target`.
+let private clickHint =
+    "To click, call browser_click with `target` set to the element's ref id only " +
+    "(for example, target: \"e8\") and `element` set to a short description. " +
+    "Never put the element's text or the full snapshot line in `target`."
+
 let private slotMessage (variant: Variant) (baseUrl: string) : string =
     match variant with
     | ERPC ->
         "The game server is ready. Call get_state to read the current board; " +
         "it only reflects new moves when you call it again."
     | Simple ->
-        $"The game server is at {baseUrl}. The page is static — reload it to see new moves."
+        $"The game server is at {baseUrl}. The page is static — reload it to see new moves. {clickHint}"
     | Proto ->
         $"The game server is at {baseUrl}. The page updates without reloading — " +
-        "take a fresh snapshot to see new moves."
+        $"take a fresh snapshot to see new moves. {clickHint}"
 
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {

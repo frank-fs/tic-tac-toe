@@ -31,9 +31,7 @@ let private inlineSnapshots (output: string) : string =
         let path = m.Groups.[1].Value
         try
             let content = File.ReadAllText(path)
-            // Rename [ref=eN] to [target=eN] so the model uses the correct browser_click parameter name
-            let renamed = content.Replace("[ref=", "[target=")
-            $"Accessibility tree:\n```\n{renamed}\n```"
+            $"Accessibility tree:\n```\n{content}\n```"
         with _ -> m.Value)
 
 let private executeTurn
