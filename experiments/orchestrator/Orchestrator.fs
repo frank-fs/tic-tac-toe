@@ -19,7 +19,7 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       BaseUrl = baseUrl
       McpServers = cell.McpServers
       InitialMessage = initialMessage
-      ForceToolUse = (cell.Variant = ERPC)
+      ForceToolUse = true
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
@@ -54,28 +54,22 @@ let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool
         return! poll 0
     }
 
-let private waitForErpcGameOver (clients: McpClientSet) (gameId: string) (maxWaitSeconds: int) : Async<bool> =
+// Polls agents via GetSnapshot (no shared MCP access) until all have entered waitStop.
+// Agents self-terminate when isTerminalErpcState detects a game-over tool result.
+let private waitForAgentsDone (agents: MailboxProcessor<AgentMsg> list) (maxWaitSeconds: int) : Async<bool> =
     async {
-        let args = Map.ofList [("gameId", JsonValue.Create(gameId) :> JsonNode)]
-        let rec poll attempt =
+        let rec poll elapsed =
             async {
-                if attempt >= maxWaitSeconds then return false
+                if elapsed >= maxWaitSeconds then return true
                 else
-                    let! json = clients.CallToolAsync("get_state", args) |> Async.AwaitTask
-                    let isDone =
-                        try
-                            let obj = JsonNode.Parse(json) :?> JsonObject
-                            let mutable statusNode: JsonNode = null
-                            let mutable errorNode: JsonNode = null
-                            (obj.TryGetPropertyValue("status", &statusNode) &&
-                             (statusNode.GetValue<string>() = "won" || statusNode.GetValue<string>() = "draw"))
-                            || (obj.TryGetPropertyValue("error", &errorNode) &&
-                                errorNode.GetValue<string>() = "GameNotFound")
-                        with _ -> false
-                    if isDone then return true
+                    let! snapshots =
+                        agents
+                        |> List.map (fun a -> a.PostAndAsyncReply(fun r -> GetSnapshot r))
+                        |> Async.Parallel
+                    if snapshots |> Array.forall (fun s -> s.Done) then return true
                     else
                         do! Async.Sleep(1000)
-                        return! poll (attempt + 1)
+                        return! poll (elapsed + 1)
             }
         return! poll 0
     }
@@ -167,8 +161,8 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         for agent in agents do agent.Post(StartAgent)
 
         let! gameOver =
-            match sharedClientsOpt, erpcGameId with
-            | Some clients, Some gameId -> waitForErpcGameOver clients gameId 600
+            match cell.Variant with
+            | ERPC -> waitForAgentsDone agents 600
             | _ -> waitForGameOver logPath 180
 
         if gameOver then do! Async.Sleep(5000)

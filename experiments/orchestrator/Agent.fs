@@ -2,7 +2,9 @@ module TicTacToe.Orchestrator.Agent
 
 open System
 open System.Diagnostics
+open System.IO
 open System.Text.Json.Nodes
+open System.Text.RegularExpressions
 open System.Threading.Tasks
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.LlmClient
@@ -10,6 +12,27 @@ open TicTacToe.Orchestrator.McpClient
 
 let private buildTranscript (agentId: string) (persona: Persona) (turns: LlmTurn list) (aborted: bool) : AgentTranscript =
     { AgentId = agentId; PersonaName = persona.Name; LlmTurns = turns; Aborted = aborted }
+
+let private isTerminalErpcState (output: string) : bool =
+    try
+        let obj = JsonNode.Parse(output) :?> JsonObject
+        let mutable s: JsonNode = null
+        let mutable e: JsonNode = null
+        (obj.TryGetPropertyValue("status", &s) &&
+         let v = s.GetValue<string>() in v = "won" || v = "draw")
+        || (obj.TryGetPropertyValue("error", &e) &&
+            e.GetValue<string>() = "GameNotFound")
+    with _ -> false
+
+// Playwright MCP returns snapshot file references like [Snapshot](path.yml).
+// Inline the file content so the LLM sees the accessibility tree directly.
+let private inlineSnapshots (output: string) : string =
+    Regex.Replace(output, @"\[Snapshot\]\(([^)]+\.yml)\)", fun m ->
+        let path = m.Groups.[1].Value
+        try
+            let content = File.ReadAllText(path)
+            $"Accessibility tree:\n```\n{content}\n```"
+        with _ -> m.Value)
 
 let private executeTurn
     (config: AgentConfig)
@@ -37,7 +60,11 @@ let private executeTurn
                 Timestamp = DateTimeOffset.UtcNow
             }
             if config.ForceToolUse then
-                appendUserText messages "The game is still in progress. Call get_state or make_move to continue." |> ignore
+                let nudge =
+                    if String.IsNullOrEmpty(config.BaseUrl)
+                    then "The game is still in progress. Call get_state or make_move to continue."
+                    else "Continue interacting with the web page. Use browser tools to take the next action."
+                appendUserText messages nudge |> ignore
                 return (currentTurns @ [turn], true)
             else
                 return (currentTurns @ [turn], false)
@@ -56,8 +83,9 @@ let private executeTurn
                     |> Map.ofSeq
 
                 sw.Restart()
-                let! output = mcpClients.CallToolAsync(call.Name, args)
+                let! rawOutput = mcpClients.CallToolAsync(call.Name, args)
                 sw.Stop()
+                let output = inlineSnapshots rawOutput
 
                 toolCallRecords.Add({
                     ToolName = call.Name
@@ -80,7 +108,8 @@ let private executeTurn
                 TextOutput = None
                 Timestamp = DateTimeOffset.UtcNow
             }
-            return (currentTurns @ [turn], true)
+            let gameEnded = toolCallRecords |> Seq.exists (fun r -> isTerminalErpcState (r.Output |> Option.defaultValue ""))
+            return (currentTurns @ [turn], not gameEnded)
     }
 
 /// sharedClients: if Some, agent uses these and does NOT dispose them (orchestrator owns lifecycle).
@@ -115,7 +144,7 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
                     reply.Reply(buildTranscript config.Id config.Persona turns aborted)
 
                 | Some (GetSnapshot reply) ->
-                    reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = aborted })
+                    reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = aborted; Done = false })
                     return! runLoop turnIndex clients
 
                 | _ when turnIndex >= config.MaxTurns ->
@@ -128,7 +157,7 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
                                 if sharedClients.IsNone then (clients :> IDisposable).Dispose()
                                 reply.Reply(buildTranscript config.Id config.Persona turns true)
                             | GetSnapshot reply ->
-                                reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = true })
+                                reply.Reply({ AgentId = config.Id; TurnIndex = turnIndex; Aborted = true; Done = true })
                                 return! waitStop()
                             | StartAgent ->
                                 return! waitStop()
@@ -151,7 +180,7 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
                                     if sharedClients.IsNone then (clients :> IDisposable).Dispose()
                                     reply.Reply(buildTranscript config.Id config.Persona turns aborted)
                                 | GetSnapshot reply ->
-                                    reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = false })
+                                    reply.Reply({ AgentId = config.Id; TurnIndex = List.length turns; Aborted = false; Done = true })
                                     return! waitStop()
                                 | StartAgent ->
                                     return! waitStop()
@@ -176,5 +205,5 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
             | StopAgent reply ->
                 reply.Reply(buildTranscript config.Id config.Persona [] false)
             | GetSnapshot reply ->
-                reply.Reply({ AgentId = config.Id; TurnIndex = 0; Aborted = false })
+                reply.Reply({ AgentId = config.Id; TurnIndex = 0; Aborted = false; Done = false })
         })

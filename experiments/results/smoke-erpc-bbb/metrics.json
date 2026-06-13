@@ -1,8 +1,8 @@
 {
   "cell_id": "smoke-erpc-bbb",
-  "outcome": "abandoned",
-  "completion_signal": "abandoned",
-  "duration_seconds": 180.4747676,
+  "outcome": "won",
+  "completion_signal": "server_log",
+  "duration_seconds": 205.2085068,
   "role_assignments": [],
   "per_agent": {}
 }

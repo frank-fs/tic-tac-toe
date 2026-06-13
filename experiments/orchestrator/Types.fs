@@ -77,6 +77,7 @@ type AgentSnapshot = {
     AgentId: string
     TurnIndex: int
     Aborted: bool
+    Done: bool
 }
 
 // ── Instrumentation: Layer 3 (server log events) ─────────────────────────────

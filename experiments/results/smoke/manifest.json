@@ -12,13 +12,13 @@
     },
     {
       "cell_id": "smoke-erpc-bbb",
-      "completion_signal": "abandoned",
-      "outcome": "abandoned"
+      "completion_signal": "server_log",
+      "outcome": "won"
     },
     {
       "cell_id": "smoke-erpc-bbc",
-      "completion_signal": "abandoned",
-      "outcome": "abandoned"
+      "completion_signal": "server_log",
+      "outcome": "won"
     },
     {
       "cell_id": "smoke-proto-bbc",
