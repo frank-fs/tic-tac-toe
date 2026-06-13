@@ -13,7 +13,7 @@ open TicTacToe.Orchestrator.McpClient
 open TicTacToe.Orchestrator.ServerProcess
 open TicTacToe.Orchestrator.Agent
 
-let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string option) : AgentConfig =
+let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) : AgentConfig =
     { Id = $"agent-{slot}"
       Persona = persona
       Model = cell.Model
@@ -148,8 +148,8 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             |> List.map (fun (slot, persona) ->
                 let initialMsg =
                     match cell.Variant with
-                    | ERPC -> Some (erpcSlotMessage ())
-                    | _    -> Some (httpSlotMessage baseUrl)
+                    | ERPC -> erpcSlotMessage ()
+                    | _    -> httpSlotMessage baseUrl
                 createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt)
 
         let sw = Stopwatch.StartNew()

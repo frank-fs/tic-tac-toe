@@ -37,7 +37,7 @@ type AgentConfig = {
     Model: string
     BaseUrl: string
     McpServers: McpServerConfig list
-    InitialMessage: string option  // if Some, overrides the URL/ERPC default prompt
+    InitialMessage: string
     ForceToolUse: bool             // true = model must call a tool every turn (keeps agent looping)
     MaxTurns: int
     Temperature: float

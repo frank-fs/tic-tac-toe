@@ -118,15 +118,7 @@ let createAgent (config: AgentConfig) (sharedClients: McpClientSet option) : Mai
     MailboxProcessor.Start(fun inbox ->
         let backend = Backend.autoDetect()
         let messages = JsonArray()
-        let initialMsg =
-            match config.InitialMessage with
-            | Some msg -> msg
-            | None ->
-                if String.IsNullOrEmpty(config.BaseUrl) then
-                    "Use the available MCP tools to play tic-tac-toe."
-                else
-                    $"Navigate to {config.BaseUrl} and play the tic-tac-toe game."
-        appendUserText messages initialMsg |> ignore
+        appendUserText messages config.InitialMessage |> ignore
 
         let mutable turns: LlmTurn list = []
         let mutable aborted = false
