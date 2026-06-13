@@ -23,19 +23,8 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
-let private erpcSlotMessage (slot: int) (gameId: string) : string =
-    match slot with
-    | 1 ->
-        $"You are player X in tic-tac-toe game {gameId}. It is X's turn first. " +
-        "Call make_move to play your move. After playing, call get_state to check if it is your turn again (whoseTurn = X). " +
-        "Keep playing until the game status is won or draw."
-    | 2 ->
-        $"You are player O in tic-tac-toe game {gameId}. " +
-        "Call get_state to check the board. When whoseTurn = O it is your turn — call make_move. " +
-        "Keep polling get_state and playing when it is your turn until the game ends."
-    | _ ->
-        $"You are observing tic-tac-toe game {gameId}. " +
-        "Call get_state periodically to watch the game. Stop when status is won or draw."
+let private erpcSlotMessage (_slot: int) (gameId: string) : string =
+    $"There is a tic-tac-toe game in progress. Game ID: {gameId}. Use the available MCP tools to participate."
 
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {
@@ -163,7 +152,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let! gameOver =
             match cell.Variant with
             | ERPC -> waitForAgentsDone agents 600
-            | _ -> waitForGameOver logPath 180
+            | _ -> waitForGameOver logPath 600
 
         if gameOver then do! Async.Sleep(5000)
 

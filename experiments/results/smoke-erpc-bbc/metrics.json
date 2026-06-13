@@ -2,7 +2,7 @@
   "cell_id": "smoke-erpc-bbc",
   "outcome": "won",
   "completion_signal": "server_log",
-  "duration_seconds": 358.2980051,
+  "duration_seconds": 328.4519975,
   "role_assignments": [],
   "per_agent": {}
 }
