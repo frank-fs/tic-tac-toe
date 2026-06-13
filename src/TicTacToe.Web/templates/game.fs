@@ -78,8 +78,9 @@ let private renderClickableSquare gameId (player: Player) (position: SquarePosit
     let posStr = position.ToString()
     let playerStr = player.ToString()
     button(class' = "square square-clickable", type' = "button")
+        .attr("aria-label", posStr)
         .attr("data-on:click", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
-        span(class' = "preview") { playerStr }
+        span(class' = "preview").attr("aria-hidden", "true") { playerStr }
     }
     :> HtmlElement
 
