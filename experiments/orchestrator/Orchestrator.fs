@@ -13,6 +13,11 @@ open TicTacToe.Orchestrator.McpClient
 open TicTacToe.Orchestrator.ServerProcess
 open TicTacToe.Orchestrator.Agent
 
+// Fail-fast: hard wall-clock cap per cell. Independent timeouts (MCP call 120s,
+// StopAgent 60s) all sit under this.
+[<Literal>]
+let private cellWaitSeconds = 300
+
 let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) : AgentConfig =
     { Id = $"agent-{slot}"
       Persona = persona
@@ -180,8 +185,8 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         let! gameOver =
             match cell.Variant with
-            | ERPC -> waitForAgentsDone agents 600
-            | _ -> waitForGameOverOrAgentsDone logPath agents 600
+            | ERPC -> waitForAgentsDone agents cellWaitSeconds
+            | _ -> waitForGameOverOrAgentsDone logPath agents cellWaitSeconds
 
         if gameOver then do! Async.Sleep(5000)
 
