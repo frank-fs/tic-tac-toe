@@ -5,13 +5,13 @@ open TicTacToe.Orchestrator.Types
 let beginner : Persona = {
     Name = "beginner"
     SystemPrompt =
-        "You are playing tic-tac-toe. Navigate to the URL you are given and play the game you find there."
+        "You are playing tic-tac-toe. Find the game you have been assigned to, join it as a player, and make moves until the game is over."
 }
 
 let expert : Persona = {
     Name = "expert"
     SystemPrompt =
-        "You are playing tic-tac-toe. Navigate to the URL you are given and play the game you find there."
+        "You are playing tic-tac-toe. Find the game you have been assigned to, join it as a player, and make moves until the game is over."
 }
 
 let chaos : Persona = {

@@ -20,12 +20,15 @@ let private allPositions =
        BottomLeft; BottomCenter; BottomRight |]
 
 let private renderBoard (gs: GameState) =
-    allPositions
-    |> Array.map (fun pos ->
-        match gs.TryGetValue(pos) with
-        | true, Taken X -> "X"
-        | true, Taken O -> "O"
-        | _ -> "")
+    let obj = JsonObject()
+    for pos in allPositions do
+        let label =
+            match gs.TryGetValue(pos) with
+            | true, Taken X -> "X"
+            | true, Taken O -> "O"
+            | _ -> ""
+        obj[pos.ToString()] <- JsonValue.Create(label)
+    obj
 
 let private getGs = function
     | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
@@ -41,18 +44,12 @@ let private whoseTurnStr = function
     | OTurn _ -> "O"
     | Won _ | Draw _ | Error _ -> "game_over"
 
-let private validMovesArr = function
-    | XTurn(_, moves) -> moves |> Array.map (fun (XPos p) -> p.ToString())
-    | OTurn(_, moves) -> moves |> Array.map (fun (OPos p) -> p.ToString())
-    | _ -> [||]
-
 let private stateJson (result: MoveResult) =
     let gs = getGs result
     let obj = JsonObject()
-    obj["board"] <- JsonNode.Parse(JsonSerializer.Serialize(renderBoard gs))
+    obj["board"] <- renderBoard gs
     obj["whoseTurn"] <- JsonValue.Create(whoseTurnStr result)
     obj["status"] <- JsonValue.Create(statusStr result)
-    obj["validMoves"] <- JsonNode.Parse(JsonSerializer.Serialize(validMovesArr result))
     obj
 
 let private errorJson (reason: RejectionReason) =
@@ -93,7 +90,7 @@ type GameTools(supervisor: GameSupervisor) =
             | _ -> None
 
     [<McpServerTool>]
-    [<Description("List all active in-progress games. Returns array of {gameId, whoseTurn, status}. Call this first — if a game exists, join it instead of creating a new one.")>]
+    [<Description("List all active in-progress games. Returns array of {gameId, whoseTurn, status}.")>]
     member _.``list_games``() : string =
         let gameIds = supervisor.ListActiveGames()
         let games =
@@ -111,7 +108,7 @@ type GameTools(supervisor: GameSupervisor) =
         JsonSerializer.Serialize(games)
 
     [<McpServerTool>]
-    [<Description("Create a new tic-tac-toe game. Returns gameId, board (9 cells), whoseTurn, status, and validMoves. X always moves first.")>]
+    [<Description("Create a new tic-tac-toe game. Returns gameId, board (9 squares keyed by name), whoseTurn, and status.")>]
     member _.``new_game``() : string =
         let gameId, _ = supervisor.CreateGame()
         match supervisor.GetGame(gameId) with
@@ -122,9 +119,9 @@ type GameTools(supervisor: GameSupervisor) =
             obj.ToJsonString()
 
     [<McpServerTool>]
-    [<Description("Get board state for a game. Returns board, whoseTurn, status, validMoves.")>]
+    [<Description("Get board state for a game. Returns board (9 squares keyed by name, value \"X\"/\"O\"/\"\"), whoseTurn, and status.")>]
     member _.``get_board``(
-        [<Description("Game ID returned by new_game")>] gameId: string) : string =
+        [<Description("Game ID")>] gameId: string) : string =
         match resolveGame gameId with
         | None -> errorJson GameNotFound
         | Some (Choice1Of2 game) -> (stateJson (game.GetState())).ToJsonString()
@@ -152,7 +149,7 @@ type GameTools(supervisor: GameSupervisor) =
                 json
 
     [<McpServerTool>]
-    [<Description("Get full game state including gameId, board, whoseTurn, status, and validMoves.")>]
+    [<Description("Get full game state including gameId, board (9 squares keyed by name, value \"X\"/\"O\"/\"\"), whoseTurn, and status.")>]
     member _.``get_state``(
         [<Description("Game ID")>] gameId: string) : string =
         match resolveGame gameId with

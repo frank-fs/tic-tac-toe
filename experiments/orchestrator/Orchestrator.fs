@@ -3,6 +3,7 @@ module TicTacToe.Orchestrator.Orchestrator
 open System
 open System.Diagnostics
 open System.IO
+open System.Net.Http
 open System.Text.Json.Nodes
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.Metrics
@@ -23,8 +24,11 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature }
 
-let private erpcSlotMessage (_slot: int) (gameId: string) : string =
-    $"There is a tic-tac-toe game in progress. Game ID: {gameId}. Use the available MCP tools to participate."
+let private erpcSlotMessage (gameId: string) : string =
+    $"Your game ID is {gameId}."
+
+let private httpSlotMessage (arenaUrl: string) : string =
+    $"Your arena is at {arenaUrl}."
 
 let private waitForGameOver (logPath: string) (maxWaitSeconds: int) : Async<bool> =
     async {
@@ -138,11 +142,30 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
                     return Some gameId
                 }
 
+        let! httpArenaUrl =
+            match serverHandleOpt with
+            | None -> async { return None }
+            | Some handle ->
+                async {
+                    use handler = new HttpClientHandler(AllowAutoRedirect = false)
+                    use client = new HttpClient(handler)
+                    let! resp = client.PostAsync($"{handle.BaseUrl}/arenas", null) |> Async.AwaitTask
+                    let loc = resp.Headers.Location.ToString()
+                    let arenaUrl =
+                        if loc.StartsWith("http") then loc
+                        else $"{handle.BaseUrl}{loc}"
+                    return Some arenaUrl
+                }
+
         let (p1, p2, p3) = cell.Personas
         let agents =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                let initialMsg = erpcGameId |> Option.map (erpcSlotMessage slot)
+                let initialMsg =
+                    match erpcGameId, httpArenaUrl with
+                    | Some gameId, _ -> Some (erpcSlotMessage gameId)
+                    | _, Some arenaUrl -> Some (httpSlotMessage arenaUrl)
+                    | None, None -> None
                 createAgent (makeAgentConfig cell slot persona baseUrl initialMsg) sharedClientsOpt)
 
         let sw = Stopwatch.StartNew()

@@ -150,8 +150,6 @@ let renderArenaPage (arenaId: string) (result: MoveResult) (userId: string) (ass
             p () { $"Arena: {arenaId.[..7]}" }
         }
 
-        div (class' = "status") { status }
-
         match errorMsg with
         | Some msg ->
             div (class' = "error-msg") { msg }
@@ -161,6 +159,8 @@ let renderArenaPage (arenaId: string) (result: MoveResult) (userId: string) (ass
             for position in allPositions do
                 renderSquare arenaId playerStr state active position
         }
+
+        div (class' = "status") { status }
 
         renderLegend assignment result
         renderControls arenaId

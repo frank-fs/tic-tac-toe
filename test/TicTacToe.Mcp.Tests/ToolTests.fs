@@ -22,10 +22,9 @@ type NewGameTests() =
         let tools = makeTools()
         let obj = parseObj (tools.``new_game``())
         Assert.That(obj.ContainsKey("gameId"), Is.True)
-        Assert.That(intCount obj["board"], Is.EqualTo(9))
+        Assert.That((obj["board"] :?> JsonObject).Count, Is.EqualTo(9))
         Assert.That(str obj["whoseTurn"], Is.EqualTo("X"))
         Assert.That(str obj["status"], Is.EqualTo("in_progress"))
-        Assert.That(intCount obj["validMoves"], Is.EqualTo(9))
 
     [<Test>]
     member _.``each call produces a distinct gameId``() =
@@ -105,7 +104,6 @@ type GetStateTests() =
         let gameId = str (parseObj (tools.``new_game``())["gameId"])
         let obj = parseObj(tools.``get_state``(gameId))
         Assert.That(str obj["gameId"], Is.EqualTo(gameId))
-        Assert.That(obj.ContainsKey("validMoves"), Is.True)
 
     [<Test>]
     member _.``unknown game returns GameNotFound``() =
