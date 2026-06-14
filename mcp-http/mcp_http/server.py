@@ -99,22 +99,25 @@ async def _read_stream(stream: OpenStream) -> None:
         pass
 
 
-def _content_type(headers: dict | None) -> str:
-    if not headers:
-        return ""
+def _content_type(headers: dict) -> str:
     return next((str(v) for k, v in headers.items() if k.lower() == "content-type"), "").lower()
 
 
-def _body_kwargs(body: str | dict | None, headers: dict | None) -> dict:
-    """Serialize body. A string is sent verbatim; an object is form-encoded by
-    default (or JSON when the Content-Type asks for it) so the agent need not
-    hand-encode — parity with a structured RPC call."""
+def _prepare_body(body: str | dict | None, headers: dict) -> dict:
+    """Serialize body into httpx send kwargs, mutating headers if needed.
+
+    An object is form-encoded by default (or JSON when the Content-Type asks),
+    so the agent need not hand-encode — parity with a structured RPC call. A
+    string with no Content-Type defaults to application/x-www-form-urlencoded,
+    the same convenience `curl -d` provides, so a form body still parses."""
     if body is None:
         return {}
     if isinstance(body, dict):
         if "json" in _content_type(headers):
             return {"json": body}
         return {"data": body}
+    if not _content_type(headers):
+        headers["Content-Type"] = "application/x-www-form-urlencoded"
     return {"content": body}
 
 
@@ -146,9 +149,9 @@ async def http_request(
             f"--- events ---\n{_drain(open_stream)}"
         )
 
-    request = state.client.build_request(
-        method, url, headers=headers, **_body_kwargs(body, headers)
-    )
+    hdrs = dict(headers or {})
+    send_kwargs = _prepare_body(body, hdrs)
+    request = state.client.build_request(method, url, headers=hdrs, **send_kwargs)
     try:
         response = await state.client.send(request, stream=True)
     except httpx.HTTPError as exc:
