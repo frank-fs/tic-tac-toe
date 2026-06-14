@@ -81,7 +81,11 @@ let home (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
         let arenas = store.List()
-        let element = homePage ctx arenas |> layout.html ctx
+        let allowCreate =
+            match store.MaxGames with
+            | Some m -> arenas.Length < m
+            | None -> true
+        let element = homePage ctx allowCreate arenas |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
     }

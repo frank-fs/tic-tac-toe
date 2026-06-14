@@ -17,6 +17,25 @@ open TicTacToe.Web.Model
 open TicTacToe.Engine
 open TicTacToe.Web.Extensions
 
+let private initialGames () =
+    match Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
+    | null | "" -> 6
+    | s ->
+        match Int32.TryParse(s) with
+        | true, n when n > 0 -> n
+        | _ -> 6
+
+let private maxGames () =
+    match Environment.GetEnvironmentVariable("TICTACTOE_MAX_GAMES") with
+    | null | "" -> None
+    | s ->
+        match Int32.TryParse(s) with
+        | true, n when n > 0 -> Some n
+        | _ -> None
+
+let private gameLimits () : GameLimits =
+    { InitialGames = initialGames (); MaxGames = maxGames () }
+
 let configureLogging (builder: ILoggingBuilder) =
     builder.AddFilter("Microsoft.AspNetCore", LogLevel.Warning) |> ignore
     builder.AddFilter("TicTacToe.Web.Auth", LogLevel.Information) |> ignore
@@ -29,6 +48,7 @@ let configureServices (services: IServiceCollection) =
 
     services
         .AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ())
+        .AddSingleton<GameLimits>(fun _ -> gameLimits ())
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
         .AddSingleton<IClaimsTransformation, GameUserClaimsTransformation>()
         .AddResponseCompression(fun opts ->
@@ -113,13 +133,13 @@ let createInitialGames (app: IApplicationBuilder) =
         app.ApplicationServices.GetRequiredService<IHostApplicationLifetime>()
 
     let supervisor = app.ApplicationServices.GetRequiredService<GameSupervisor>()
+    let limits = app.ApplicationServices.GetRequiredService<GameLimits>()
 
     let assignmentManager =
         app.ApplicationServices.GetRequiredService<PlayerAssignmentManager>()
 
     lifetime.ApplicationStarted.Register(fun () ->
-        // Create 6 initial games
-        for _ in 1..6 do
+        for _ in 1..limits.InitialGames do
             let (gameId, game) = supervisor.CreateGame()
             Handlers.subscribeToGame gameId game assignmentManager supervisor)
     |> ignore

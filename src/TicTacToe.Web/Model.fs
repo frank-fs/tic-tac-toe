@@ -17,6 +17,10 @@ type MoveValidationResult =
     | Allowed
     | Rejected of RejectionReason
 
+/// Experiment limits: how many games to seed at startup and the hard cap
+/// (None = unlimited). Drives both seeding and whether creation is offered.
+type GameLimits = { InitialGames: int; MaxGames: int option }
+
 /// Tracks which authenticated user is assigned to which role (X or O) in a specific game
 type PlayerAssignment =
     { GameId: string

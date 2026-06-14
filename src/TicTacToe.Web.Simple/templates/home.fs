@@ -14,7 +14,7 @@ let private arenaStatusText = function
     | Draw _ -> "Draw"
     | Error(_, msg) -> $"Error: {msg}"
 
-let homePage (ctx: HttpContext) (arenas: (string * MoveResult) list) =
+let homePage (ctx: HttpContext) (allowCreate: bool) (arenas: (string * MoveResult) list) =
     ctx.Items["Title"] <- "Tic Tac Toe — Games"
 
     Fragment() {
@@ -22,11 +22,15 @@ let homePage (ctx: HttpContext) (arenas: (string * MoveResult) list) =
 
         h1 (class' = "title") { "Tic Tac Toe" }
 
-        div (class' = "new-arena-container") {
-            form (method = "post", action = "/arenas") {
-                button (class' = "new-arena-btn", type' = "submit") { "New Game" }
+        // Creation affordance is withheld once the game cap is reached.
+        if allowCreate then
+            div (class' = "new-arena-container") {
+                form (method = "post", action = "/arenas") {
+                    button (class' = "new-arena-btn", type' = "submit") { "New Game" }
+                }
             }
-        }
+        else
+            Fragment() { }
 
         if arenas.IsEmpty then
             p (class' = "no-arenas") { "No games yet. Create one to start playing!" }

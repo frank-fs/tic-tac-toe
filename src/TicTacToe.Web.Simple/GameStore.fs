@@ -93,3 +93,6 @@ type GameStore(?maxGames: int) =
 
     member _.List() =
         agent.PostAndReply(fun ch -> List ch)
+
+    /// The hard game cap (None = unlimited). Used to decide whether to offer creation.
+    member _.MaxGames = maxGames

@@ -124,7 +124,13 @@ let logout (ctx: HttpContext) =
 /// Home page handler
 let home (ctx: HttpContext) =
     task {
-        let element = templates.home.homePage ctx |> layout.html ctx
+        let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+        let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        let allowCreate =
+            match limits.MaxGames with
+            | Some m -> supervisor.GetActiveGameCount() < m
+            | None -> true
+        let element = templates.home.homePage ctx allowCreate |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
     }
@@ -175,27 +181,39 @@ let createGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
-        let (gameId, game) = supervisor.CreateGame()
+        let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        let atCapacity =
+            match limits.MaxGames with
+            | Some m -> supervisor.GetActiveGameCount() >= m
+            | None -> false
 
-        // Subscribe to game state changes
-        subscribeToGame gameId game assignmentManager supervisor
+        if atCapacity then
+            // Uniform interface: creation is not available at the game cap.
+            ctx.Response.StatusCode <- 409
+            ctx.Response.ContentType <- "application/json"
+            do! ctx.Response.WriteAsJsonAsync({| error = "MaxGamesReached" |})
+        else
+            let (gameId, game) = supervisor.CreateGame()
 
-        // Get initial state and broadcast to all clients
-        use initialSub =
-            game.Subscribe(
-                { new IObserver<MoveResult> with
-                    member _.OnNext(result) =
-                        let gameCount = supervisor.GetActiveGameCount()
-                        let element = renderGameBoard gameId result "" None gameCount
-                        broadcast (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
+            // Subscribe to game state changes
+            subscribeToGame gameId game assignmentManager supervisor
 
-                    member _.OnError(_) = ()
-                    member _.OnCompleted() = () }
-            )
+            // Get initial state and broadcast to all clients
+            use initialSub =
+                game.Subscribe(
+                    { new IObserver<MoveResult> with
+                        member _.OnNext(result) =
+                            let gameCount = supervisor.GetActiveGameCount()
+                            let element = renderGameBoard gameId result "" None gameCount
+                            broadcast (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
-        // Return 201 Created with Location header
-        ctx.Response.StatusCode <- 201
-        ctx.Response.Headers.Location <- $"/games/{gameId}"
+                        member _.OnError(_) = ()
+                        member _.OnCompleted() = () }
+                )
+
+            // Return 201 Created with Location header
+            ctx.Response.StatusCode <- 201
+            ctx.Response.Headers.Location <- $"/games/{gameId}"
     }
 
 /// GET /games/{id} - Get a specific game
