@@ -62,22 +62,28 @@ let private isInProgress = function
 // ============================================================================
 
 /// Render a single square as a form-POST button.
-/// ALL 9 squares are always shown as clickable buttons regardless of game state.
+/// All 9 squares are always rendered as buttons (naive design); a square is
+/// disabled only when it offers no valid move — it is occupied, or the game is
+/// over. Turn ownership is deliberately NOT modelled here: the server still
+/// rejects out-of-turn submissions, mirroring the naive HTML implementations
+/// this variant represents.
 let private renderSquare (arenaId: string) (playerStr: string) (state: GameState) (isActive: bool) (position: SquarePosition) =
     let posStr = position.ToString()
-    let label =
+    let isTaken, label =
         match state.TryGetValue(position) with
-        | true, Taken X -> "X"
-        | true, Taken O -> "O"
-        | _ -> "·"
+        | true, Taken X -> true, "X"
+        | true, Taken O -> true, "O"
+        | _ -> false, "·"
+    let clickable = isActive && not isTaken
+    let square =
+        if clickable then
+            button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+        else
+            button(class' = "square", type' = "submit", ariaLabel = posStr).attr("disabled", "disabled") { label }
     form (method = "post", action = $"/arenas/{arenaId}") {
         input (type' = "hidden", name = "player", value = playerStr)
         input (type' = "hidden", name = "position", value = posStr)
-        button (
-            class' = (if isActive then "square square-clickable" else "square"),
-            type' = "submit",
-            ariaLabel = posStr
-        ) { label }
+        square
     }
     :> HtmlElement
 
