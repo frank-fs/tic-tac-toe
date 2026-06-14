@@ -41,16 +41,28 @@ let private httpHint =
     "the Content-Type header to application/x-www-form-urlencoded and put the form's fields " +
     "in body, e.g. name=value&name2=value2."
 
-let private slotMessage (variant: Variant) (baseUrl: string) : string =
-    match variant with
-    | ERPC ->
+// Protocol-general literacy for a browser agent: read the rendered page semantically
+// and recover the HTTP envelope (which the browser otherwise hides) from the network log.
+let private browserHint =
+    "Navigate to the page, then take a snapshot to read its accessibility tree (the controls, " +
+    "their labels and states). Click an element to act. After each action, inspect the network " +
+    "requests to see the HTTP status code and headers — whether it was accepted (2xx) or " +
+    "rejected (4xx), and why."
+
+let private slotMessage (surface: AgentSurface) (variant: Variant) (baseUrl: string) : string =
+    match surface with
+    | Rpc ->
         "The game server is ready. Call get_state to read the current board; " +
         "it only reflects new moves when you call it again."
-    | Simple ->
-        $"The game server is at {baseUrl}. {httpHint} Re-request a resource to see new moves."
-    | Proto ->
-        $"The game server is at {baseUrl}. {httpHint} If a response is text/event-stream it " +
-        $"stays open — re-request that URL to drain new moves as they are pushed."
+    | Browser ->
+        $"The game is a web app at {baseUrl}. {browserHint}"
+    | Http ->
+        match variant with
+        | Simple ->
+            $"The game server is at {baseUrl}. {httpHint} Re-request a resource to see new moves."
+        | _ ->
+            $"The game server is at {baseUrl}. {httpHint} If a response is text/event-stream it " +
+            $"stays open — re-request that URL to drain new moves as they are pushed."
 
 // HTTP cells: stop waiting on the FIRST of — a GameOver in the server log (a real
 // win/draw), or all agents having given up (hit MaxTurns) — capped at maxWaitSeconds.
@@ -185,7 +197,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let agentsWithMeta =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                let initialMsg = slotMessage cell.Variant baseUrl
+                let initialMsg = slotMessage (surfaceOf cell.McpServers) cell.Variant baseUrl
                 let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg cellCts.Token) sharedClientsOpt
                 slot, persona, agent)
         let agents = agentsWithMeta |> List.map (fun (_, _, a) -> a)

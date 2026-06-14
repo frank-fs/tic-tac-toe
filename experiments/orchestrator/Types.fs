@@ -19,6 +19,22 @@ type McpServerConfig = {
     Arguments: string[]
 }
 
+/// The interaction surface an agent is given — drives the protocol-literacy prompt.
+/// Inferred from the MCP server so adding a tool needs no CellSpec change.
+type AgentSurface =
+    | Rpc      // structured game tools (get_state/make_move)
+    | Http     // raw HTTP client (mcp-http)
+    | Browser  // headless browser (playwright / chrome-devtools): snapshot + network
+
+let surfaceOf (servers: McpServerConfig list) : AgentSurface =
+    match servers with
+    | first :: _ ->
+        match first.Name with
+        | "tictactoe-mcp" -> Rpc
+        | "playwright" | "chrome-devtools" -> Browser
+        | _ -> Http
+    | [] -> Http
+
 type CellSpec = {
     Id: string
     Variant: Variant

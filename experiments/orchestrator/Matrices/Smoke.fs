@@ -17,6 +17,20 @@ let private mcpServer = {
     Arguments = [| "run"; "--project"; "src/TicTacToe.Mcp/" |]
 }
 
+// Browser surfaces for the tool A/B/C: render JS + project the accessibility tree.
+// Isolated profile per process so the three agents are distinct players.
+let private playwrightServer = {
+    Name = "playwright"
+    Command = "npx"
+    Arguments = [| "@playwright/mcp@latest"; "--headless"; "--isolated" |]
+}
+
+let private chromeDevtoolsServer = {
+    Name = "chrome-devtools"
+    Command = "npx"
+    Arguments = [| "chrome-devtools-mcp@latest"; "--headless"; "--isolated" |]
+}
+
 let private cell id variant p1 p2 p3 mcpServers = {
     Id = id
     Variant = variant
@@ -36,4 +50,12 @@ let smoke : CellSpec list = [
     cell "smoke-erpc-bbc"   ERPC   beginner beginner chaos    [mcpServer]
     cell "smoke-proto-bbc"  Proto  beginner beginner chaos    [httpServer]
     cell "smoke-simple-bbc" Simple beginner beginner chaos    [httpServer]
+]
+
+// Tool A/B/C on the SAME app (Proto): does a rendering browser + accessibility
+// snapshot recover the discovery/parse failures the raw HTTP client hits?
+let protoAb : CellSpec list = [
+    cell "proto-ab-http"       Proto beginner beginner beginner [httpServer]
+    cell "proto-ab-playwright" Proto beginner beginner beginner [playwrightServer]
+    cell "proto-ab-cdt"        Proto beginner beginner beginner [chromeDevtoolsServer]
 ]

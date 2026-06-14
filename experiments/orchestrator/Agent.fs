@@ -62,10 +62,13 @@ let private executeTurn
             }
             if config.ForceToolUse then
                 let nudge =
-                    match config.Variant with
-                    | ERPC -> "The game is in progress. Call get_state to see the current board, then make your move."
-                    | Simple -> "The game is in progress. Request the current page to see the board, then take your next action."
-                    | Proto -> "The game is in progress. Request the page (and drain the event stream) to see the board, then take your next action."
+                    match surfaceOf config.McpServers with
+                    | Rpc -> "The game is in progress. Call get_state to see the current board, then make your move."
+                    | Browser -> "The game is in progress. Take a fresh snapshot to see the current board, then act."
+                    | Http ->
+                        match config.Variant with
+                        | Simple -> "The game is in progress. Request the current page to see the board, then take your next action."
+                        | _ -> "The game is in progress. Request the page (and drain the event stream) to see the board, then take your next action."
                 appendUserText messages nudge |> ignore
                 return (currentTurns @ [turn], true)
             else
