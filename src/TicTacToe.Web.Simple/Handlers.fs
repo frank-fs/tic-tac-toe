@@ -220,9 +220,9 @@ let makeMove (ctx: HttpContext) =
 
             match Move.TryParse(playerRaw, positionRaw) with
             | None ->
-                if acceptsJson ctx then
-                    ctx.Response.StatusCode <- 400
-                else
+                // Status applies to both representations; HTML also re-renders with the message.
+                ctx.Response.StatusCode <- 400
+                if not (acceptsJson ctx) then
                     do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
                 logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 400, Some "InvalidMove", Some currentResult, None)
             | Some move ->
@@ -242,8 +242,8 @@ let makeMove (ctx: HttpContext) =
                         ctx.Response.StatusCode <- 404
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 404, None, Some currentResult, None)
                     | Some (Error(_, _)) ->
+                        ctx.Response.StatusCode <- 422
                         if acceptsJson ctx then
-                            ctx.Response.StatusCode <- 422
                             ctx.Response.ContentType <- "application/json"
                             do! ctx.Response.WriteAsJsonAsync({| error = "PositionTaken" |})
                         else
@@ -276,8 +276,8 @@ let makeMove (ctx: HttpContext) =
                         | GameOver -> "This game is already over."
                         | InvalidMove -> "Invalid move."
 
+                    ctx.Response.StatusCode <- 403
                     if acceptsJson ctx then
-                        ctx.Response.StatusCode <- 403
                         ctx.Response.ContentType <- "application/json"
                         do! ctx.Response.WriteAsJsonAsync({| error = reason.ToString() |})
                     else
