@@ -30,3 +30,15 @@ BenchmarkDotNet.Artifacts/
 .claude/settings.local.json
 .claude/worktrees/
 .serena/
+
+# Agent/browser scratch dropped into the repo root by experiment runs
+.playwright-mcp/
+.claire/
+network_requests.txt
+all_requests.txt
+network_requests_after_error.txt
+tic_tac_toe_page.yml
+current_board.md
+current_board_state*.md
+current_game_state*.md
+game_state*.md

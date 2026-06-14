@@ -1,6 +1,0 @@
-1. [GET] http://localhost:54700/ => [302] Found
-2. [GET] http://localhost:54700/login?ReturnUrl=%2F => [302] Found
-3. [GET] http://localhost:54700/ => [200] OK
-4. [GET] https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-RC.7/bundles/datastar.js => [200] 
-5. [GET] http://localhost:54700/sse?datastar=%7B%7D => [200] OK
-6. [GET] http://localhost:54700/favicon.png => [200] OK

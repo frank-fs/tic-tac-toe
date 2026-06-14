@@ -1,8 +1,0 @@
-- generic [active] [ref=e1]:
-  - banner [ref=e2]:
-    - generic [ref=e3]: 6f2959ea
-  - main [ref=e4]:
-    - generic [ref=e5]:
-      - heading "Tic Tac Toe" [level=1] [ref=e6]
-      - generic [ref=e8]: Connecting...
-      - paragraph [ref=e10]: Play locally - X and O take turns
