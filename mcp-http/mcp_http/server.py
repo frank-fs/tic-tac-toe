@@ -99,23 +99,41 @@ async def _read_stream(stream: OpenStream) -> None:
         pass
 
 
+def _content_type(headers: dict | None) -> str:
+    if not headers:
+        return ""
+    return next((str(v) for k, v in headers.items() if k.lower() == "content-type"), "").lower()
+
+
+def _body_kwargs(body: str | dict | None, headers: dict | None) -> dict:
+    """Serialize body. A string is sent verbatim; an object is form-encoded by
+    default (or JSON when the Content-Type asks for it) so the agent need not
+    hand-encode — parity with a structured RPC call."""
+    if body is None:
+        return {}
+    if isinstance(body, dict):
+        if "json" in _content_type(headers):
+            return {"json": body}
+        return {"data": body}
+    return {"content": body}
+
+
 @mcp.tool()
 async def http_request(
     method: str,
     url: str,
     ctx: Context,
     headers: dict | None = None,
-    body: str | None = None,
+    body: str | dict | None = None,
 ) -> str:
     """Send an HTTP request; return the raw response (status, headers, body).
 
     The response Content-Type tells you how to proceed. If it is
     ``text/event-stream`` the connection stays open: re-request the same URL
     with GET to drain newly pushed events, and you may send other requests
-    meanwhile. For a form submission set the ``Content-Type`` header to
-    ``application/x-www-form-urlencoded`` and put fields in ``body`` (for
-    example ``player=X&position=TopLeft``). The session (cookies) persists
-    across calls.
+    meanwhile. ``body`` may be a raw string or an object: an object is
+    form-encoded by default, or sent as JSON if the Content-Type header says
+    so. The session (cookies) persists across calls.
     """
     state: HttpState = ctx.request_context.lifespan_context
     method = method.upper()
@@ -128,7 +146,9 @@ async def http_request(
             f"--- events ---\n{_drain(open_stream)}"
         )
 
-    request = state.client.build_request(method, url, headers=headers, content=body)
+    request = state.client.build_request(
+        method, url, headers=headers, **_body_kwargs(body, headers)
+    )
     try:
         response = await state.client.send(request, stream=True)
     except httpx.HTTPError as exc:
