@@ -52,8 +52,9 @@ type AffordanceTests() =
             let! allGames = this.Page.Locator("[id^=game-]").AllAsync()
             let! id = allGames.[allGames.Count - 1].GetAttributeAsync("id")
 
-            // Player 1 makes a move (claims X)
-            let firstSquare = this.Page.Locator($"#{id} [data-on\\:click]").First
+            // Player 1 makes a move (claims X). The move is a form-submit button
+            // (progressive enhancement); datastar enhances the submit.
+            let firstSquare = this.Page.Locator($"#{id} .square-clickable").First
             do! firstSquare.ClickAsync()
 
             // Wait for move to be processed

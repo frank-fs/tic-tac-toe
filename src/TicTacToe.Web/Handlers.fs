@@ -272,39 +272,55 @@ let makeMove (ctx: HttpContext) =
 
         match supervisor.GetGame(gameId), userId with
         | Some game, Some uid ->
-            let! signals = Datastar.tryReadSignals<MoveSignals> ctx
+            // The move is a command. Progressive enhancement: a plain form POST
+            // (no JS) carries it as form fields; datastar sends it as signals.
+            // Branch on content type to avoid double-reading the request body.
+            let! parsedMove =
+                if ctx.Request.HasFormContentType then
+                    task {
+                        let field (name: string) =
+                            match ctx.Request.Form.TryGetValue(name) with
+                            | true, v -> string v
+                            | _ -> ""
+                        return Move.TryParse(field "player", field "position")
+                    }
+                else
+                    task {
+                        let! signals = Datastar.tryReadSignals<MoveSignals> ctx
+                        return
+                            match signals with
+                            | ValueSome s -> Move.TryParse(s.player, s.position)
+                            | ValueNone -> None
+                    }
 
-            match signals with
-            | ValueSome s ->
-                match Move.TryParse(s.player, s.position) with
-                | None -> ctx.Response.StatusCode <- 400
-                | Some moveAction ->
-                    // Get current game state to determine whose turn it is
-                    let currentState = game.GetState()
-                    let xTurn = isXTurn currentState
+            match parsedMove with
+            | None -> ctx.Response.StatusCode <- 400
+            | Some moveAction ->
+                // Get current game state to determine whose turn it is
+                let currentState = game.GetState()
+                let xTurn = isXTurn currentState
 
-                    // Validate and potentially assign player
-                    let (validationResult, _) =
-                        assignmentManager.TryAssignAndValidate(gameId, uid, xTurn)
+                // Validate and potentially assign player
+                let (validationResult, _) =
+                    assignmentManager.TryAssignAndValidate(gameId, uid, xTurn)
 
-                    match validationResult with
-                    | Allowed ->
-                        // Ensure we're subscribed to broadcast updates
-                        subscribeToGame gameId game assignmentManager supervisor
-                        game.MakeMove(moveAction)
-                        ctx.Response.StatusCode <- 202
-                    | Rejected reason ->
-                        // Move was rejected - broadcast rejection animation
-                        let rejectionClass =
-                            match reason with
-                            | NotYourTurn -> "rejection-not-your-turn"
-                            | NotAPlayer -> "rejection-not-a-player"
-                            | WrongPlayer -> "rejection-wrong-player"
-                            | GameOver -> "rejection-game-over"
+                match validationResult with
+                | Allowed ->
+                    // Command accepted; the new board is projected via the SSE event stream.
+                    subscribeToGame gameId game assignmentManager supervisor
+                    game.MakeMove(moveAction)
+                    ctx.Response.StatusCode <- 202
+                | Rejected reason ->
+                    // Move was rejected - broadcast rejection animation
+                    let rejectionClass =
+                        match reason with
+                        | NotYourTurn -> "rejection-not-your-turn"
+                        | NotAPlayer -> "rejection-not-a-player"
+                        | WrongPlayer -> "rejection-wrong-player"
+                        | GameOver -> "rejection-game-over"
 
-                        broadcast (PatchSignals $"""{{ "rejectionAnimation": "{rejectionClass}" }}""")
-                        ctx.Response.StatusCode <- 403
-            | ValueNone -> ctx.Response.StatusCode <- 400
+                    broadcast (PatchSignals $"""{{ "rejectionAnimation": "{rejectionClass}" }}""")
+                    ctx.Response.StatusCode <- 403
         | None, _ -> ctx.Response.StatusCode <- 404
         | _, None ->
             // No user ID - cannot make moves without authentication

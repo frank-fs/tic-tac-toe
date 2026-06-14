@@ -73,14 +73,21 @@ let hasGameActivity (result: MoveResult) (assignment: PlayerAssignment option) =
 // Private Rendering
 // ============================================================================
 
-/// Render a clickable square for a valid move
+/// Render a clickable square for a valid move.
+/// Progressive enhancement: a real form so the move command works as a plain POST
+/// without JavaScript; datastar enhances the submit (preventing the native POST and
+/// sending the move as signals) when JS is present.
 let private renderClickableSquare gameId (player: Player) (position: SquarePosition) =
     let posStr = position.ToString()
     let playerStr = player.ToString()
-    button(class' = "square square-clickable", type' = "button")
-        .attr("aria-label", posStr)
-        .attr("data-on:click", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
-        span(class' = "preview").attr("aria-hidden", "true") { playerStr }
+    form(method = "post", action = sprintf "/games/%s" gameId)
+        .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
+        input(type' = "hidden", name = "player", value = playerStr)
+        input(type' = "hidden", name = "position", value = posStr)
+        button(class' = "square square-clickable", type' = "submit")
+            .attr("aria-label", posStr) {
+            span(class' = "preview").attr("aria-hidden", "true") { playerStr }
+        }
     }
     :> HtmlElement
 
@@ -225,6 +232,9 @@ let gameStyles =
             background-color: #333;
             padding: 4px;
         }
+
+        /* Move forms wrap each clickable square; let the button be the grid item. */
+        .board form { display: contents; }
 
         .square {
             width: 60px;
