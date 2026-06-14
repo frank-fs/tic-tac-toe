@@ -32,11 +32,14 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       Temperature = cell.Temperature
       Cancellation = cancellation }
 
-// Snapshots annotate each element as [ref=eN]. browser_click needs that bare id in `target`.
-let private clickHint =
-    "To click, call browser_click with `target` set to the element's ref id only " +
-    "(for example, target: \"e8\") and `element` set to a short description. " +
-    "Never put the element's text or the full snapshot line in `target`."
+// Protocol-general literacy for the HTTP agents (no game-specific coaching): how to
+// read the uniform interface their http_request tool surfaces.
+let private httpHint =
+    "Use the http_request tool (method, url, headers, body). The response status code " +
+    "tells you whether your action was accepted (2xx) or rejected (4xx); the Content-Type " +
+    "tells you how to read the body and which controls are available. To submit a form, set " +
+    "the Content-Type header to application/x-www-form-urlencoded and put the form's fields " +
+    "in body, e.g. name=value&name2=value2."
 
 let private slotMessage (variant: Variant) (baseUrl: string) : string =
     match variant with
@@ -44,10 +47,10 @@ let private slotMessage (variant: Variant) (baseUrl: string) : string =
         "The game server is ready. Call get_state to read the current board; " +
         "it only reflects new moves when you call it again."
     | Simple ->
-        $"The game server is at {baseUrl}. The page is static — reload it to see new moves. {clickHint}"
+        $"The game server is at {baseUrl}. {httpHint} Re-request a resource to see new moves."
     | Proto ->
-        $"The game server is at {baseUrl}. The page updates without reloading — " +
-        $"take a fresh snapshot to see new moves. {clickHint}"
+        $"The game server is at {baseUrl}. {httpHint} If a response is text/event-stream it " +
+        $"stays open — re-request that URL to drain new moves as they are pushed."
 
 // HTTP cells: stop waiting on the FIRST of — a GameOver in the server log (a real
 // win/draw), or all agents having given up (hit MaxTurns) — capped at maxWaitSeconds.

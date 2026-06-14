@@ -3,10 +3,12 @@ module TicTacToe.Orchestrator.Matrices.Smoke
 open TicTacToe.Orchestrator.Types
 open TicTacToe.Orchestrator.Personas
 
-let private playwrightServer = {
-    Name = "playwright"
-    Command = "npx"
-    Arguments = [| "@playwright/mcp"; "--headless"; "--isolated" |]
+// HTTP agents use the in-repo hypertext-faithful HTTP client (status + headers +
+// held event streams), giving them the same protocol-native footing as ERPC's tools.
+let private httpServer = {
+    Name = "http"
+    Command = "uv"
+    Arguments = [| "run"; "--project"; "mcp-http"; "mcp-http" |]
 }
 
 let private mcpServer = {
@@ -28,10 +30,10 @@ let private cell id variant p1 p2 p3 mcpServers = {
 }
 
 let smoke : CellSpec list = [
-    cell "smoke-proto-bbb"  Proto  beginner beginner beginner [playwrightServer]
-    cell "smoke-simple-bbb" Simple beginner beginner beginner [playwrightServer]
+    cell "smoke-proto-bbb"  Proto  beginner beginner beginner [httpServer]
+    cell "smoke-simple-bbb" Simple beginner beginner beginner [httpServer]
     cell "smoke-erpc-bbb"   ERPC   beginner beginner beginner [mcpServer]
     cell "smoke-erpc-bbc"   ERPC   beginner beginner chaos    [mcpServer]
-    cell "smoke-proto-bbc"  Proto  beginner beginner chaos    [playwrightServer]
-    cell "smoke-simple-bbc" Simple beginner beginner chaos    [playwrightServer]
+    cell "smoke-proto-bbc"  Proto  beginner beginner chaos    [httpServer]
+    cell "smoke-simple-bbc" Simple beginner beginner chaos    [httpServer]
 ]
