@@ -151,34 +151,46 @@ let private buildOpenAiRequest
 
 // ── HTTP dispatch ──────────────────────────────────────────────────────────────
 
-let private postMessages (backend: Backend) (req: JsonObject) (ct: CancellationToken) : Task<JsonObject> =
-    task {
-        let baseUrl = resolveBaseUrl backend
-        let apiKey = resolveApiKey backend
-        let path =
-            match backend with
-            | Anthropic -> "/v1/messages"
-            | OpenAiCompat -> "/v1/chat/completions"
+// A transient 5xx from the backend (e.g. a cold/loaded LM Studio) is retried with
+// backoff; 4xx fails immediately. Cancellation propagates and aborts the turn.
+[<Literal>]
+let private maxLlmAttempts = 3
 
-        use request = new HttpRequestMessage(HttpMethod.Post, Uri($"{baseUrl}{path}"))
-
+let private buildRequest (backend: Backend) (req: JsonObject) : HttpRequestMessage =
+    let baseUrl = resolveBaseUrl backend
+    let apiKey = resolveApiKey backend
+    let path =
         match backend with
-        | Anthropic ->
-            request.Headers.Add("x-api-key", apiKey)
-            request.Headers.Add("anthropic-version", "2023-06-01")
-            // Only send prompt-caching beta header to the real Anthropic API
-            if isRealAnthropic backend then
-                request.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31")
-        | OpenAiCompat ->
-            request.Headers.Add("Authorization", $"Bearer {apiKey}")
+        | Anthropic -> "/v1/messages"
+        | OpenAiCompat -> "/v1/chat/completions"
+    let request = new HttpRequestMessage(HttpMethod.Post, Uri($"{baseUrl}{path}"))
+    match backend with
+    | Anthropic ->
+        request.Headers.Add("x-api-key", apiKey)
+        request.Headers.Add("anthropic-version", "2023-06-01")
+        // Only send prompt-caching beta header to the real Anthropic API
+        if isRealAnthropic backend then
+            request.Headers.Add("anthropic-beta", "prompt-caching-2024-07-31")
+    | OpenAiCompat ->
+        request.Headers.Add("Authorization", $"Bearer {apiKey}")
+    request.Content <- JsonContent.Create(req)
+    request
 
-        request.Content <- JsonContent.Create(req)
-        let! response = httpClient.SendAsync(request, ct)
-        let! json = response.Content.ReadAsStringAsync()
-        if not response.IsSuccessStatusCode then
-            failwithf "LLM API error %d: %s" (int response.StatusCode) json
-        return JsonNode.Parse(json) :?> JsonObject
-    }
+let private postMessages (backend: Backend) (req: JsonObject) (ct: CancellationToken) : Task<JsonObject> =
+    let rec attempt (n: int) : Task<JsonObject> =
+        task {
+            use request = buildRequest backend req
+            let! response = httpClient.SendAsync(request, ct)
+            let! json = response.Content.ReadAsStringAsync()
+            if response.IsSuccessStatusCode then
+                return JsonNode.Parse(json) :?> JsonObject
+            elif int response.StatusCode >= 500 && n < maxLlmAttempts then
+                do! Task.Delay(TimeSpan.FromMilliseconds(float (300 * n)), ct)
+                return! attempt (n + 1)
+            else
+                return failwithf "LLM API error %d (attempt %d/%d): %s" (int response.StatusCode) n maxLlmAttempts json
+        }
+    attempt 1
 
 // ── Response parsers ───────────────────────────────────────────────────────────
 
