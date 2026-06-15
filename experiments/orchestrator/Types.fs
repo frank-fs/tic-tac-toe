@@ -31,7 +31,7 @@ let surfaceOf (servers: McpServerConfig list) : AgentSurface =
     | first :: _ ->
         match first.Name with
         | "tictactoe-mcp" -> Rpc
-        | "playwright" | "chrome-devtools" -> Browser
+        | "playwright" | "chrome-devtools" | "browsegrab" -> Browser
         | _ -> Http
     | [] -> Http
 

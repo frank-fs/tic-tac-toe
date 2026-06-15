@@ -16,6 +16,7 @@ let main _args =
     |> ignore
 
     builder.Services.AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor()) |> ignore
+    builder.Services.AddSingleton<PlayerRegistry>() |> ignore
     builder.Services.AddSingleton<GameTools>() |> ignore
 
     builder.Services

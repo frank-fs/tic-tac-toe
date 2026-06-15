@@ -1,6 +1,7 @@
 module TicTacToe.Mcp.Tools
 
 open System.Collections.Concurrent
+open System.Collections.Generic
 open System.ComponentModel
 open System.Text.Json
 open System.Text.Json.Nodes
@@ -13,6 +14,10 @@ type RejectionReason =
     | InvalidPosition
     | PositionTaken
     | GameOver
+    | NotAPlayer
+    | NotYourTurn
+    | GameFull
+    | RoleTaken
 
 let private allPositions =
     [| TopLeft; TopCenter; TopRight
@@ -76,10 +81,45 @@ let private applyMove (game: Game) (currentResult: MoveResult) (position: string
             game.MakeMove(move)
             (stateJson (game.GetState())).ToJsonString()
 
+// Per-agent role binding lives in a SINGLETON (the MCP framework resolves a fresh tool
+// instance per request, so tool-instance fields don't persist; game state survives only
+// because GameSupervisor is a singleton). Agents share one stdio connection, so identity
+// rides in a playerToken (mirrors Simple's cookie->role). join claims X then O; a third
+// claimant -> GameFull.
+type PlayerRegistry() =
+    let tokenRole = ConcurrentDictionary<string, string * Player>()   // token -> (gameId, role)
+    let gameClaims = ConcurrentDictionary<string, HashSet<Player>>()  // gameId -> claimed roles
+
+    member _.Join(gameId: string, preferred: Player option) : Choice<string * Player, RejectionReason> =
+        let claimed = gameClaims.GetOrAdd(gameId, fun _ -> HashSet<Player>())
+        let assign =
+            match preferred with
+            | Some r -> if claimed.Contains r then None else Some r
+            | None ->
+                if not (claimed.Contains X) then Some X
+                elif not (claimed.Contains O) then Some O
+                else None
+        match assign with
+        | None when preferred.IsSome -> Choice2Of2 RoleTaken
+        | None -> Choice2Of2 GameFull
+        | Some role ->
+            claimed.Add role |> ignore
+            let token = System.Guid.NewGuid().ToString("N")
+            tokenRole[token] <- (gameId, role)
+            Choice1Of2 (token, role)
+
+    member _.Resolve(token: string) : (string * Player) option =
+        match tokenRole.TryGetValue(token) with
+        | true, v -> Some v
+        | _ -> None
+
 [<McpServerToolType>]
-type GameTools(supervisor: GameSupervisor) =
+type GameTools(supervisor: GameSupervisor, players: PlayerRegistry) =
     // stdio transport is sequential (one request at a time), so TryAdd and RemoveGame cannot interleave.
     let completedGames = ConcurrentDictionary<string, MoveResult>()
+
+    let parseRole = function
+        | "X" -> Some X | "O" -> Some O | _ -> None
 
     let resolveGame gameId =
         match supervisor.GetGame(gameId) with
@@ -133,25 +173,49 @@ type GameTools(supervisor: GameSupervisor) =
         | Some (Choice2Of2 result) -> (stateJson result).ToJsonString()
 
     [<McpServerTool>]
-    [<Description("Make a move in the current player's turn. position is one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
+    [<Description("Join a game to claim your player role. preferredRole is \"X\", \"O\", or \"\" for the next free role. Returns {gameId, role, playerToken}; pass playerToken to make_move. X moves first. A game has exactly two seats — a third join returns error GameFull.")>]
+    member _.``join_game``(
+        [<Description("Game ID")>] gameId: string,
+        [<Description("Preferred role: \"X\", \"O\", or \"\" for next available")>] preferredRole: string) : string =
+        match resolveGame gameId with
+        | None -> errorJson GameNotFound
+        | Some (Choice2Of2 _) -> errorJson GameOver
+        | Some (Choice1Of2 _) ->
+            match players.Join(gameId, parseRole preferredRole) with
+            | Choice2Of2 reason -> errorJson reason
+            | Choice1Of2 (token, role) ->
+                let obj = JsonObject()
+                obj["gameId"] <- JsonValue.Create(gameId)
+                obj["role"] <- JsonValue.Create(match role with X -> "X" | O -> "O")
+                obj["playerToken"] <- JsonValue.Create(token)
+                obj.ToJsonString()
+
+    [<McpServerTool>]
+    [<Description("Make a move. Requires the playerToken from join_game; the move is made as your claimed role and only succeeds on your turn. position is one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
     member _.``make_move``(
         [<Description("Game ID")>] gameId: string,
+        [<Description("Your playerToken from join_game")>] playerToken: string,
         [<Description("Square to claim, e.g. TopLeft")>] position: string) : string =
         match resolveGame gameId with
         | None -> errorJson GameNotFound
         | Some (Choice2Of2 _) -> errorJson GameOver
         | Some (Choice1Of2 game) ->
-            let currentResult = game.GetState()
-            match currentResult with
-            | Won _ | Draw _ ->
-                completedGames.TryAdd(gameId, currentResult) |> ignore
-                errorJson GameOver
-            | currentResult ->
-                let json = applyMove game currentResult position
-                let nextResult = game.GetState()
-                if isTerminal nextResult then
-                    completedGames.TryAdd(gameId, nextResult) |> ignore
-                json
+            match players.Resolve(playerToken) with
+            | Some (tGid, role) when tGid = gameId ->
+                let currentResult = game.GetState()
+                match currentResult with
+                | Won _ | Draw _ ->
+                    completedGames.TryAdd(gameId, currentResult) |> ignore
+                    errorJson GameOver
+                | XTurn _ when role <> X -> errorJson NotYourTurn
+                | OTurn _ when role <> O -> errorJson NotYourTurn
+                | currentResult ->
+                    let json = applyMove game currentResult position
+                    let nextResult = game.GetState()
+                    if isTerminal nextResult then
+                        completedGames.TryAdd(gameId, nextResult) |> ignore
+                    json
+            | _ -> errorJson NotAPlayer
 
     [<McpServerTool>]
     [<Description("Get full game state including gameId, board (9 squares keyed by name, value \"X\"/\"O\"/\"\"), whoseTurn, and status.")>]

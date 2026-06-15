@@ -6,11 +6,19 @@ open TicTacToe.Engine
 open TicTacToe.Mcp.Tools
 
 let private makeTools () =
-    GameTools(createGameSupervisor())
+    GameTools(createGameSupervisor(), PlayerRegistry())
 
 let private parseObj (json: string) = JsonNode.Parse(json) :?> JsonObject
 
 let private str (node: JsonNode) = node.GetValue<string>()
+
+/// New game with both players joined; returns (tools, gameId, tokenX, tokenO).
+let private newJoinedGame () =
+    let tools = makeTools()
+    let gameId = str (parseObj (tools.``new_game``())["gameId"])
+    let tokenX = str (parseObj (tools.``join_game``(gameId, "X"))["playerToken"])
+    let tokenO = str (parseObj (tools.``join_game``(gameId, "O"))["playerToken"])
+    tools, gameId, tokenX, tokenO
 
 let private intCount (node: JsonNode) = (node :?> JsonArray).Count
 
@@ -51,49 +59,83 @@ type GetBoardTests() =
         Assert.That(str obj["error"], Is.EqualTo("GameNotFound"))
 
 [<TestFixture>]
+type JoinGameTests() =
+
+    [<Test>]
+    member _.``join assigns requested role and returns a token``() =
+        let tools = makeTools()
+        let gameId = str (parseObj (tools.``new_game``())["gameId"])
+        let obj = parseObj(tools.``join_game``(gameId, "X"))
+        Assert.That(str obj["role"], Is.EqualTo("X"))
+        Assert.That(obj.ContainsKey("playerToken"), Is.True)
+
+    [<Test>]
+    member _.``third joiner is rejected with GameFull``() =
+        let tools, gameId, _, _ = newJoinedGame()
+        let obj = parseObj(tools.``join_game``(gameId, ""))
+        Assert.That(str obj["error"], Is.EqualTo("GameFull"))
+
+    [<Test>]
+    member _.``claiming a taken role returns RoleTaken``() =
+        let tools = makeTools()
+        let gameId = str (parseObj (tools.``new_game``())["gameId"])
+        tools.``join_game``(gameId, "X") |> ignore
+        let obj = parseObj(tools.``join_game``(gameId, "X"))
+        Assert.That(str obj["error"], Is.EqualTo("RoleTaken"))
+
+[<TestFixture>]
 type MakeMoveTests() =
 
     [<Test>]
     member _.``valid move updates board and alternates turn``() =
-        let tools = makeTools()
-        let gameId = str (parseObj (tools.``new_game``())["gameId"])
-        let obj = parseObj(tools.``make_move``(gameId, "TopLeft"))
+        let tools, gameId, tokenX, _ = newJoinedGame()
+        let obj = parseObj(tools.``make_move``(gameId, tokenX, "TopLeft"))
         Assert.That(obj.ContainsKey("error"), Is.False)
         Assert.That(str obj["whoseTurn"], Is.EqualTo("O"))
 
     [<Test>]
     member _.``position already taken returns PositionTaken``() =
-        let tools = makeTools()
-        let gameId = str (parseObj (tools.``new_game``())["gameId"])
-        tools.``make_move``(gameId, "TopLeft") |> ignore
-        tools.``make_move``(gameId, "TopCenter") |> ignore
-        let obj = parseObj(tools.``make_move``(gameId, "TopLeft"))
+        let tools, gameId, tokenX, tokenO = newJoinedGame()
+        tools.``make_move``(gameId, tokenX, "TopLeft") |> ignore   // X
+        tools.``make_move``(gameId, tokenO, "TopCenter") |> ignore // O
+        let obj = parseObj(tools.``make_move``(gameId, tokenX, "TopLeft")) // X, taken
         Assert.That(str obj["error"], Is.EqualTo("PositionTaken"))
 
     [<Test>]
     member _.``invalid position name returns InvalidPosition``() =
-        let tools = makeTools()
-        let gameId = str (parseObj (tools.``new_game``())["gameId"])
-        let obj = parseObj(tools.``make_move``(gameId, "NotASquare"))
+        let tools, gameId, tokenX, _ = newJoinedGame()
+        let obj = parseObj(tools.``make_move``(gameId, tokenX, "NotASquare"))
         Assert.That(str obj["error"], Is.EqualTo("InvalidPosition"))
 
     [<Test>]
     member _.``move on finished game returns GameOver``() =
-        let tools = makeTools()
-        let gameId = str (parseObj (tools.``new_game``())["gameId"])
-        tools.``make_move``(gameId, "TopLeft")      |> ignore // X
-        tools.``make_move``(gameId, "MiddleLeft")   |> ignore // O
-        tools.``make_move``(gameId, "TopCenter")    |> ignore // X
-        tools.``make_move``(gameId, "MiddleCenter") |> ignore // O
-        tools.``make_move``(gameId, "TopRight")     |> ignore // X wins top row
-        let obj = parseObj(tools.``make_move``(gameId, "BottomLeft"))
+        let tools, gameId, tokenX, tokenO = newJoinedGame()
+        tools.``make_move``(gameId, tokenX, "TopLeft")      |> ignore // X
+        tools.``make_move``(gameId, tokenO, "MiddleLeft")   |> ignore // O
+        tools.``make_move``(gameId, tokenX, "TopCenter")    |> ignore // X
+        tools.``make_move``(gameId, tokenO, "MiddleCenter") |> ignore // O
+        tools.``make_move``(gameId, tokenX, "TopRight")     |> ignore // X wins top row
+        let obj = parseObj(tools.``make_move``(gameId, tokenO, "BottomLeft"))
         Assert.That(str obj["error"], Is.EqualTo("GameOver"))
 
     [<Test>]
     member _.``unknown game returns GameNotFound``() =
         let tools = makeTools()
-        let obj = parseObj(tools.``make_move``("no-game", "TopLeft"))
+        let obj = parseObj(tools.``make_move``("no-game", "any-token", "TopLeft"))
         Assert.That(str obj["error"], Is.EqualTo("GameNotFound"))
+
+    [<Test>]
+    member _.``move with an unknown token returns NotAPlayer``() =
+        let tools, gameId, _, _ = newJoinedGame()
+        let obj = parseObj(tools.``make_move``(gameId, "bogus-token", "TopLeft"))
+        Assert.That(str obj["error"], Is.EqualTo("NotAPlayer"))
+
+    [<Test>]
+    member _.``moving on the opponent's turn returns NotYourTurn``() =
+        let tools, gameId, tokenX, tokenO = newJoinedGame()
+        tools.``make_move``(gameId, tokenX, "TopLeft") |> ignore // X moves, now O's turn
+        let obj = parseObj(tools.``make_move``(gameId, tokenX, "TopCenter")) // X again
+        Assert.That(str obj["error"], Is.EqualTo("NotYourTurn"))
 
 [<TestFixture>]
 type GetStateTests() =

@@ -20,7 +20,9 @@ let main args =
         match args with
         | [| "smoke" |] -> "smoke", smoke
         | [| "proto-ab" |] -> "proto-ab", protoAb
-        | [| name |] -> failwithf "Unknown matrix: %s. Available: smoke, proto-ab" name
+        | [| "simple-ab" |] -> "simple-ab", simpleAb
+        | [| "instructed" |] -> "instructed", instructed
+        | [| name |] -> failwithf "Unknown matrix: %s. Available: smoke, proto-ab, simple-ab, instructed" name
         | _ -> failwith "Usage: dotnet run --project experiments/orchestrator/ -- <matrix-name>"
 
     runMatrix repoRoot matrix cells |> Async.RunSynchronously

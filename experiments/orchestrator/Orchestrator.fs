@@ -41,19 +41,22 @@ let private httpHint =
     "the Content-Type header to application/x-www-form-urlencoded and put the form's fields " +
     "in body, e.g. name=value&name2=value2."
 
-// Protocol-general literacy for a browser agent: read the rendered page semantically
-// and recover the HTTP envelope (which the browser otherwise hides) from the network log.
+// Protocol-general literacy for a browser agent: read the rendered page semantically via
+// snapshot, act, then re-snapshot to read the new state. Network inspection is offered
+// conditionally — some browser tools (browsegrab) expose no network log.
 let private browserHint =
     "Navigate to the page, then take a snapshot to read its accessibility tree (the controls, " +
-    "their labels and states). Click an element to act. After each action, inspect the network " +
-    "requests to see the HTTP status code and headers — whether it was accepted (2xx) or " +
-    "rejected (4xx), and why."
+    "their labels and states). Click a control to act, then take a new snapshot to see the result — " +
+    "the updated controls and their states reflect whether your action was accepted. If your tools " +
+    "expose the network log, you can also inspect the HTTP status (2xx accepted, 4xx rejected)."
 
 let private slotMessage (surface: AgentSurface) (variant: Variant) (baseUrl: string) : string =
     match surface with
     | Rpc ->
-        "The game server is ready. Call get_state to read the current board; " +
-        "it only reflects new moves when you call it again."
+        "The game server is ready. Call list_games to find the game, then join_game to claim " +
+        "your player role (X or O) — it returns a playerToken. Read the board with get_state. " +
+        "To move, call make_move with your playerToken and a position; it only succeeds on your " +
+        "turn. get_state only reflects new moves when you call it again."
     | Browser ->
         $"The game is a web app at {baseUrl}. {browserHint}"
     | Http ->
