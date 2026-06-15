@@ -24,6 +24,22 @@ linked-data shape the F0–F8 study needs.
 move by one player is visible to another after a refresh; JS clients get the same state
 live via an SSE connection to the *same URL*; screen readers hear updates via `aria-live`.
 
+### Research priority vs. app-building (read this first)
+
+The **`text/html` representation is the measurement-critical deliverable.** Server-rendered
+discovery + refresh-to-update freshness is the agent-accessible surface the study measures;
+it is exactly what L3 showed agents can sustain. **It must stand alone** — fully functional
+with the event-stream layer absent or stubbed.
+
+The **`text/event-stream` representation is the app being built**, not a research variable.
+It is wanted for the real app's live UX and may, as a *secondary hypothesis*, improve agent
+context management via small fragment deltas (vs. a full-page refresh) — worth
+**noting/observing, not optimizing for** in this milestone. So: do not let the stream
+re-architecture gate, complicate, or block the html work. The html critical path
+(Issues 1, 2, 5) is what must land; the stream work (Issues 3, 4) is the app layer and may
+be sequenced after — or dropped from this milestone — without harming the research
+deliverable.
+
 ## Current design (confirmed in code, 2026-06-15)
 
 - `GET /` (`Handlers.home`, Handlers.fs:125): renders a **shell** — `homePage` with an
@@ -99,7 +115,8 @@ rendering) intact.
 ## Thesis-first E2E (write these FAILING before the issues)
 
 Target `src/TicTacToe.Web.Tests/` (see `test/CLAUDE.md` — server on :5228, set
-`TEST_BASE_URL`).
+`TEST_BASE_URL`). **Phase A tests: #1, #2, #5, #6** (the research deliverable — write these
+first). **Phase B tests: #3, #4** (stream layer — write when starting Phase B).
 
 1. **Discovery (no-JS):** `GET /` with `Accept: text/html` (no SSE) returns a body
    containing all active games' boards with playable position forms — not an empty shell.
@@ -116,38 +133,51 @@ Target `src/TicTacToe.Web.Tests/` (see `test/CLAUDE.md` — server on :5228, set
 
 ## Issues (acceptance criteria each)
 
-**Sequencing:** Spike → 1 → 2 → 3 → 4 → 5. Issue 2 depends on 1 (negotiation needs a
-server-rendered html branch to negotiate to).
+**Sequencing — two phases by priority:**
 
-### Issue 1 — Dashboard server-render on `GET /` (html)
+- **Phase A — research-critical (html). Must land.** Spike → 1 → 2 → 5. At the end of
+  Phase A the measurement deliverable is complete: html content negotiation + server-rendered
+  discovery + refresh freshness + a11y, with JS live updates still working via the *existing*
+  global `/sse` (untouched). Issue 2 depends on 1.
+- **Phase B — app layer (stream). Secondary; may be deferred or dropped.** 3 → 4 →
+  retire `/sse`. Replaces the global stream with per-resource streams + morph. Dropping
+  Phase B does not harm the research deliverable.
+
+### Issue 1 — Dashboard server-render on `GET /` (html) — *Phase A*
 - `Handlers.home` renders the layout **plus all active games** server-side via
   `renderGameBoard`; `homePage` template takes the games list instead of an empty container.
 - **AC:** no-JS `GET /` body contains every active game's board + position forms (E2E #1 green).
 - **AC:** existing home behavior (create-game affordance gated by `MaxGames`) preserved.
 
-### Issue 2 — Handler-level `Accept` negotiation for `/` and `/games/{id}`; retire `/sse`
+### Issue 2 — Handler-level `Accept` negotiation for `/` and `/games/{id}` — *Phase A*
 - Each `get` branches: `text/event-stream` → stream handler; else → html render.
-- Remove `resource "/sse"` and its route registration.
+- **In Phase A keep the existing global `/sse` working** (the event-stream branch may delegate
+  to current behavior); retiring `/sse` happens in Phase B so html never depends on the stream
+  rework.
 - **AC:** `Accept: text/html` → html; `Accept: text/event-stream` → a stream; default
   (no/`*/*` Accept) → html (E2E #2, #3 green).
-- **AC:** `/sse` no longer routed; nothing references it.
 
-### Issue 3 — Per-resource streams + `SseBroadcast` per-game filtering; connect-resync
+### Issue 5 — `aria-live` regions + a11y E2E; confirm no-JS refresh fallback — *Phase A*
+- Add `aria-live="polite"` to the board template; verify position-labeled controls.
+- **AC:** E2E #5 (no-JS refresh shows opponent move) and #6 (a11y attributes present) green.
+- *(Lands in Phase A with Issues 1–2; listed last only because it touches the same template
+  the stream work will also touch.)*
+
+### Issue 3 — Per-resource streams + `SseBroadcast` per-game filtering; connect-resync — *Phase B*
 - Dashboard stream = all games; per-game stream = one game (subscriber filtered by `gameId`).
 - On connect: send full live snapshot per game, then forward deltas.
 - **AC:** a per-game stream receives only that game's events; the dashboard stream receives
   all (unit/integration test on `SseBroadcast`).
 - **AC:** connect after a move shows current state (E2E #3 includes post-move connect).
 
-### Issue 4 — Morph-by-id on connect + broadcast (drop the container clear)
+### Issue 4 — Morph-by-id on connect + broadcast; retire global `/sse` — *Phase B*
 - Stream connect and move-broadcast both send id'd board patches (Datastar morph); remove
   the `#games-container` clear (Handlers.fs:148).
+- Remove `resource "/sse"` and its route registration once per-resource streams (Issue 3)
+  serve live updates; repoint the Datastar client to the same-URL event-stream.
 - **AC:** a move patches the existing board element in place — no duplicate board, no clear
   (E2E #4 green; assert single board element per game after a move).
-
-### Issue 5 — `aria-live` regions + a11y E2E; confirm no-JS refresh fallback
-- Add `aria-live="polite"` to the board template; verify position-labeled controls.
-- **AC:** E2E #5 (no-JS refresh shows opponent move) and #6 (a11y attributes present) green.
+- **AC:** `/sse` no longer routed; nothing references it.
 
 ## Out of scope (non-goals)
 
