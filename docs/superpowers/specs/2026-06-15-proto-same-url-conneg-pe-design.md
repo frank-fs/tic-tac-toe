@@ -201,6 +201,17 @@ To retire Simple:
 - Net: one app, conneg'd representations = F0 (html base) + enhancement (stream); ERPC stays
   the RPC null hypothesis. Cleaner expression of the accessibility thesis.
 
+## Future: streaming-comparison round (not this milestone, not even next)
+
+Phase B gives Proto a server-**push** representation (SSE event-stream). For a later study
+that compares *streaming* surfaces head-to-head, ERPC (today MCP **stdio**, pull-only via
+`get_state` polling) can be served over **MCP Streamable HTTP** (the HTTP+SSE transport) so
+the RPC server **pushes** state changes — e.g. an "opponent moved" notification — instead of
+the agent polling. That pairs **push-RPC vs push-hypermedia**, parallel to this study's
+**pull-RPC vs html**. Note the L3 finding it would probe: ERPC's reliability came from the
+agent *tracking `whoseTurn` via the poll loop*; replacing the poll with a push changes that
+dynamic, so it's a real question, not a freebie. Captured for later; no work now.
+
 ## Risks
 
 - **Datastar same-URL SSE** (mitigated by the spike + fallback wiring).
