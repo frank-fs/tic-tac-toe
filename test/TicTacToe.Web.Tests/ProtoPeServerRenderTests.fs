@@ -222,6 +222,23 @@ type ProtoPeServerRenderTests() =
             Assert.That(resp.Headers.Location.ToString(), Does.Contain "/login", "redirect target is the login affordance")
         }
 
+    // ── Unauthenticated no-JS writes are challenged, not silently accepted ──────
+    [<Test>]
+    member _.``unauthenticated no-JS move and delete are challenged``() : Task =
+        task {
+            // No /login -> no cookie. A state-changing POST must be challenged.
+            use coldHandler = new HttpClientHandler(CookieContainer = Net.CookieContainer(), AllowAutoRedirect = false)
+            use coldClient = new HttpClient(coldHandler, BaseAddress = Uri(baseUrl))
+
+            let move = new FormUrlEncodedContent([ KeyValuePair("player", "X"); KeyValuePair("position", "TopLeft") ])
+            use! moveResp = coldClient.PostAsync("/games/any-id", move)
+            Assert.That(int moveResp.StatusCode, Is.AnyOf(302, 401), "unauthenticated no-JS move must be challenged")
+
+            let del = new FormUrlEncodedContent([])
+            use! delResp = coldClient.PostAsync("/games/any-id/delete", del)
+            Assert.That(int delResp.StatusCode, Is.AnyOf(302, 401), "unauthenticated no-JS delete must be challenged")
+        }
+
     // ── No-JS delete via the POST alias (HTML forms can't emit DELETE) ─────────
     [<Test>]
     member this.``no-JS POST /games/{id}/delete removes the game (PRG)``() : Task =
@@ -238,6 +255,15 @@ type ProtoPeServerRenderTests() =
             Assert.That(int delResp.StatusCode, Is.EqualTo 303, "no-JS delete must Post/Redirect/Get")
             Assert.That(delResp.Headers.Location.ToString(), Is.EqualTo "/")
 
-            use! getResp = client.GetAsync($"/games/{gameId}")
-            Assert.That(int getResp.StatusCode, Is.EqualTo 404, "deleted game must be gone")
+            // Removal from the supervisor cache is eventually consistent (Dispose -> OnCompleted
+            // -> RemoveGame is async; the PRG redirect goes to /, not the deleted resource). Poll
+            // the canonical URL until it 404s, bounded.
+            let mutable status = 200
+            let mutable attempts = 0
+            while status <> 404 && attempts < 20 do
+                use! getResp = client.GetAsync($"/games/{gameId}")
+                status <- int getResp.StatusCode
+                attempts <- attempts + 1
+                if status <> 404 then do! Task.Delay(50)
+            Assert.That(status, Is.EqualTo 404, "deleted game must become gone")
         }
