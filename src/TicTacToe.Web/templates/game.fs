@@ -53,9 +53,14 @@ let private (|CanMove|Watching|Finished|) = function
 // Public Utilities
 // ============================================================================
 
+/// First 8 characters of an id (or fewer if it is shorter — ids are GUIDs in practice,
+/// but never assume the length).
+let private prefix8 (s: string) =
+    if s.Length > 8 then s.Substring(0, 8) else s
+
 /// Display first 8 characters of a user ID, or a placeholder if not assigned
 let shortUserId (id: string option) (placeholder: string) =
-    id |> Option.map (fun s -> s.[..7]) |> Option.defaultValue placeholder
+    id |> Option.map prefix8 |> Option.defaultValue placeholder
 
 /// Check if game has activity (moves made or players assigned)
 let hasGameActivity (result: MoveResult) (assignment: PlayerAssignment option) =
@@ -68,6 +73,30 @@ let hasGameActivity (result: MoveResult) (assignment: PlayerAssignment option) =
             | Some { PlayerXId = Some _ } | Some { PlayerOId = Some _ } -> true
             | _ -> false
         hasMoves || hasPlayers
+
+/// No-JS error banner rendered from a Post/Redirect/Get ?error= flash token, so a rejected
+/// write (at-capacity create, rejected move) is legible after the redirect without JS.
+let renderErrorBanner (error: string) : HtmlElement =
+    let message =
+        match error with
+        | "at-capacity" -> "Cannot create a new game: the game limit has been reached."
+        | "not-your-turn" -> "Move rejected: it is not your turn."
+        | "not-a-player" -> "Move rejected: you are not a player in this game."
+        | "wrong-player" -> "Move rejected: wrong player."
+        | "game-over" -> "Move rejected: the game is over."
+        | _ -> "That action could not be completed."
+    div(class' = "error-banner").attr("role", "alert") { message }
+    :> HtmlElement
+
+/// Self-descriptive 404 body for a missing game, with a way home.
+let notFoundPage: HtmlElement =
+    div(class' = "game-info") {
+        p() {
+            raw "Game not found. "
+            a(href = "/") { "Back to games" }
+        }
+    }
+    :> HtmlElement
 
 // ============================================================================
 // Private Rendering
@@ -115,6 +144,19 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
         span(class' = legendClass O) { $"O: {oLabel}" }
     }
 
+/// Render one control as a real no-JS form (enabled) or a disabled button (disabled).
+/// datastarAction enhances the submit when JS is present.
+let private controlButton enabled (btnClass: string) (action: string) (datastarAction: string) (label: string) =
+    if enabled then
+        form(method = "post", action = action)
+            .attr("data-on:submit__prevent", datastarAction) {
+            button(class' = btnClass, type' = "submit") { label }
+        }
+        :> HtmlElement
+    else
+        button(class' = btnClass, type' = "button").attr("disabled", "disabled") { label }
+        :> HtmlElement
+
 /// Render control buttons (reset/delete) based on viewer assignment and game state
 let private renderControls gameId viewerPlayer assignment gameCount activity =
     let resetEnabled, deleteEnabled =
@@ -129,22 +171,10 @@ let private renderControls gameId viewerPlayer assignment gameCount activity =
         // Real forms so reset/delete work with no JS; datastar enhances the submit when
         // present (reset POSTs; delete uses the DELETE verb via @delete). HTML forms cannot
         // emit DELETE, so the no-JS path posts to /games/{id}/delete.
-        if resetEnabled then
-            form(method = "post", action = sprintf "/games/%s/reset" gameId)
-                .attr("data-on:submit__prevent", sprintf "@post('/games/%s/reset')" gameId) {
-                button(class' = "reset-game-btn", type' = "submit") { "Reset Game" }
-            }
-        else
-            button(class' = "reset-game-btn", type' = "button")
-                .attr("disabled", "disabled") { "Reset Game" }
-        if deleteEnabled then
-            form(method = "post", action = sprintf "/games/%s/delete" gameId)
-                .attr("data-on:submit__prevent", sprintf "@delete('/games/%s')" gameId) {
-                button(class' = "delete-game-btn", type' = "submit") { "Delete Game" }
-            }
-        else
-            button(class' = "delete-game-btn", type' = "button")
-                .attr("disabled", "disabled") { "Delete Game" }
+        controlButton resetEnabled "reset-game-btn"
+            (sprintf "/games/%s/reset" gameId) (sprintf "@post('/games/%s/reset')" gameId) "Reset Game"
+        controlButton deleteEnabled "delete-game-btn"
+            (sprintf "/games/%s/delete" gameId) (sprintf "@delete('/games/%s')" gameId) "Delete Game"
     }
 
 // ============================================================================
@@ -172,10 +202,11 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
             (renderStaticSquare state, None, status)
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
-        // Canonical link + visible id so the / -> /games/{id} trail is navigable without JS
-        // and an agent can read the id as text (not parse it out of the form action URL).
+        // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
+        // JS and an agent can transcribe the id from the link text (a truncated label would
+        // not be navigable).
         div(class' = "game-link") {
-            a(href = sprintf "/games/%s" gameId) { sprintf "Game %s" gameId.[..7] }
+            a(href = sprintf "/games/%s" gameId) { sprintf "Game %s" gameId }
         }
         // role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
@@ -312,6 +343,17 @@ let gameStyles =
             text-align: center;
             margin-bottom: 8px;
             font-size: 0.85em;
+        }
+
+        .error-banner {
+            max-width: 800px;
+            margin: 12px auto;
+            padding: 12px 16px;
+            background-color: #fdecea;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+            color: #842029;
+            text-align: center;
         }
 
         .new-game-btn {

@@ -143,4 +143,50 @@ let supervisorTests =
 
               finally
                   supervisor.Dispose()
+          }
+
+          testCaseAsync "TryCreateGame creates below the cap and refuses atomically at the cap"
+          <| async {
+              let supervisor = createGameSupervisor ()
+
+              try
+                  Expect.isSome (supervisor.TryCreateGame(Some 2)) "First create is below the cap"
+                  Expect.isSome (supervisor.TryCreateGame(Some 2)) "Second create reaches the cap"
+                  Expect.isNone (supervisor.TryCreateGame(Some 2)) "Third create is refused at the cap"
+                  Expect.equal (supervisor.GetActiveGameCount()) 2 "Cap must not be exceeded"
+              finally
+                  supervisor.Dispose()
+          }
+
+          testCaseAsync "TryCreateGame with no cap always creates"
+          <| async {
+              let supervisor = createGameSupervisor ()
+
+              try
+                  Expect.isSome (supervisor.TryCreateGame(None)) "No cap: always creates"
+                  Expect.isSome (supervisor.TryCreateGame(None)) "No cap: always creates"
+                  Expect.equal (supervisor.GetActiveGameCount()) 2 "Both games tracked"
+              finally
+                  supervisor.Dispose()
+          }
+
+          testCaseAsync "SnapshotActiveGames returns the seeded initial state (never null)"
+          <| async {
+              let supervisor = createGameSupervisor ()
+
+              try
+                  let (gameId, game) = supervisor.CreateGame()
+                  let snapshot = supervisor.SnapshotActiveGames()
+
+                  Expect.equal snapshot.Length 1 "Snapshot has the one created game"
+                  let (snapId, snapState) = snapshot.Head
+                  Expect.equal snapId gameId "Snapshot carries the game id"
+                  Expect.isNotNull (box snapState) "Cached state is seeded synchronously, never null"
+                  Expect.equal snapState (game.GetState()) "Cached state matches the live state"
+
+                  match supervisor.TryGetState(gameId) with
+                  | Some s -> Expect.equal s (game.GetState()) "TryGetState matches live state"
+                  | None -> failtest "TryGetState should find the freshly created game"
+              finally
+                  supervisor.Dispose()
           } ]

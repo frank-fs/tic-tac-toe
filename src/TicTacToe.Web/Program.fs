@@ -44,8 +44,6 @@ let configureLogging (builder: ILoggingBuilder) =
 let configureServices (services: IServiceCollection) =
     services.AddRouting().AddHttpContextAccessor() |> ignore
 
-    services.AddAntiforgery() |> ignore
-
     services
         .AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ())
         .AddSingleton<GameLimits>(fun _ -> gameLimits ())
@@ -175,7 +173,11 @@ let main args =
 
         plugBeforeRouting ResponseCompressionBuilderExtensions.UseResponseCompression
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
-        plugBeforeRouting AntiforgeryApplicationBuilderExtensions.UseAntiforgery
+        // No antiforgery middleware: it only auto-validates endpoints carrying antiforgery
+        // metadata (minimal-API form binding), which these manual ctx.Request.Form handlers do
+        // not have — so it was a no-op giving a false sense of protection. CSRF on the no-JS
+        // state-changing POSTs is mitigated by the SameSite=Strict auth cookie (see useAuthentication),
+        // which blocks the cross-site requests an antiforgery token would otherwise guard.
         plugBeforeRouting createInitialGames
 
         resource login

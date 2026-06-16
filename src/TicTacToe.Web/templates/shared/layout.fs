@@ -17,8 +17,9 @@ module layout =
         Fragment() {
             match userIdOpt with
             | Some userId ->
+                let shortId = if userId.Length > 8 then userId.Substring(0, 8) else userId
                 header (class' = "page-header") {
-                    span (class' = "user-identity") { userId.[..7] }
+                    span (class' = "user-identity") { shortId }
                 }
             | None -> ()
 

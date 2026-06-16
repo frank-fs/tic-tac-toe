@@ -179,13 +179,46 @@ type ProtoPeServerRenderTests() =
             Assert.That(body, Does.Contain "\"player\">X", "A's fresh GET / must show the opponent's placed X")
         }
 
+    // ── E2E #1 (rejected) — a rejected no-JS move surfaces a reason, not silence ─
+    [<Test>]
+    member this.``rejected no-JS move redirects with an error the next GET shows``() : Task =
+        task {
+            let! gameId = this.CreateGame()
+            // First move applies and assigns this client as X.
+            use! _first = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopLeft" ]
+            // Second X move is out of turn (now O's turn) -> rejected.
+            use! rejected = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopCenter" ]
+            Assert.That(int rejected.StatusCode, Is.EqualTo 303, "rejected no-JS move must Post/Redirect/Get")
+            let loc = rejected.Headers.Location.ToString()
+            Assert.That(loc, Does.Contain $"/games/{gameId}", "redirect back to the game")
+            Assert.That(loc, Does.Contain "error=", "redirect must carry a rejection reason (not silent)")
+
+            use! resp = client.GetAsync(loc)
+            let! body = resp.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain "error-banner", "the refreshed page must render the rejection banner")
+            Assert.That(body, Does.Contain "rejected", "the banner must say the move was rejected")
+        }
+
+    // ── Auth gate — a no-cookie client is sent to /login (cold-start discovery) ──
+    [<Test>]
+    member _.``GET / with no cookie redirects to /login``() : Task =
+        task {
+            use coldHandler = new HttpClientHandler(CookieContainer = Net.CookieContainer(), AllowAutoRedirect = false)
+            use coldClient = new HttpClient(coldHandler, BaseAddress = Uri(baseUrl))
+            use! resp = coldClient.GetAsync("/")
+            Assert.That(int resp.StatusCode, Is.EqualTo 302, "an unauthenticated dashboard GET must redirect")
+            Assert.That(resp.Headers.Location.ToString(), Does.Contain "/login", "redirect target is the login affordance")
+        }
+
     // ── No-JS delete via the POST alias (HTML forms can't emit DELETE) ─────────
     [<Test>]
     member this.``no-JS POST /games/{id}/delete removes the game (PRG)``() : Task =
         task {
-            // Server enforces a 6-game minimum and other fixtures churn the shared count, so
-            // pad with an extra game to guarantee we stay above the floor after deleting.
-            let! _pad = this.CreateGame()
+            // Server enforces a 6-game minimum. The shared server seeds 6 games at startup and
+            // games only accumulate (reset is net-zero; this is the only delete), so create two
+            // pads + the target to stay comfortably above the floor regardless of test order.
+            let! _pad1 = this.CreateGame()
+            let! _pad2 = this.CreateGame()
             let! gameId = this.CreateGame()
             // Become an assigned player via a no-JS move (303).
             use! _moveResp = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopLeft" ]

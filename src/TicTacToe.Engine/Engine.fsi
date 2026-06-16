@@ -19,6 +19,9 @@ type GameSupervisor =
     /// Create a new supervised game and return its ID and Game reference
     abstract CreateGame: unit -> string * Game
 
+    /// Atomically create a game only if below maxGames; None when at the cap (no TOCTOU)
+    abstract TryCreateGame: maxGames: int option -> (string * Game) option
+
     /// Get an existing game by ID
     abstract GetGame: gameId: string -> Game option
 
