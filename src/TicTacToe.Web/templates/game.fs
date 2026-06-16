@@ -110,6 +110,7 @@ let private renderClickableSquare gameId (player: Player) (position: SquarePosit
     let posStr = position.ToString()
     let playerStr = player.ToString()
     form(method = "post", action = sprintf "/games/%s" gameId)
+        .attr("rel", "make-move")
         .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
         input(type' = "hidden", name = "player", value = playerStr)
         input(type' = "hidden", name = "position", value = posStr)
@@ -145,10 +146,12 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
     }
 
 /// Render one control as a real no-JS form (enabled) or a disabled button (disabled).
-/// datastarAction enhances the submit when JS is present.
-let private controlButton enabled (btnClass: string) (action: string) (datastarAction: string) (label: string) =
+/// rel types the affordance in the markup (the delete form is the no-JS POST alias for the
+/// DELETE verb on the canonical /games/{id} resource). datastarAction enhances the submit.
+let private controlButton enabled (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) =
     if enabled then
         form(method = "post", action = action)
+            .attr("rel", rel)
             .attr("data-on:submit__prevent", datastarAction) {
             button(class' = btnClass, type' = "submit") { label }
         }
@@ -171,9 +174,9 @@ let private renderControls gameId viewerPlayer assignment gameCount activity =
         // Real forms so reset/delete work with no JS; datastar enhances the submit when
         // present (reset POSTs; delete uses the DELETE verb via @delete). HTML forms cannot
         // emit DELETE, so the no-JS path posts to /games/{id}/delete.
-        controlButton resetEnabled "reset-game-btn"
+        controlButton resetEnabled "reset-game-btn" "reset-game"
             (sprintf "/games/%s/reset" gameId) (sprintf "@post('/games/%s/reset')" gameId) "Reset Game"
-        controlButton deleteEnabled "delete-game-btn"
+        controlButton deleteEnabled "delete-game-btn" "delete-game"
             (sprintf "/games/%s/delete" gameId) (sprintf "@delete('/games/%s')" gameId) "Delete Game"
     }
 
@@ -187,7 +190,7 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
     let (State state) = result
     let viewerPlayer = resolveViewer assignment userId result
     let activity = hasGameActivity result assignment
-    let renderSquare, currentPlayer, status =
+    let renderSquare, currentPlayer, status, canMove =
         match (result, viewerPlayer) with
         | CanMove(player, validMoves, status) ->
             let render pos =
@@ -195,12 +198,23 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
                     renderClickableSquare gameId player pos
                 else
                     renderStaticSquare state pos
-            (render, Some player, status)
+            (render, Some player, status, true)
         | Watching(cp, status) ->
-            (renderStaticSquare state, cp, status)
+            (renderStaticSquare state, cp, status, false)
         | Finished status ->
-            (renderStaticSquare state, None, status)
+            (renderStaticSquare state, None, status, false)
+    // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
+    // parsing the display prose; data-can-move says whether THIS viewer may move now.
+    let statusToken =
+        match result with
+        | XTurn _ -> "x-turn"
+        | OTurn _ -> "o-turn"
+        | Won(_, player) -> sprintf "won-%s" (player.ToString().ToLowerInvariant())
+        | Draw _ -> "draw"
+        | Error _ -> "error"
     div(id = $"game-{gameId}", class' = "game-board")
+        .attr("data-game-status", statusToken)
+        .attr("data-can-move", (if canMove then "true" else "false"))
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
         // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
         // JS and an agent can transcribe the id from the link text (a truncated label would

@@ -21,6 +21,7 @@ let homePage (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq
                     // Real form so a game can be created with no JS; datastar enhances the
                     // submit when present.
                     form(method = "post", action = "/games")
+                        .attr("rel", "create-game")
                         .attr("data-on:submit__prevent", "@post('/games')") {
                         button(class' = "new-game-btn", type' = "submit") { "New Game" }
                     }

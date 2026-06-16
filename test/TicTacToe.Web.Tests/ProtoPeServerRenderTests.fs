@@ -199,6 +199,18 @@ type ProtoPeServerRenderTests() =
             Assert.That(body, Does.Contain "rejected", "the banner must say the move was rejected")
         }
 
+    // ── Machine-readable state + typed affordances for a no-JS agent ────────────
+    [<Test>]
+    member this.``rendered board exposes machine-readable status and a typed move affordance``() : Task =
+        task {
+            let! gameId = this.CreateGame()
+            use! resp = client.GetAsync($"/games/{gameId}")
+            let! body = resp.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain "data-game-status=\"x-turn\"", "fresh game must carry a machine-readable status token")
+            Assert.That(body, Does.Contain "data-can-move=\"true\"", "the active player's board must mark that a move is possible")
+            Assert.That(body, Does.Contain "rel=\"make-move\"", "move forms must be typed so the affordance is discoverable")
+        }
+
     // ── Auth gate — a no-cookie client is sent to /login (cold-start discovery) ──
     [<Test>]
     member _.``GET / with no cookie redirects to /login``() : Task =
