@@ -157,6 +157,28 @@ type ProtoPeServerRenderTests() =
             Assert.That(body, Does.Contain "href=\"/\"", "404 must offer a navigation affordance home")
         }
 
+    // ── E2E #5 (opponent) — a second user's move shows on a fresh dashboard GET ──
+    // The research-critical case: player A loads, player B moves, A refreshes / and sees it.
+    // Proves refresh-to-update across users on the dashboard, with no JS.
+    [<Test>]
+    member this.``opponent move is visible on a fresh no-JS dashboard GET``() : Task =
+        task {
+            let! gameId = this.CreateGame()
+            // Player B: a separate cookie jar = a distinct user.
+            use bHandler = new HttpClientHandler(CookieContainer = Net.CookieContainer(), AllowAutoRedirect = false)
+            use bClient = new HttpClient(bHandler, BaseAddress = Uri(baseUrl))
+            let! _ = bClient.GetAsync("/login")
+            let bMove = new FormUrlEncodedContent([ KeyValuePair("player", "X"); KeyValuePair("position", "TopLeft") ])
+            use! bResp = bClient.PostAsync($"/games/{gameId}", bMove)
+            Assert.That(int bResp.StatusCode, Is.EqualTo 303, "opponent's no-JS move must apply")
+
+            // Player A (the fixture client) refreshes the dashboard and sees B's mark.
+            use! resp = client.GetAsync("/")
+            let! body = resp.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain $"game-{gameId}", "the moved game must be on the dashboard")
+            Assert.That(body, Does.Contain "\"player\">X", "A's fresh GET / must show the opponent's placed X")
+        }
+
     // ── No-JS delete via the POST alias (HTML forms can't emit DELETE) ─────────
     [<Test>]
     member this.``no-JS POST /games/{id}/delete removes the game (PRG)``() : Task =
