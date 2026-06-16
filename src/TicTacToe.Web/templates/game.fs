@@ -85,7 +85,7 @@ let private renderClickableSquare gameId (player: Player) (position: SquarePosit
         input(type' = "hidden", name = "player", value = playerStr)
         input(type' = "hidden", name = "position", value = posStr)
         button(class' = "square square-clickable", type' = "submit")
-            .attr("aria-label", posStr) {
+            .attr("aria-label", sprintf "Play %s at %s" playerStr posStr) {
             span(class' = "preview").attr("aria-hidden", "true") { playerStr }
         }
     }
@@ -126,15 +126,22 @@ let private renderControls gameId viewerPlayer assignment gameCount activity =
             // For unassigned games/spectators: only enable if there's activity AND gameCount > 6
             (activity && gameCount > 6, gameCount > 6)
     div(class' = "controls") {
+        // Real forms so reset/delete work with no JS; datastar enhances the submit when
+        // present (reset POSTs; delete uses the DELETE verb via @delete). HTML forms cannot
+        // emit DELETE, so the no-JS path posts to /games/{id}/delete.
         if resetEnabled then
-            button(class' = "reset-game-btn", type' = "button")
-                .attr("data-on:click", sprintf "@post('/games/%s/reset')" gameId) { "Reset Game" }
+            form(method = "post", action = sprintf "/games/%s/reset" gameId)
+                .attr("data-on:submit__prevent", sprintf "@post('/games/%s/reset')" gameId) {
+                button(class' = "reset-game-btn", type' = "submit") { "Reset Game" }
+            }
         else
             button(class' = "reset-game-btn", type' = "button")
                 .attr("disabled", "disabled") { "Reset Game" }
         if deleteEnabled then
-            button(class' = "delete-game-btn", type' = "button")
-                .attr("data-on:click", sprintf "@delete('/games/%s')" gameId) { "Delete Game" }
+            form(method = "post", action = sprintf "/games/%s/delete" gameId)
+                .attr("data-on:submit__prevent", sprintf "@delete('/games/%s')" gameId) {
+                button(class' = "delete-game-btn", type' = "submit") { "Delete Game" }
+            }
         else
             button(class' = "delete-game-btn", type' = "button")
                 .attr("disabled", "disabled") { "Delete Game" }
@@ -146,7 +153,7 @@ let private renderControls gameId viewerPlayer assignment gameCount activity =
 
 /// Render a complete game board, personalized for the given viewer.
 /// Resolves the viewer's player token internally from assignment + userId.
-let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) =
+let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
     let (State state) = result
     let viewerPlayer = resolveViewer assignment userId result
     let activity = hasGameActivity result assignment
@@ -165,9 +172,14 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
             (renderStaticSquare state, None, status)
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
-        // aria-live: morph-in-place updates (turn changes, win/draw) are announced to
-        // screen-reader users on the JS path; the no-JS refresh covers non-live consumers.
-        div(class' = "status").attr("aria-live", "polite") { h2() { status } }
+        // Canonical link + visible id so the / -> /games/{id} trail is navigable without JS
+        // and an agent can read the id as text (not parse it out of the form action URL).
+        div(class' = "game-link") {
+            a(href = sprintf "/games/%s" gameId) { sprintf "Game %s" gameId.[..7] }
+        }
+        // role="status" announces turn/win/draw to assistive tech on both the JS-morph and
+        // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
+        div(class' = "status").attr("role", "status").attr("aria-live", "polite") { h2() { status } }
         div(class' = "board") {
             for position in allPositions do
                 renderSquare position
@@ -289,6 +301,17 @@ let gameStyles =
 
         .controls {
             text-align: center;
+        }
+
+        /* Reset/Delete are real forms now; keep them inline like the old buttons. */
+        .controls form {
+            display: inline;
+        }
+
+        .game-link {
+            text-align: center;
+            margin-bottom: 8px;
+            font-size: 0.85em;
         }
 
         .new-game-btn {

@@ -101,7 +101,11 @@ type GameImpl() =
                 agent.Post(MakeMove move)
 
         member _.GetState() =
-            agent.PostAndReply(GetState)
+            // Guard against messaging a Stopped actor (would hang forever): fail fast instead.
+            if disposed then
+                raise (ObjectDisposedException("Game"))
+            else
+                agent.PostAndReply(GetState)
 
         member _.Dispose() =
             if not disposed then
@@ -120,15 +124,23 @@ type GameSupervisor =
     abstract GetGame: gameId: string -> Game option
     abstract GetActiveGameCount: unit -> int
     abstract ListActiveGames: unit -> string list
+    abstract SnapshotActiveGames: unit -> (string * MoveResult) list
+    abstract TryGetState: gameId: string -> MoveResult option
 
 type GameRef =
     { Game: Game
       Subscription: IDisposable
-      Timestamp: DateTimeOffset }
+      Timestamp: DateTimeOffset
+      // Latest state, kept current by the supervisor's own subscription (OnNext). Lets
+      // Snapshot read state without messaging each game actor — which would hang if a game
+      // was mid-disposal (Stopped actor) and would stall the whole supervisor mailbox.
+      LatestState: MoveResult ref }
 
 type GameSupervisorMessage =
     | CountActive of AsyncReplyChannel<int>
     | ListGames of AsyncReplyChannel<string list>
+    | Snapshot of AsyncReplyChannel<(string * MoveResult) list>
+    | GetStateOf of string * AsyncReplyChannel<MoveResult option>
     | CreateGame of AsyncReplyChannel<string * Game>
     | GetGame of string * AsyncReplyChannel<Game option>
     | RemoveGame of string
@@ -156,15 +168,31 @@ type GameSupervisorImpl() as this =
                         reply.Reply(state |> Map.toList |> List.map fst)
                         return! messageLoop state
 
+                    | Snapshot reply ->
+                        // Read cached latest states — no per-game actor round-trip, so a game
+                        // mid-disposal cannot hang the supervisor; one round-trip for the caller.
+                        reply.Reply(state |> Map.toList |> List.map (fun (id, gr) -> id, gr.LatestState.Value))
+                        return! messageLoop state
+
+                    | GetStateOf(gameId, reply) ->
+                        // Cached read: None if the game is gone (or being disposed), so callers
+                        // 404 instead of hanging on a Stopped game actor.
+                        reply.Reply(state |> Map.tryFind gameId |> Option.map (fun gr -> gr.LatestState.Value))
+                        return! messageLoop state
+
                     | CreateGame reply ->
                         let gameId = Guid.NewGuid().ToString()
                         let game = createGame ()
                         let timestamp = DateTimeOffset.UtcNow
 
+                        // Initialised by Subscribe's immediate emit (BehaviorSubject semantics)
+                        // before the ref is read via Snapshot.
+                        let latest = ref Unchecked.defaultof<MoveResult>
+
                         let subscription =
                             game.Subscribe(
                                 { new IObserver<MoveResult> with
-                                    member _.OnNext(_) = ()
+                                    member _.OnNext(result) = latest.Value <- result
                                     member _.OnCompleted() = this.RemoveGame(gameId)
                                     member _.OnError(_) = this.RemoveGame(gameId) }
                             )
@@ -172,7 +200,8 @@ type GameSupervisorImpl() as this =
                         let gameRef =
                             { Game = game
                               Timestamp = timestamp
-                              Subscription = subscription }
+                              Subscription = subscription
+                              LatestState = latest }
 
                         let nextState = state |> Map.add gameId gameRef
 
@@ -240,6 +269,11 @@ type GameSupervisorImpl() as this =
         member _.GetActiveGameCount() = agent.PostAndReply(CountActive)
 
         member _.ListActiveGames() = agent.PostAndReply(ListGames)
+
+        member _.SnapshotActiveGames() = agent.PostAndReply(Snapshot)
+
+        member _.TryGetState(gameId: string) =
+            agent.PostAndReply(fun reply -> GetStateOf(gameId, reply))
 
         member _.Dispose() =
             if not disposed then

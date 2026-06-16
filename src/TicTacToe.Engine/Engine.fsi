@@ -28,5 +28,11 @@ type GameSupervisor =
     /// List IDs of all active in-progress games
     abstract ListActiveGames: unit -> string list
 
+    /// Snapshot every active game's id and current state in a single round-trip
+    abstract SnapshotActiveGames: unit -> (string * Model.MoveResult) list
+
+    /// Current state of one game from the supervisor's cache; None if it is gone/disposing
+    abstract TryGetState: gameId: string -> Model.MoveResult option
+
 /// Create a new game supervisor
 val createGameSupervisor: unit -> GameSupervisor

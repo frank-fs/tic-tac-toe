@@ -18,9 +18,11 @@ let homePage (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq
             // Withheld once the game cap is reached.
             if allowCreate then
                 div(class' = "new-game-container") {
-                    button(class' = "new-game-btn", type' = "button")
-                        .attr("data-on:click", "@post('/games')") {
-                        "New Game"
+                    // Real form so a game can be created with no JS; datastar enhances the
+                    // submit when present.
+                    form(method = "post", action = "/games")
+                        .attr("data-on:submit__prevent", "@post('/games')") {
+                        button(class' = "new-game-btn", type' = "submit") { "New Game" }
                     }
                 }
             else

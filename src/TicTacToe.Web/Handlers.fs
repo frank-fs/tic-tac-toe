@@ -130,18 +130,22 @@ let home (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
         let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-        let gameCount = supervisor.GetActiveGameCount()
+        // One round-trip for all games' current state (avoids the per-game N+1 actor traffic
+        // and the GetGame/GetState TOCTOU); kept eager so actor errors surface before flush.
+        let snapshot = supervisor.SnapshotActiveGames()
+        let gameCount = List.length snapshot
         let allowCreate =
             match limits.MaxGames with
             | Some m -> gameCount < m
             | None -> true
         let boards =
-            supervisor.ListActiveGames()
-            |> List.choose (fun gameId ->
-                supervisor.GetGame(gameId)
-                |> Option.map (fun game ->
-                    let assignment = assignmentManager.GetAssignment(gameId)
-                    renderGameBoard gameId (game.GetState()) userId assignment gameCount :> HtmlElement))
+            snapshot
+            |> List.map (fun (gameId, result) ->
+                let assignment = assignmentManager.GetAssignment(gameId)
+                renderGameBoard gameId result userId assignment gameCount)
+        // Dynamic, per-viewer (role-personalised) representation: never cache, so refresh
+        // re-fetches current state.
+        ctx.Response.Headers.CacheControl <- "no-cache, private"
         let element = templates.home.homePage ctx allowCreate boards |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
@@ -194,12 +198,18 @@ let createGame (ctx: HttpContext) =
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        // No-JS form POST gets Post/Redirect/Get; datastar/API keeps status+Location.
+        let isForm = ctx.Request.HasFormContentType
         let atCapacity =
             match limits.MaxGames with
             | Some m -> supervisor.GetActiveGameCount() >= m
             | None -> false
 
-        if atCapacity then
+        if atCapacity && isForm then
+            // No-JS: redirect to the dashboard, where the create affordance is withheld at cap.
+            ctx.Response.StatusCode <- 303
+            ctx.Response.Headers.Location <- "/"
+        elif atCapacity then
             // Uniform interface: creation is not available at the game cap.
             ctx.Response.StatusCode <- 409
             ctx.Response.ContentType <- "application/json"
@@ -223,9 +233,14 @@ let createGame (ctx: HttpContext) =
                         member _.OnCompleted() = () }
                 )
 
-            // Return 201 Created with Location header
-            ctx.Response.StatusCode <- 201
-            ctx.Response.Headers.Location <- $"/games/{gameId}"
+            if isForm then
+                // No-JS: redirect to the dashboard so the new game is visible server-rendered.
+                ctx.Response.StatusCode <- 303
+                ctx.Response.Headers.Location <- "/"
+            else
+                // Return 201 Created with Location header
+                ctx.Response.StatusCode <- 201
+                ctx.Response.Headers.Location <- $"/games/{gameId}"
     }
 
 /// GET /games/{id} - Get a specific game
@@ -235,19 +250,23 @@ let getGame (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
-        match supervisor.GetGame(gameId) with
-        | Some game ->
-            // Subscribe to ensure updates are broadcast
-            subscribeToGame gameId game assignmentManager supervisor
-
-            let result = game.GetState()
+        // GET is safe: no subscription side effect here. Every game is subscribed for
+        // broadcasts at creation (createGame / startup / reset), so a read need not register one.
+        // Read from the supervisor's cached state (TryGetState): never messages the game actor,
+        // so a just-deleted game returns None (404) instead of hanging on a Stopped actor.
+        match supervisor.TryGetState(gameId) with
+        | Some result ->
             let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
             let assignment = assignmentManager.GetAssignment(gameId)
             let gameCount = supervisor.GetActiveGameCount()
+            ctx.Response.Headers.CacheControl <- "no-cache, private"
             let element = renderGameBoard gameId result userId assignment gameCount |> layout.html ctx
             ctx.Response.ContentType <- "text/html; charset=utf-8"
             do! Render.toStreamAsync ctx.Response.Body element
-        | None -> ctx.Response.StatusCode <- 404
+        | None ->
+            ctx.Response.StatusCode <- 404
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync("""<!doctype html><title>Not found</title><p>Game not found. <a href="/">Back to games</a></p>""")
     }
 
 /// Helper to determine if it's X's turn based on game state
@@ -269,13 +288,17 @@ let makeMove (ctx: HttpContext) =
         // Get user ID from authenticated user
         let userId = ctx.User.TryGetUserId()
 
+        // A native form POST (no JS) gets Post/Redirect/Get: 303 back to the game so a
+        // refresh shows current state. A datastar request keeps 202 (the SSE stream updates it).
+        let isForm = ctx.Request.HasFormContentType
+
         match supervisor.GetGame(gameId), userId with
         | Some game, Some uid ->
             // The move is a command. Progressive enhancement: a plain form POST
             // (no JS) carries it as form fields; datastar sends it as signals.
             // Branch on content type to avoid double-reading the request body.
             let! parsedMove =
-                if ctx.Request.HasFormContentType then
+                if isForm then
                     task {
                         let field (name: string) =
                             match ctx.Request.Form.TryGetValue(name) with
@@ -308,18 +331,27 @@ let makeMove (ctx: HttpContext) =
                     // Command accepted; the new board is projected via the SSE event stream.
                     subscribeToGame gameId game assignmentManager supervisor
                     game.MakeMove(moveAction)
-                    ctx.Response.StatusCode <- 202
+                    if isForm then
+                        ctx.Response.StatusCode <- 303
+                        ctx.Response.Headers.Location <- $"/games/{gameId}"
+                    else
+                        ctx.Response.StatusCode <- 202
                 | Rejected reason ->
-                    // Move was rejected - broadcast rejection animation
-                    let rejectionClass =
-                        match reason with
-                        | NotYourTurn -> "rejection-not-your-turn"
-                        | NotAPlayer -> "rejection-not-a-player"
-                        | WrongPlayer -> "rejection-wrong-player"
-                        | GameOver -> "rejection-game-over"
+                    if isForm then
+                        // No-JS: redirect to the game so a fresh GET shows the unchanged state.
+                        ctx.Response.StatusCode <- 303
+                        ctx.Response.Headers.Location <- $"/games/{gameId}"
+                    else
+                        // Move was rejected - broadcast rejection animation
+                        let rejectionClass =
+                            match reason with
+                            | NotYourTurn -> "rejection-not-your-turn"
+                            | NotAPlayer -> "rejection-not-a-player"
+                            | WrongPlayer -> "rejection-wrong-player"
+                            | GameOver -> "rejection-game-over"
 
-                    broadcast (PatchSignals $"""{{ "rejectionAnimation": "{rejectionClass}" }}""")
-                    ctx.Response.StatusCode <- 403
+                        broadcast (PatchSignals $"""{{ "rejectionAnimation": "{rejectionClass}" }}""")
+                        ctx.Response.StatusCode <- 403
         | None, _ -> ctx.Response.StatusCode <- 404
         | _, None ->
             // No user ID - cannot make moves without authentication
@@ -356,7 +388,12 @@ let deleteGame (ctx: HttpContext) =
                     // Broadcast removal to all clients
                     broadcast (RemoveElement $"#game-{gameId}")
 
-                    ctx.Response.StatusCode <- 204
+                    if ctx.Request.HasFormContentType then
+                        // No-JS POST alias: redirect to the dashboard.
+                        ctx.Response.StatusCode <- 303
+                        ctx.Response.Headers.Location <- "/"
+                    else
+                        ctx.Response.StatusCode <- 204
                 | _ ->
                     ctx.Response.StatusCode <- 403  // Forbidden - not an assigned player
         | None, _ -> ctx.Response.StatusCode <- 404
@@ -414,8 +451,13 @@ let resetGame (ctx: HttpContext) =
                                 member _.OnCompleted() = () }
                         )
 
-                    ctx.Response.StatusCode <- 200
-                    ctx.Response.Headers.Location <- $"/games/{newGameId}"
+                    if ctx.Request.HasFormContentType then
+                        // No-JS form: redirect to the freshly reset game.
+                        ctx.Response.StatusCode <- 303
+                        ctx.Response.Headers.Location <- $"/games/{newGameId}"
+                    else
+                        ctx.Response.StatusCode <- 200
+                        ctx.Response.Headers.Location <- $"/games/{newGameId}"
             | _ ->
                 ctx.Response.StatusCode <- 403  // Forbidden - not an assigned player
         | None, _ -> ctx.Response.StatusCode <- 404

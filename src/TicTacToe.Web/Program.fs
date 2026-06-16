@@ -127,6 +127,14 @@ let gameReset =
         post Handlers.resetGame
     }
 
+// No-JS delete: HTML forms cannot emit DELETE, so a POST alias drives the same handler.
+let gameDelete =
+    resource "/games/{id}/delete" {
+        name "GameDelete"
+        requireAuth
+        post Handlers.deleteGame
+    }
+
 /// Create initial games on application startup
 let createInitialGames (app: IApplicationBuilder) =
     let lifetime =
@@ -178,6 +186,7 @@ let main args =
         resource games
         resource gameById
         resource gameReset
+        resource gameDelete
     }
 
     0
