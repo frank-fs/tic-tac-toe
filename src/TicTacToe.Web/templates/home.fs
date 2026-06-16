@@ -4,7 +4,7 @@ open Microsoft.AspNetCore.Http
 open Oxpecker.ViewEngine
 open TicTacToe.Web.templates.game
 
-let homePage (ctx: HttpContext) (allowCreate: bool) =
+let homePage (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq) =
     ctx.Items["Title"] <- "Tic Tac Toe"
 
     Fragment() {
@@ -26,10 +26,10 @@ let homePage (ctx: HttpContext) (allowCreate: bool) =
             else
                 Fragment() { }
 
-            // Games container - games are appended here via SSE
+            // Games container - server-rendered so the dashboard is discoverable and
+            // playable with no JS; the JS path's SSE stream morphs these boards in place.
             div(id = "games-container", class' = "games-container") {
-                // Initial loading state - replaced by SSE on connect
-                div(class' = "loading") { "Connecting..." }
+                for board in gameBoards do board
             }
 
             div(class' = "game-info") {

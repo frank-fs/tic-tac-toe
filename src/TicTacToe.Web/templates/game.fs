@@ -165,7 +165,9 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
             (renderStaticSquare state, None, status)
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
-        div(class' = "status") { h2() { status } }
+        // aria-live: morph-in-place updates (turn changes, win/draw) are announced to
+        // screen-reader users on the JS path; the no-JS refresh covers non-live consumers.
+        div(class' = "status").attr("aria-live", "polite") { h2() { status } }
         div(class' = "board") {
             for position in allPositions do
                 renderSquare position

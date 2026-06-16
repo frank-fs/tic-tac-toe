@@ -11,7 +11,7 @@ open TicTacToe.Web.templates
 // asserting on the class would false-positive; assert on the POST instead).
 let private renderHome (allowCreate: bool) =
     let ctx = DefaultHttpContext()
-    Render.toString (home.homePage ctx allowCreate)
+    Render.toString (home.homePage ctx allowCreate Seq.empty)
 
 let private createAffordance = "@post(&#39;/games&#39;)"
 

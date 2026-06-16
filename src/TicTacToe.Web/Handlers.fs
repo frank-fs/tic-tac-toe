@@ -121,16 +121,28 @@ let logout (ctx: HttpContext) =
         ctx.Response.Redirect(returnUrl)
     }
 
-/// Home page handler
+/// Home page handler — server-renders the full dashboard (all active games) so it is
+/// discoverable and playable with no JS. Live updates after initial load come via the
+/// dedicated /sse stream. Reads live state via GetState (no read-subscription).
 let home (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+        let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+        let gameCount = supervisor.GetActiveGameCount()
         let allowCreate =
             match limits.MaxGames with
-            | Some m -> supervisor.GetActiveGameCount() < m
+            | Some m -> gameCount < m
             | None -> true
-        let element = templates.home.homePage ctx allowCreate |> layout.html ctx
+        let boards =
+            supervisor.ListActiveGames()
+            |> List.choose (fun gameId ->
+                supervisor.GetGame(gameId)
+                |> Option.map (fun game ->
+                    let assignment = assignmentManager.GetAssignment(gameId)
+                    renderGameBoard gameId (game.GetState()) userId assignment gameCount :> HtmlElement))
+        let element = templates.home.homePage ctx allowCreate boards |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
     }
@@ -228,26 +240,13 @@ let getGame (ctx: HttpContext) =
             // Subscribe to ensure updates are broadcast
             subscribeToGame gameId game assignmentManager supervisor
 
-            // Get current state via a temporary subscription
-            let mutable currentResult: MoveResult option = None
-
-            use tempSub =
-                game.Subscribe(
-                    { new IObserver<MoveResult> with
-                        member _.OnNext(result) = currentResult <- Some result
-                        member _.OnError(_) = ()
-                        member _.OnCompleted() = () }
-                )
-
-            match currentResult with
-            | Some result ->
-                let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-                let assignment = assignmentManager.GetAssignment(gameId)
-                let gameCount = supervisor.GetActiveGameCount()
-                let element = renderGameBoard gameId result userId assignment gameCount |> layout.html ctx
-                ctx.Response.ContentType <- "text/html; charset=utf-8"
-                do! Render.toStreamAsync ctx.Response.Body element
-            | None -> ctx.Response.StatusCode <- 500
+            let result = game.GetState()
+            let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+            let assignment = assignmentManager.GetAssignment(gameId)
+            let gameCount = supervisor.GetActiveGameCount()
+            let element = renderGameBoard gameId result userId assignment gameCount |> layout.html ctx
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! Render.toStreamAsync ctx.Response.Body element
         | None -> ctx.Response.StatusCode <- 404
     }
 
