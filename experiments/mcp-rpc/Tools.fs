@@ -1,20 +1,17 @@
 module TicTacToe.McpRpc.Tools
 
 open System.ComponentModel
-open System.Text.Json.Serialization
+open System.Security.Claims
 open ModelContextProtocol.Server
 open TicTacToe.Engine
 open TicTacToe.Model
+open TicTacToe.McpRpc.Identity
 
-// Ordered list of all positions (index 0–8)
 let private allPositions =
     [| TopLeft; TopCenter; TopRight
        MiddleLeft; MiddleCenter; MiddleRight
        BottomLeft; BottomCenter; BottomRight |]
 
-let private supervisor = createGameSupervisor ()
-
-/// Render the board as 9 cells: "X", "O", or "" (empty)
 let private renderBoard (gameState: GameState) : string[] =
     allPositions
     |> Array.map (fun pos ->
@@ -33,8 +30,7 @@ let private whoseTurn (result: MoveResult) =
 
 let private statusStr (result: MoveResult) =
     match result with
-    | XTurn _ -> "in_progress"
-    | OTurn _ -> "in_progress"
+    | XTurn _ | OTurn _ -> "in_progress"
     | Won _ -> "won"
     | Draw _ -> "draw"
     | Error(_, msg) -> sprintf "error: %s" msg
@@ -45,122 +41,72 @@ let private validMoves (result: MoveResult) : string[] =
     | OTurn(_, moves) -> moves |> Array.map (fun (OPos p) -> p.ToString())
     | _ -> [||]
 
-// ─── Response record types ───────────────────────────────────────────────────
+let private stateOf (result: MoveResult) : GameState =
+    match result with
+    | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
 
+type AuthResponse = { token: string }
 type NewGameResponse = { gameId: string }
 
-type BoardResponse =
-    { board: string[]
-      whoseTurn: string
-      status: string
-      validMoves: string[] }
-
-type MoveResponse =
-    { board: string[]
-      whoseTurn: string
-      status: string }
-
-type ErrorResponse =
-    { error: string
-      position: string }
-
-type GameStateResponse =
-    { gameId: string
-      board: string[]
-      whoseTurn: string
-      status: string
-      validMoves: string[] }
-
-// ─── Tool implementations ─────────────────────────────────────────────────────
-
 [<McpServerToolType>]
-type TicTacToeTools() =
+type TicTacToeTools
+    (
+        supervisor: GameSupervisor,
+        session: SessionIdentity,
+        assignments: PlayerAssignmentStore
+    ) =
+
+    [<McpServerTool>]
+    [<Description("Authenticate as a player. Returns a token bound to this connection. Call this once before make_move; subsequent calls carry your identity automatically.")>]
+    member _.authenticate() : AuthResponse =
+        { token = session.Authenticate() }
 
     [<McpServerTool>]
     [<Description("Create a new tic-tac-toe game. Returns a gameId to use in subsequent calls. X always moves first.")>]
-    static member new_game() : NewGameResponse =
+    member _.new_game() : NewGameResponse =
         let gameId, _ = supervisor.CreateGame()
         { gameId = gameId }
 
     [<McpServerTool>]
-    [<Description("Get the current board state for a game. Returns the board as 9 cells (index 0=TopLeft to 8=BottomRight), whose turn it is, game status, and valid moves.")>]
-    static member get_board
+    [<Description("Make a move. You must authenticate first; the server derives your side (X or O) from your identity. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
+    member _.make_move
         (
-            [<Description("The game ID returned by new_game")>] gameId: string
-        ) : obj =
-        match supervisor.GetGame(gameId) with
-        | None ->
-            box {| error = "game_not_found"; gameId = gameId |}
-        | Some game ->
-            let result = game.GetState()
-            let gs =
-                match result with
-                | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
-            box
-                { board = renderBoard gs
-                  whoseTurn = whoseTurn result
-                  status = statusStr result
-                  validMoves = validMoves result }
-
-    [<McpServerTool>]
-    [<Description("Make a move in a tic-tac-toe game. player must be 'X' or 'O'. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight. Returns updated board on success, or a structured error.")>]
-    static member make_move
-        (
+            user: ClaimsPrincipal,
             [<Description("The game ID returned by new_game")>] gameId: string,
-            [<Description("The player making the move: 'X' or 'O'")>] player: string,
             [<Description("Board position: TopLeft | TopCenter | TopRight | MiddleLeft | MiddleCenter | MiddleRight | BottomLeft | BottomCenter | BottomRight")>] position: string
         ) : obj =
+        let token =
+            match user with
+            | null -> None
+            | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
+
+        match resolveMove supervisor assignments token gameId position with
+        | Moved(board, turn, status) -> box {| board = board; whoseTurn = turn; status = status |}
+        | MoveOutcome.Rejected code -> box {| error = code; position = position |}
+
+    [<McpServerTool>]
+    [<Description("Get the current board state for a game: 9 cells (index 0=TopLeft to 8=BottomRight), whose turn it is, status, and valid moves.")>]
+    member _.get_board([<Description("The game ID returned by new_game")>] gameId: string) : obj =
         match supervisor.GetGame(gameId) with
-        | None ->
-            box {| error = "game_not_found"; gameId = gameId |}
+        | None -> box {| error = "game_not_found"; gameId = gameId |}
         | Some game ->
-            match Move.TryParse(player, position) with
-            | None ->
-                box {| error = "invalid_input"; player = player; position = position |}
-            | Some move ->
-                let before = game.GetState()
-                game.MakeMove(move)
-                let after = game.GetState()
-                match after with
-                | Error(gs, msg) ->
-                    // Determine structured error code
-                    let code =
-                        match msg with
-                        | m when m.Contains("already") -> "game_over"
-                        | m when m.Contains("Invalid") ->
-                            // Distinguish position_taken vs wrong_player by checking if it was a wrong-turn error
-                            match before with
-                            | XTurn _ when (match move with OMove _ -> true | _ -> false) -> "wrong_player"
-                            | OTurn _ when (match move with XMove _ -> true | _ -> false) -> "wrong_player"
-                            | _ -> "position_taken"
-                        | _ -> "invalid_move"
-                    box {| error = code; position = position |}
-                | result ->
-                    let gs =
-                        match result with
-                        | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
-                    box
-                        { board = renderBoard gs
-                          whoseTurn = whoseTurn result
-                          status = statusStr result }
+            let result = game.GetState()
+            box
+                {| board = renderBoard (stateOf result)
+                   whoseTurn = whoseTurn result
+                   status = statusStr result
+                   validMoves = validMoves result |}
 
     [<McpServerTool>]
     [<Description("Get full game state including board, turn, status, and valid moves for the game.")>]
-    static member get_state
-        (
-            [<Description("The game ID returned by new_game")>] gameId: string
-        ) : obj =
+    member _.get_state([<Description("The game ID returned by new_game")>] gameId: string) : obj =
         match supervisor.GetGame(gameId) with
-        | None ->
-            box {| error = "game_not_found"; gameId = gameId |}
+        | None -> box {| error = "game_not_found"; gameId = gameId |}
         | Some game ->
             let result = game.GetState()
-            let gs =
-                match result with
-                | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
             box
-                { gameId = gameId
-                  board = renderBoard gs
-                  whoseTurn = whoseTurn result
-                  status = statusStr result
-                  validMoves = validMoves result }
+                {| gameId = gameId
+                   board = renderBoard (stateOf result)
+                   whoseTurn = whoseTurn result
+                   status = statusStr result
+                   validMoves = validMoves result |}

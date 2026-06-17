@@ -2,6 +2,7 @@ module TicTacToe.McpRpc.Tests.ResolveMoveTests
 
 open Expecto
 open TicTacToe.Engine
+open TicTacToe.McpRpc
 open TicTacToe.McpRpc.Identity
 
 let private freshGame () =
@@ -61,3 +62,40 @@ let resolveMoveTests =
               let store = PlayerAssignmentStore()
               let r = resolveMove sup store (Some "tokA") gameId "Nope"
               Expect.equal r (Rejected "invalid_input") "unparseable position rejected" ]
+
+open System.Security.Claims
+
+let private principal (token: string) =
+    ClaimsPrincipal(ClaimsIdentity([ Claim(ClaimTypes.Name, token) ], "Test", ClaimTypes.Name, ClaimTypes.Role))
+
+let private prop (name: string) (o: obj) : obj =
+    o.GetType().GetProperty(name).GetValue(o)
+
+[<Tests>]
+let toolsTests =
+    testList
+        "TicTacToeTools"
+        [ testCase "authenticate returns a token and binds the session"
+          <| fun _ ->
+              let session = SessionIdentity()
+              let tools = Tools.TicTacToeTools(createGameSupervisor (), session, PlayerAssignmentStore())
+              let resp = tools.authenticate ()
+              Expect.isNotEmpty resp.token "token returned"
+              Expect.equal session.Current (Some resp.token) "session bound to minted token"
+
+          testCase "make_move with no claim is unauthenticated"
+          <| fun _ ->
+              let sup = createGameSupervisor ()
+              let gameId, _ = sup.CreateGame()
+              let tools = Tools.TicTacToeTools(sup, SessionIdentity(), PlayerAssignmentStore())
+              let resp = tools.make_move (null, gameId, "TopLeft")
+              Expect.equal (prop "error" resp :?> string) "unauthenticated" "no claim rejected"
+
+          testCase "make_move with a claim places the mark"
+          <| fun _ ->
+              let sup = createGameSupervisor ()
+              let gameId, _ = sup.CreateGame()
+              let tools = Tools.TicTacToeTools(sup, SessionIdentity(), PlayerAssignmentStore())
+              let resp = tools.make_move (principal "tokA", gameId, "TopLeft")
+              let board = (prop "board" resp) :?> string[]
+              Expect.equal board.[0] "X" "X placed via claim identity" ]
