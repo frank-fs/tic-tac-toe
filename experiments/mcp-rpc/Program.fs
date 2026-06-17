@@ -20,17 +20,24 @@ let private configureLogging (builder: HostApplicationBuilder) =
 /// context.User as a ClaimsPrincipal so tools can read identity via injected
 /// ClaimsPrincipal. SessionIdentity is a Singleton, so the token persists across
 /// the separate authenticate and make_move calls on the same stdio connection.
+///
+/// context.User is ALWAYS set to a non-null principal. When authenticated, its
+/// identity carries the token as ClaimTypes.Name. When unauthenticated, an empty
+/// identity (no Name) is used so the SDK still injects a non-null ClaimsPrincipal
+/// — without this, an unset User makes the SDK fall back to DI resolution for the
+/// `ClaimsPrincipal` parameter and throw an opaque framework error. The empty
+/// principal lets make_move's token derivation yield None -> clean "unauthenticated".
 let private bridgeIdentity (next: McpMessageHandler) : McpMessageHandler =
     McpMessageHandler(fun (context: MessageContext) (ct: CancellationToken) ->
         let session = context.Services.GetService<SessionIdentity>()
 
-        match (if isNull (box session) then None else session.Current) with
-        | Some token ->
-            let identity =
+        let identity =
+            match (if isNull (box session) then None else session.Current) with
+            | Some token ->
                 ClaimsIdentity([ Claim(ClaimTypes.Name, token) ], "StdioAuth", ClaimTypes.Name, ClaimTypes.Role)
+            | None -> ClaimsIdentity()
 
-            context.User <- ClaimsPrincipal(identity)
-        | None -> ()
+        context.User <- ClaimsPrincipal(identity)
 
         next.Invoke(context, ct))
 

@@ -79,31 +79,33 @@ def tool_payload(result_msg):
     return result
 
 
-def main():
-    if not os.path.exists(DLL):
-        fail(f"DLL not found: {DLL} (build Release first)")
+def handshake(srv):
+    """initialize + notifications/initialized on a fresh server."""
+    init = srv.request({
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {"name": "smoke", "version": "1.0"},
+        },
+    })
+    if "result" not in init:
+        fail("initialize failed", init)
+    srv.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
+
+def positive_case():
+    """authenticate -> new_game -> make_move; assert board[0]='X', turn 'O'."""
+    print("=== POSITIVE: authenticate before make_move ===")
     srv = Server()
     try:
-        init = srv.request({
-            "jsonrpc": "2.0", "id": 1, "method": "initialize",
-            "params": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {},
-                "clientInfo": {"name": "smoke", "version": "1.0"},
-            },
-        })
-        if "result" not in init:
-            fail("initialize failed", init)
-
-        srv.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
+        handshake(srv)
 
         auth = srv.request({
             "jsonrpc": "2.0", "id": 2, "method": "tools/call",
             "params": {"name": "authenticate", "arguments": {}},
         })
-        auth_payload = tool_payload(auth)
-        token = auth_payload.get("token")
+        token = tool_payload(auth).get("token")
         if not token:
             fail("authenticate returned no token", auth)
         print(f"authenticate -> token={token}")
@@ -112,8 +114,7 @@ def main():
             "jsonrpc": "2.0", "id": 3, "method": "tools/call",
             "params": {"name": "new_game", "arguments": {}},
         })
-        ng_payload = tool_payload(ng)
-        game_id = ng_payload.get("gameId")
+        game_id = tool_payload(ng).get("gameId")
         if not game_id:
             fail("new_game returned no gameId", ng)
         print(f"new_game -> gameId={game_id}")
@@ -135,17 +136,83 @@ def main():
                 "(session token did not reach make_move's ClaimsPrincipal)",
                 json.dumps(mv_payload),
             )
-
         board = mv_payload.get("board")
         if not isinstance(board, list) or len(board) != 9:
             fail("make_move did not return a 9-cell board", json.dumps(mv_payload))
         if board[0] != "X":
             fail(f"expected X at index 0, got {board[0]!r}", json.dumps(mv_payload))
+        if mv_payload.get("whoseTurn") != "O":
+            fail(f"expected turn 'O', got {mv_payload.get('whoseTurn')!r}", json.dumps(mv_payload))
 
-        print("\nPASS: authenticate -> new_game -> make_move succeeded; board[0]='X'.")
-        print("The message filter bridged SessionIdentity -> ClaimsPrincipal across calls.")
+        print("PASS: authenticate -> new_game -> make_move succeeded; board[0]='X', turn 'O'.")
     finally:
         srv.close()
+
+
+def negative_case():
+    """make_move BEFORE authenticate on a FRESH server must return a clean
+    structured {"error":"unauthenticated"} — NOT a framework JSON-RPC error."""
+    print("\n=== NEGATIVE: make_move WITHOUT authenticate ===")
+    srv = Server()
+    try:
+        handshake(srv)
+
+        ng = srv.request({
+            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+            "params": {"name": "new_game", "arguments": {}},
+        })
+        game_id = tool_payload(ng).get("gameId")
+        if not game_id:
+            fail("new_game returned no gameId", ng)
+        print(f"new_game -> gameId={game_id}")
+
+        mv = srv.request({
+            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+            "params": {
+                "name": "make_move",
+                "arguments": {"gameId": game_id, "position": "TopLeft"},
+            },
+        })
+
+        if "error" in mv:
+            fail(
+                "make_move raised a JSON-RPC framework error instead of returning "
+                "a clean structured unauthenticated payload",
+                json.dumps(mv.get("error")),
+            )
+        result = mv.get("result", {})
+        if result.get("isError"):
+            fail(
+                "make_move tool result isError=true (framework/exception path) "
+                "instead of a clean unauthenticated payload",
+                json.dumps(result),
+            )
+
+        mv_payload = tool_payload(mv)
+        print("make_move response:")
+        print(json.dumps(mv_payload, indent=2))
+
+        if mv_payload.get("error") != "unauthenticated":
+            fail(
+                "expected clean {'error':'unauthenticated'}, got something else "
+                "(unauthenticated error path still unreachable over the wire)",
+                json.dumps(mv_payload),
+            )
+
+        print("PASS: make_move-before-authenticate returned clean {'error':'unauthenticated'}.")
+    finally:
+        srv.close()
+
+
+def main():
+    if not os.path.exists(DLL):
+        fail(f"DLL not found: {DLL} (build Release first)")
+
+    positive_case()
+    negative_case()
+
+    print("\nALL CASES PASS: identity bridge works AND the unauthenticated error "
+          "path is reachable over the wire as a clean structured error.")
 
 
 if __name__ == "__main__":
