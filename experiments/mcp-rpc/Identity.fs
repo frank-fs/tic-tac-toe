@@ -84,12 +84,12 @@ type MoveOutcome =
     | Moved of board: string[] * whoseTurn: string * status: string
     | Rejected of code: string
 
-let private allPositions =
+let allPositions =
     [| TopLeft; TopCenter; TopRight
        MiddleLeft; MiddleCenter; MiddleRight
        BottomLeft; BottomCenter; BottomRight |]
 
-let private renderBoard (gs: GameState) : string[] =
+let renderBoard (gs: GameState) : string[] =
     allPositions
     |> Array.map (fun pos ->
         match gs.TryGetValue pos with
@@ -97,11 +97,11 @@ let private renderBoard (gs: GameState) : string[] =
         | true, Taken O -> "O"
         | _ -> "")
 
-let private stateOf (result: MoveResult) : GameState =
+let stateOf (result: MoveResult) : GameState =
     match result with
     | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
 
-let private whoseTurnStr (result: MoveResult) =
+let whoseTurnStr (result: MoveResult) =
     match result with
     | XTurn _ -> "X"
     | OTurn _ -> "O"
@@ -109,12 +109,18 @@ let private whoseTurnStr (result: MoveResult) =
     | Draw _ -> "draw"
     | Error _ -> "error"
 
-let private statusStr (result: MoveResult) =
+let statusStr (result: MoveResult) =
     match result with
     | XTurn _ | OTurn _ -> "in_progress"
     | Won _ -> "won"
     | Draw _ -> "draw"
     | Error(_, msg) -> sprintf "error: %s" msg
+
+let validMoves (result: MoveResult) : string[] =
+    match result with
+    | XTurn(_, moves) -> moves |> Array.map (fun (XPos p) -> p.ToString())
+    | OTurn(_, moves) -> moves |> Array.map (fun (OPos p) -> p.ToString())
+    | _ -> [||]
 
 /// Minimal Result computation expression for linear short-circuit composition.
 type private ResultBuilder() =

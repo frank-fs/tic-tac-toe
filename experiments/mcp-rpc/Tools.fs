@@ -7,44 +7,6 @@ open TicTacToe.Engine
 open TicTacToe.Model
 open TicTacToe.McpRpc.Identity
 
-let private allPositions =
-    [| TopLeft; TopCenter; TopRight
-       MiddleLeft; MiddleCenter; MiddleRight
-       BottomLeft; BottomCenter; BottomRight |]
-
-let private renderBoard (gameState: GameState) : string[] =
-    allPositions
-    |> Array.map (fun pos ->
-        match gameState.TryGetValue(pos) with
-        | true, Taken X -> "X"
-        | true, Taken O -> "O"
-        | _ -> "")
-
-let private whoseTurn (result: MoveResult) =
-    match result with
-    | XTurn _ -> "X"
-    | OTurn _ -> "O"
-    | Won(_, player) -> sprintf "%O won" player
-    | Draw _ -> "draw"
-    | Error _ -> "error"
-
-let private statusStr (result: MoveResult) =
-    match result with
-    | XTurn _ | OTurn _ -> "in_progress"
-    | Won _ -> "won"
-    | Draw _ -> "draw"
-    | Error(_, msg) -> sprintf "error: %s" msg
-
-let private validMoves (result: MoveResult) : string[] =
-    match result with
-    | XTurn(_, moves) -> moves |> Array.map (fun (XPos p) -> p.ToString())
-    | OTurn(_, moves) -> moves |> Array.map (fun (OPos p) -> p.ToString())
-    | _ -> [||]
-
-let private stateOf (result: MoveResult) : GameState =
-    match result with
-    | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
-
 type AuthResponse = { token: string }
 type NewGameResponse = { gameId: string }
 
@@ -93,7 +55,7 @@ type TicTacToeTools
             let result = game.GetState()
             box
                 {| board = renderBoard (stateOf result)
-                   whoseTurn = whoseTurn result
+                   whoseTurn = whoseTurnStr result
                    status = statusStr result
                    validMoves = validMoves result |}
 
@@ -107,6 +69,6 @@ type TicTacToeTools
             box
                 {| gameId = gameId
                    board = renderBoard (stateOf result)
-                   whoseTurn = whoseTurn result
+                   whoseTurn = whoseTurnStr result
                    status = statusStr result
                    validMoves = validMoves result |}
