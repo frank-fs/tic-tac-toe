@@ -9,8 +9,11 @@ X on the board, the bridge works. If it returns unauthenticated/error, it does n
 
 import json
 import os
+import select
 import subprocess
 import sys
+
+READ_TIMEOUT_S = 30  # fail fast if the server goes silent instead of blocking forever
 
 DLL = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -45,6 +48,9 @@ class Server:
         self.send(req)
         want = req["id"]
         for _ in range(50):  # bounded: tolerate interleaved notifications
+            ready, _, _ = select.select([self.proc.stdout], [], [], READ_TIMEOUT_S)
+            if not ready:
+                fail(f"server went silent for {READ_TIMEOUT_S}s waiting on id={want}")
             line = self.proc.stdout.readline()
             if not line:
                 fail(f"server closed stdout before responding to id={want}")

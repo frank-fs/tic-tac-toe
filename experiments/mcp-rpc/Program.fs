@@ -29,10 +29,10 @@ let private configureLogging (builder: HostApplicationBuilder) =
 /// principal lets make_move's token derivation yield None -> clean "unauthenticated".
 let private bridgeIdentity (next: McpMessageHandler) : McpMessageHandler =
     McpMessageHandler(fun (context: MessageContext) (ct: CancellationToken) ->
-        let session = context.Services.GetService<SessionIdentity>()
+        let session = context.Services.GetRequiredService<SessionIdentity>()
 
         let identity =
-            match (if isNull (box session) then None else session.Current) with
+            match session.Current with
             | Some token ->
                 ClaimsIdentity([ Claim(ClaimTypes.Name, token) ], "StdioAuth", ClaimTypes.Name, ClaimTypes.Role)
             | None -> ClaimsIdentity()
