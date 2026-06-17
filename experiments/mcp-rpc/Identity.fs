@@ -76,3 +76,81 @@ type SessionIdentity() =
 
     /// The currently authenticated token, if any.
     member _.Current: string option = token
+
+open TicTacToe.Engine
+
+/// Outcome of a move attempt, ready to be boxed into the MCP JSON response.
+type MoveOutcome =
+    | Moved of board: string[] * whoseTurn: string * status: string
+    | Rejected of code: string
+
+let private allPositions =
+    [| TopLeft; TopCenter; TopRight
+       MiddleLeft; MiddleCenter; MiddleRight
+       BottomLeft; BottomCenter; BottomRight |]
+
+let private renderBoard (gs: GameState) : string[] =
+    allPositions
+    |> Array.map (fun pos ->
+        match gs.TryGetValue pos with
+        | true, Taken X -> "X"
+        | true, Taken O -> "O"
+        | _ -> "")
+
+let private stateOf (result: MoveResult) : GameState =
+    match result with
+    | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
+
+let private whoseTurnStr (result: MoveResult) =
+    match result with
+    | XTurn _ -> "X"
+    | OTurn _ -> "O"
+    | Won(_, p) -> sprintf "%O won" p
+    | Draw _ -> "draw"
+    | Error _ -> "error"
+
+let private statusStr (result: MoveResult) =
+    match result with
+    | XTurn _ | OTurn _ -> "in_progress"
+    | Won _ -> "won"
+    | Draw _ -> "draw"
+    | Error(_, msg) -> sprintf "error: %s" msg
+
+/// Resolve a move attempt: authenticate, locate game, validate turn via the
+/// assignment store, derive the side from the claim, apply, and shape the result.
+let resolveMove
+    (supervisor: GameSupervisor)
+    (assignments: PlayerAssignmentStore)
+    (token: string option)
+    (gameId: string)
+    (position: string)
+    : MoveOutcome =
+    match token with
+    | None -> Rejected "unauthenticated"
+    | Some token ->
+        match supervisor.GetGame gameId with
+        | None -> Rejected "game_not_found"
+        | Some game ->
+            match game.GetState() with
+            | Won _
+            | Draw _ -> Rejected "game_over"
+            | Error _ -> Rejected "invalid_move"
+            | (XTurn _ | OTurn _) as before ->
+                let isXTurn = (match before with | XTurn _ -> true | _ -> false)
+
+                match assignments.TryAssignAndValidate(gameId, token, isXTurn) with
+                | MoveValidationResult.Rejected NotYourTurn -> Rejected "not_your_turn"
+                | MoveValidationResult.Rejected NotAPlayer -> Rejected "game_full"
+                | MoveValidationResult.Allowed side ->
+                    match SquarePosition.TryParse position with
+                    | None -> Rejected "invalid_input"
+                    | Some pos ->
+                        let move = match side with | X -> XMove pos | O -> OMove pos
+                        let boardBefore = stateOf (game.GetState())
+                        game.MakeMove move
+                        let after = game.GetState()
+
+                        if obj.ReferenceEquals(stateOf after, boardBefore) then
+                            Rejected "position_taken"
+                        else
+                            Moved(renderBoard (stateOf after), whoseTurnStr after, statusStr after)

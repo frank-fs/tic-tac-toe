@@ -50,7 +50,7 @@ let assignmentStoreTests =
               store.TryAssignAndValidate("g1", "tokA", true) |> ignore
               store.TryAssignAndValidate("g1", "tokB", false) |> ignore
               let r = store.TryAssignAndValidate("g1", "tokA", false)
-              Expect.equal r (Rejected NotYourTurn) "X cannot move on O's turn"
+              Expect.equal r (MoveValidationResult.Rejected NotYourTurn) "X cannot move on O's turn"
 
           testCase "third token in a full game is rejected NotAPlayer"
           <| fun _ ->
@@ -58,7 +58,7 @@ let assignmentStoreTests =
               store.TryAssignAndValidate("g1", "tokA", true) |> ignore
               store.TryAssignAndValidate("g1", "tokB", false) |> ignore
               let r = store.TryAssignAndValidate("g1", "tokC", true)
-              Expect.equal r (Rejected NotAPlayer) "spectator rejected"
+              Expect.equal r (MoveValidationResult.Rejected NotAPlayer) "spectator rejected"
 
           testCase "one token holds independent seats across two games"
           <| fun _ ->
