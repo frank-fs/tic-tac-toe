@@ -116,6 +116,54 @@ let private statusStr (result: MoveResult) =
     | Draw _ -> "draw"
     | Error(_, msg) -> sprintf "error: %s" msg
 
+/// Minimal Result computation expression for linear short-circuit composition.
+type private ResultBuilder() =
+    member _.Bind(r, f) = Result.bind f r
+    member _.Return(x) = Ok x
+    member _.ReturnFrom(r: Result<_, _>) = r
+
+let private result = ResultBuilder()
+
+let private requireToken (token: string option) : Result<string, string> =
+    match token with
+    | Some t -> Ok t
+    | None -> Result.Error "unauthenticated"
+
+let private requireGame (supervisor: GameSupervisor) (gameId: string) : Result<Game, string> =
+    match supervisor.GetGame gameId with
+    | Some g -> Ok g
+    | None -> Result.Error "game_not_found"
+
+/// Only an in-progress game (X or O to move) is playable; otherwise reject.
+let private requirePlayable (game: Game) : Result<MoveResult, string> =
+    match game.GetState() with
+    | Won _
+    | Draw _ -> Result.Error "game_over"
+    | TicTacToe.Model.MoveResult.Error _ -> Result.Error "invalid_move"
+    | (XTurn _ | OTurn _) as before -> Ok before
+
+let private requireSeat
+    (assignments: PlayerAssignmentStore)
+    (gameId: string)
+    (token: string)
+    (before: MoveResult)
+    : Result<Player, string> =
+    let isXTurn = (match before with | XTurn _ -> true | _ -> false)
+
+    match assignments.TryAssignAndValidate(gameId, token, isXTurn) with
+    | MoveValidationResult.Rejected NotYourTurn -> Result.Error "not_your_turn"
+    | MoveValidationResult.Rejected NotAPlayer -> Result.Error "game_full"
+    | MoveValidationResult.Allowed side -> Ok side
+
+/// Parse the target square and confirm it is empty in the pre-move board.
+let private requireEmptySquare (before: MoveResult) (position: string) : Result<SquarePosition, string> =
+    match SquarePosition.TryParse position with
+    | None -> Result.Error "invalid_input"
+    | Some pos ->
+        match (stateOf before).TryGetValue pos with
+        | true, Taken _ -> Result.Error "position_taken"
+        | _ -> Ok pos
+
 /// Resolve a move attempt: authenticate, locate game, validate turn via the
 /// assignment store, derive the side from the claim, apply, and shape the result.
 let resolveMove
@@ -125,30 +173,19 @@ let resolveMove
     (gameId: string)
     (position: string)
     : MoveOutcome =
-    match token with
-    | None -> Rejected "unauthenticated"
-    | Some token ->
-        match supervisor.GetGame gameId with
-        | None -> Rejected "game_not_found"
-        | Some game ->
-            match game.GetState() with
-            | Won _
-            | Draw _ -> Rejected "game_over"
-            | Error _ -> Rejected "invalid_move"
-            | (XTurn _ | OTurn _) as before ->
-                let isXTurn = (match before with | XTurn _ -> true | _ -> false)
+    let outcome =
+        result {
+            let! token = requireToken token
+            let! game = requireGame supervisor gameId
+            let! before = requirePlayable game
+            let! side = requireSeat assignments gameId token before
+            let! pos = requireEmptySquare before position
+            let move = match side with | X -> XMove pos | O -> OMove pos
+            game.MakeMove move
+            let after = game.GetState()
+            return (renderBoard (stateOf after), whoseTurnStr after, statusStr after)
+        }
 
-                match assignments.TryAssignAndValidate(gameId, token, isXTurn) with
-                | MoveValidationResult.Rejected NotYourTurn -> Rejected "not_your_turn"
-                | MoveValidationResult.Rejected NotAPlayer -> Rejected "game_full"
-                | MoveValidationResult.Allowed side ->
-                    match SquarePosition.TryParse position with
-                    | None -> Rejected "invalid_input"
-                    | Some pos ->
-                        match (stateOf before).TryGetValue pos with
-                        | true, Taken _ -> Rejected "position_taken"
-                        | _ ->
-                            let move = match side with | X -> XMove pos | O -> OMove pos
-                            game.MakeMove move
-                            let after = game.GetState()
-                            Moved(renderBoard (stateOf after), whoseTurnStr after, statusStr after)
+    match outcome with
+    | Ok(board, whoseTurn, status) -> Moved(board, whoseTurn, status)
+    | Result.Error code -> MoveOutcome.Rejected code
