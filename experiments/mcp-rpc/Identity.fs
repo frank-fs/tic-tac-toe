@@ -145,12 +145,10 @@ let resolveMove
                     match SquarePosition.TryParse position with
                     | None -> Rejected "invalid_input"
                     | Some pos ->
-                        let move = match side with | X -> XMove pos | O -> OMove pos
-                        let boardBefore = stateOf (game.GetState())
-                        game.MakeMove move
-                        let after = game.GetState()
-
-                        if obj.ReferenceEquals(stateOf after, boardBefore) then
-                            Rejected "position_taken"
-                        else
+                        match (stateOf before).TryGetValue pos with
+                        | true, Taken _ -> Rejected "position_taken"
+                        | _ ->
+                            let move = match side with | X -> XMove pos | O -> OMove pos
+                            game.MakeMove move
+                            let after = game.GetState()
                             Moved(renderBoard (stateOf after), whoseTurnStr after, statusStr after)
