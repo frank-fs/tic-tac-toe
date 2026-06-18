@@ -75,19 +75,17 @@ let private prop (name: string) (o: obj) : obj =
 let toolsTests =
     testList
         "TicTacToeTools"
-        [ testCase "authenticate returns a token and binds the session"
+        [ testCase "authenticate returns a non-empty token"
           <| fun _ ->
-              let session = SessionIdentity()
-              let tools = Tools.TicTacToeTools(createGameSupervisor (), session, PlayerAssignmentStore())
+              let tools = Tools.TicTacToeTools(createGameSupervisor (), PlayerAssignmentStore())
               let resp = tools.authenticate ()
               Expect.isNotEmpty resp.token "token returned"
-              Expect.equal session.Current (Some resp.token) "session bound to minted token"
 
           testCase "make_move with no claim is unauthenticated"
           <| fun _ ->
               let sup = createGameSupervisor ()
               let gameId, _ = sup.CreateGame()
-              let tools = Tools.TicTacToeTools(sup, SessionIdentity(), PlayerAssignmentStore())
+              let tools = Tools.TicTacToeTools(sup, PlayerAssignmentStore())
               let resp = tools.make_move (null, gameId, "TopLeft")
               Expect.equal (prop "error" resp :?> string) "unauthenticated" "no claim rejected"
 
@@ -95,7 +93,7 @@ let toolsTests =
           <| fun _ ->
               let sup = createGameSupervisor ()
               let gameId, _ = sup.CreateGame()
-              let tools = Tools.TicTacToeTools(sup, SessionIdentity(), PlayerAssignmentStore())
+              let tools = Tools.TicTacToeTools(sup, PlayerAssignmentStore())
               let resp = tools.make_move (principal "tokA", gameId, "TopLeft")
               let board = (prop "board" resp) :?> string[]
               Expect.equal board.[0] "X" "X placed via claim identity" ]

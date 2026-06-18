@@ -1,29 +1,21 @@
 module TicTacToe.McpRpc.Tests.IdentityTests
 
 open Expecto
+open TicTacToe.Engine
+open TicTacToe.McpRpc
 open TicTacToe.McpRpc.Identity
 
 [<Tests>]
-let sessionIdentityTests =
+let authenticateTests =
     testList
-        "SessionIdentity"
-        [ testCase "starts unauthenticated"
+        "authenticate"
+        [ testCase "returns a non-empty token, distinct across calls"
           <| fun _ ->
-              let s = SessionIdentity()
-              Expect.isNone s.Current "no token before authenticate"
-
-          testCase "Authenticate sets a token and returns it"
-          <| fun _ ->
-              let s = SessionIdentity()
-              let t = s.Authenticate()
-              Expect.isNotNull t "token is returned"
-              Expect.equal s.Current (Some t) "Current reflects the minted token"
-
-          testCase "Authenticate mints distinct tokens"
-          <| fun _ ->
-              let a = SessionIdentity().Authenticate()
-              let b = SessionIdentity().Authenticate()
-              Expect.notEqual a b "tokens are unique" ]
+              let tools = Tools.TicTacToeTools(createGameSupervisor (), PlayerAssignmentStore())
+              let a = tools.authenticate().token
+              let b = tools.authenticate().token
+              Expect.isNotEmpty a "token is non-empty"
+              Expect.notEqual a b "two calls mint distinct tokens" ]
 
 open TicTacToe.Model
 

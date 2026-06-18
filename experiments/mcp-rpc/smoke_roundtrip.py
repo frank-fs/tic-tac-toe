@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 """End-to-end round trip against the REAL stdio MCP server.
 
-Proves the identity handshake: authenticate -> new_game -> make_move, where
-make_move carries NO token/player and relies entirely on the message filter
-bridging SessionIdentity.Current onto context.User. If make_move succeeds with
-X on the board, the bridge works. If it returns unauthenticated/error, it does not.
+Proves PER-REQUEST identity via MCP `_meta`: ONE server process / ONE stdio
+connection carries MANY distinct identities. The orchestrator (here, this
+script) sets params._meta.identityToken on each tools/call; the server's message
+filter projects it onto context.User so make_move derives the seat from it.
+
+Cases on ONE connection:
+  1. authenticate (no _meta) x2 -> token A, token B (distinct).
+  2. new_game -> gameId.
+  3. make_move _meta=A, TopLeft -> board[0]='X', turn 'O'   (A binds to X).
+  4. make_move _meta=B, TopCenter -> board[1]='O', turn 'X' (B binds to O; alternation).
+  5. make_move _meta=A, MiddleCenter -> success            (A still X across the shared connection).
+  6. make_move with NO _meta token -> clean {"error":"unauthenticated"}.
 """
 
 import json
@@ -100,125 +108,90 @@ def handshake(srv):
     srv.send({"jsonrpc": "2.0", "method": "notifications/initialized"})
 
 
-def positive_case():
-    """authenticate -> new_game -> make_move; assert board[0]='X', turn 'O'."""
-    print("=== POSITIVE: authenticate before make_move ===")
-    srv = Server()
-    try:
-        handshake(srv)
-
-        auth = srv.request({
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {"name": "authenticate", "arguments": {}},
-        })
-        token = tool_payload(auth).get("token")
-        if not token:
-            fail("authenticate returned no token", auth)
-        print(f"authenticate -> token={token}")
-
-        ng = srv.request({
-            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-            "params": {"name": "new_game", "arguments": {}},
-        })
-        game_id = tool_payload(ng).get("gameId")
-        if not game_id:
-            fail("new_game returned no gameId", ng)
-        print(f"new_game -> gameId={game_id}")
-
-        mv = srv.request({
-            "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-            "params": {
-                "name": "make_move",
-                "arguments": {"gameId": game_id, "position": "TopLeft"},
-            },
-        })
-        mv_payload = tool_payload(mv)
-        print("make_move response:")
-        print(json.dumps(mv_payload, indent=2))
-
-        if "error" in mv_payload:
-            fail(
-                "make_move returned an error -> identity bridge is BROKEN "
-                "(session token did not reach make_move's ClaimsPrincipal)",
-                json.dumps(mv_payload),
-            )
-        board = mv_payload.get("board")
-        if not isinstance(board, list) or len(board) != 9:
-            fail("make_move did not return a 9-cell board", json.dumps(mv_payload))
-        if board[0] != "X":
-            fail(f"expected X at index 0, got {board[0]!r}", json.dumps(mv_payload))
-        if mv_payload.get("whoseTurn") != "O":
-            fail(f"expected turn 'O', got {mv_payload.get('whoseTurn')!r}", json.dumps(mv_payload))
-
-        print("PASS: authenticate -> new_game -> make_move succeeded; board[0]='X', turn 'O'.")
-    finally:
-        srv.close()
+def call(srv, req_id, name, arguments, identity_token=None):
+    """tools/call with optional per-request _meta.identityToken."""
+    params = {"name": name, "arguments": arguments}
+    if identity_token is not None:
+        params["_meta"] = {"identityToken": identity_token}
+    return srv.request({
+        "jsonrpc": "2.0", "id": req_id, "method": "tools/call", "params": params,
+    })
 
 
-def negative_case():
-    """make_move BEFORE authenticate on a FRESH server must return a clean
-    structured {"error":"unauthenticated"} — NOT a framework JSON-RPC error."""
-    print("\n=== NEGATIVE: make_move WITHOUT authenticate ===")
-    srv = Server()
-    try:
-        handshake(srv)
-
-        ng = srv.request({
-            "jsonrpc": "2.0", "id": 2, "method": "tools/call",
-            "params": {"name": "new_game", "arguments": {}},
-        })
-        game_id = tool_payload(ng).get("gameId")
-        if not game_id:
-            fail("new_game returned no gameId", ng)
-        print(f"new_game -> gameId={game_id}")
-
-        mv = srv.request({
-            "jsonrpc": "2.0", "id": 3, "method": "tools/call",
-            "params": {
-                "name": "make_move",
-                "arguments": {"gameId": game_id, "position": "TopLeft"},
-            },
-        })
-
-        if "error" in mv:
-            fail(
-                "make_move raised a JSON-RPC framework error instead of returning "
-                "a clean structured unauthenticated payload",
-                json.dumps(mv.get("error")),
-            )
-        result = mv.get("result", {})
-        if result.get("isError"):
-            fail(
-                "make_move tool result isError=true (framework/exception path) "
-                "instead of a clean unauthenticated payload",
-                json.dumps(result),
-            )
-
-        mv_payload = tool_payload(mv)
-        print("make_move response:")
-        print(json.dumps(mv_payload, indent=2))
-
-        if mv_payload.get("error") != "unauthenticated":
-            fail(
-                "expected clean {'error':'unauthenticated'}, got something else "
-                "(unauthenticated error path still unreachable over the wire)",
-                json.dumps(mv_payload),
-            )
-
-        print("PASS: make_move-before-authenticate returned clean {'error':'unauthenticated'}.")
-    finally:
-        srv.close()
+def expect_move(srv, req_id, token, position, game_id, idx, mark, next_turn, label):
+    """make_move with _meta token; assert board[idx]==mark and next turn."""
+    mv = call(srv, req_id, "make_move",
+              {"gameId": game_id, "position": position}, identity_token=token)
+    payload = tool_payload(mv)
+    print(f"{label}: make_move _meta={token[:8]}.. {position} ->")
+    print(json.dumps(payload, indent=2))
+    if "error" in payload:
+        fail(f"{label}: expected success, got error", json.dumps(payload))
+    board = payload.get("board")
+    if not isinstance(board, list) or len(board) != 9:
+        fail(f"{label}: not a 9-cell board", json.dumps(payload))
+    if board[idx] != mark:
+        fail(f"{label}: expected {mark!r} at index {idx}, got {board[idx]!r}", json.dumps(payload))
+    if payload.get("whoseTurn") != next_turn:
+        fail(f"{label}: expected turn {next_turn!r}, got {payload.get('whoseTurn')!r}", json.dumps(payload))
+    print(f"PASS: {label} -> board[{idx}]={mark!r}, turn {next_turn!r}.")
+    return payload
 
 
 def main():
     if not os.path.exists(DLL):
         fail(f"DLL not found: {DLL} (build Release first)")
 
-    positive_case()
-    negative_case()
+    print("=== MULTI-IDENTITY on ONE shared stdio connection (per-request _meta) ===")
+    srv = Server()
+    try:
+        handshake(srv)
 
-    print("\nALL CASES PASS: identity bridge works AND the unauthenticated error "
-          "path is reachable over the wire as a clean structured error.")
+        # 1. authenticate x2 (no _meta) -> two distinct tokens
+        a = tool_payload(call(srv, 2, "authenticate", {})).get("token")
+        b = tool_payload(call(srv, 3, "authenticate", {})).get("token")
+        if not a or not b:
+            fail("authenticate returned no token", f"a={a!r} b={b!r}")
+        if a == b:
+            fail("expected DISTINCT tokens from two authenticate calls", f"a={a!r} b={b!r}")
+        print(f"authenticate x2 -> A={a}")
+        print(f"                  B={b}  (distinct)")
+
+        # 2. new_game
+        game_id = tool_payload(call(srv, 4, "new_game", {})).get("gameId")
+        if not game_id:
+            fail("new_game returned no gameId")
+        print(f"new_game -> gameId={game_id}")
+
+        # 3. A -> X at TopLeft
+        expect_move(srv, 5, a, "TopLeft", game_id, 0, "X", "O", "case3 A->X")
+
+        # 4. B -> O at TopCenter, turn back to X
+        expect_move(srv, 6, b, "TopCenter", game_id, 1, "O", "X", "case4 B->O alternation")
+
+        # 5. A still X -> MiddleCenter
+        expect_move(srv, 7, a, "MiddleCenter", game_id, 4, "X", "O", "case5 A-still-X")
+
+        # 6. make_move with NO _meta token -> clean unauthenticated
+        print("case6 no-_meta: make_move WITHOUT identityToken ->")
+        mv = call(srv, 8, "make_move", {"gameId": game_id, "position": "TopRight"})
+        if "error" in mv:
+            fail("framework JSON-RPC error instead of clean structured unauthenticated",
+                 json.dumps(mv.get("error")))
+        if mv.get("result", {}).get("isError"):
+            fail("tool result isError=true (exception path) instead of clean unauthenticated",
+                 json.dumps(mv.get("result")))
+        payload = tool_payload(mv)
+        print(json.dumps(payload, indent=2))
+        if payload.get("error") != "unauthenticated":
+            fail("expected clean {'error':'unauthenticated'}", json.dumps(payload))
+        print("PASS: case6 no-_meta -> clean {'error':'unauthenticated'}.")
+
+        print("\nALL CASES PASS: two tokens bound to two distinct seats (A=X, B=O) on ONE "
+              "shared connection via per-request _meta; A stayed X across requests; the "
+              "unauthenticated path is a clean structured error.")
+    finally:
+        srv.close()
 
 
 if __name__ == "__main__":

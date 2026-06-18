@@ -14,14 +14,13 @@ type NewGameResponse = { gameId: string }
 type TicTacToeTools
     (
         supervisor: GameSupervisor,
-        session: SessionIdentity,
         assignments: PlayerAssignmentStore
     ) =
 
     [<McpServerTool>]
-    [<Description("Authenticate as a player. Returns a token bound to this connection. Call this once before make_move; subsequent calls carry your identity automatically.")>]
+    [<Description("Authenticate as a player. Returns an identity token; pass it on each subsequent call's `_meta.identityToken` to bind your moves to a seat.")>]
     member _.authenticate() : AuthResponse =
-        { token = session.Authenticate() }
+        { token = System.Guid.NewGuid().ToString("N") }
 
     [<McpServerTool>]
     [<Description("Create a new tic-tac-toe game. Returns a gameId to use in subsequent calls. X always moves first.")>]

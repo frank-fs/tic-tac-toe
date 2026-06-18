@@ -1,6 +1,5 @@
 module TicTacToe.McpRpc.Identity
 
-open System
 open TicTacToe.Model
 
 /// Why a move was rejected (subset relevant to the ERPC arm).
@@ -62,20 +61,6 @@ type PlayerAssignmentStore() =
     /// Assign the token to an open seat (lazily, on first move) and validate the turn.
     member _.TryAssignAndValidate(gameId: string, token: string, isXTurn: bool) : MoveValidationResult =
         agent.PostAndReply(fun reply -> TryAssign(gameId, token, isXTurn, reply))
-
-/// Per-connection authenticated identity. On stdio one process == one
-/// connection == one agent, so a single instance is the connection's session.
-type SessionIdentity() =
-    let mutable token: string option = None
-
-    /// Mint a new identity token for this connection and return it.
-    member _.Authenticate() : string =
-        let t = Guid.NewGuid().ToString("N")
-        token <- Some t
-        t
-
-    /// The currently authenticated token, if any.
-    member _.Current: string option = token
 
 open TicTacToe.Engine
 
