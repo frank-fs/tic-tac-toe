@@ -13,6 +13,8 @@ Cases on ONE connection:
   4. make_move _meta=B, TopCenter -> board[1]='O', turn 'X' (B binds to O; alternation).
   5. make_move _meta=A, MiddleCenter -> success            (A still X across the shared connection).
   6. make_move with NO _meta token -> clean {"error":"unauthenticated"}.
+  7. make_move with _meta.identityToken=123 (integer, not string) -> clean {"error":"unauthenticated"}
+     (non-string token degrades to anonymous; no framework error).
 """
 
 import json
@@ -187,9 +189,31 @@ def main():
             fail("expected clean {'error':'unauthenticated'}", json.dumps(payload))
         print("PASS: case6 no-_meta -> clean {'error':'unauthenticated'}.")
 
+        # 7. make_move with _meta.identityToken as integer (malformed) -> clean unauthenticated
+        print("case7 malformed-_meta: make_move with identityToken=123 (integer, not string) ->")
+        mv7 = srv.request({
+            "jsonrpc": "2.0", "id": 9, "method": "tools/call",
+            "params": {
+                "name": "make_move",
+                "arguments": {"gameId": game_id, "position": "TopRight"},
+                "_meta": {"identityToken": 123},
+            },
+        })
+        if "error" in mv7:
+            fail("framework JSON-RPC error on malformed identityToken (integer) — expected clean unauthenticated",
+                 json.dumps(mv7.get("error")))
+        if mv7.get("result", {}).get("isError"):
+            fail("tool result isError=true on malformed identityToken — expected clean unauthenticated",
+                 json.dumps(mv7.get("result")))
+        payload7 = tool_payload(mv7)
+        print(json.dumps(payload7, indent=2))
+        if payload7.get("error") != "unauthenticated":
+            fail("expected clean {'error':'unauthenticated'} for integer token", json.dumps(payload7))
+        print("PASS: case7 malformed-_meta integer -> clean {'error':'unauthenticated'}.")
+
         print("\nALL CASES PASS: two tokens bound to two distinct seats (A=X, B=O) on ONE "
               "shared connection via per-request _meta; A stayed X across requests; the "
-              "unauthenticated path is a clean structured error.")
+              "unauthenticated path is clean for both absent and malformed (non-string) tokens.")
     finally:
         srv.close()
 

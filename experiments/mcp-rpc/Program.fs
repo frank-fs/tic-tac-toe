@@ -20,6 +20,9 @@ let private configureLogging (builder: HostApplicationBuilder) =
 /// The orchestrator injects it as params._meta.identityToken on every tools/call.
 /// `JsonRpcRequest.Params` is the raw JsonNode of the request params; the MCP
 /// `RequestParams.Meta` field is wire-named "_meta", so we read it directly.
+/// Returns None for any request shape that does not carry a present string token —
+/// absent _meta, missing identityToken, or a non-string identityToken value all
+/// degrade to anonymous rather than throwing.
 let private metaToken (msg: JsonRpcMessage) : string option =
     match msg with
     | :? JsonRpcRequest as req ->
@@ -29,8 +32,10 @@ let private metaToken (msg: JsonRpcMessage) : string option =
             match parms.["_meta"] with
             | :? JsonObject as meta ->
                 match meta.["identityToken"] with
-                | null -> None
-                | t -> t.GetValue<string>() |> Option.ofObj
+                | :? JsonValue as jv ->
+                    let mutable value = ""
+                    if jv.TryGetValue<string>(&value) then Some value else None
+                | _ -> None
             | _ -> None
     | _ -> None
 
