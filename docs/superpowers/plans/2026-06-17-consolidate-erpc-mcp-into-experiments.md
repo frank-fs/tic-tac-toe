@@ -14,6 +14,7 @@
 - **Board format: named-square dict** (src's `{ "TopLeft":"X", ... }`) — it is what the experiment has actually been running; adopt it in `experiments/mcp-rpc`, replacing the current 9-element array.
 - **Identity: option A only.** `authenticate()` (stateless GUID, orchestrator-driven) + orchestrator-injected `_meta.identityToken` + lazy per-game seat binding via `PlayerAssignmentStore`. Drop `join_game`, `playerToken`, and src's `PlayerRegistry`. The LLM never handles identity.
 - **Seat model:** lazy first-move binding (existing `PlayerAssignmentStore`) reproduces src's "X then O, third → game_full" behavior without an explicit join.
+- **Simple is OUT OF SCOPE for this branch.** `src/TicTacToe.Web.Simple` is also misplaced, but it is *retired*, not relocated, via issue **#64** (Proto's progressive-enhancement/accessibility work absorbs it as the `text/html` representation; the orchestrator `Simple` variant collapses to Proto-as-html). This branch does not touch Simple. End state after both #67 and #64 land: `src/` = `TicTacToe.Engine` + `TicTacToe.Web` only.
 
 ---
 
@@ -44,7 +45,7 @@
 
 - [ ] Confirm NOTHING else references `src/TicTacToe.Mcp` / `TicTacToe.Mcp` namespace / the `tictactoe-mcp` project beyond the now-repointed matrix (grep the repo, incl. other matrices, scripts, docs).
 - [ ] `git rm -r src/TicTacToe.Mcp test/TicTacToe.Mcp.Tests`. Remove both `dotnet sln` entries (`TicTacToe.Mcp`, `TicTacToe.Mcp.Tests`).
-- [ ] Confirm `src/` now contains only the Datastar/Web app (+ Engine) — no MCP server. `dotnet build TicTacToe.sln` 0 errors. Commit.
+- [ ] Confirm `src/` now contains no MCP server. After this branch `src/` = `Engine` + `Web` + `Web.Simple` (Simple retired separately via #64 → eventual `src/` = `Engine` + `Web`). `dotnet build TicTacToe.sln` 0 errors. Commit.
 
 ## Task 13: Close-out — multi-agent E2E + whole-branch review + self-reflect
 
