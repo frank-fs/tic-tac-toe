@@ -112,3 +112,18 @@ agent → make_move(gameId, position)
 ## Confound note (for the experiment log)
 
 The ERPC arm now mirrors HTTP's ambient-identity property: one explicit handshake (`authenticate` ≈ login), then identity rides the claim automatically (≈ cookie). The earlier token-as-argument sketch was rejected precisely because it would have introduced a *new* asymmetry — manual per-call token copy that the HTTP agent never performs (and a known small-model failure mode). The claim channel removes that friction while still discharging the identity burden #67 requires.
+
+## Revision — 2026-06-17: per-request identity (the connection is shared)
+
+The original design assumed **one ERPC process per agent** → identity could live in a per-connection `SessionIdentity` singleton. Verified against the orchestrator (`Orchestrator.fs:176-204`): **false.** All 3 agents in an ERPC cell share **one** stdio process / connection (so they share the per-process `GameSupervisor` and thus the same game; MCP stdio is 1:1, so N agents cannot each hold their own connection to one shared-state server). A per-connection identity therefore cannot tell the 3 agents apart (last `authenticate` wins).
+
+This is structural: HTTP multiplexes N per-request cookie identities over one shared-state server; stdio MCP is a single connection that the orchestrator multiplexes across agents. To distinguish agents on a shared connection, identity must travel **per request**, not per connection.
+
+### Revised mechanism (decision: orchestrator-driven, per-request `_meta`)
+- **`authenticate()`** becomes a stateless server-issued token minter (returns a GUID). `SessionIdentity` is **removed** — no per-connection state.
+- **Server message filter** reads the token from the incoming request's `_meta.identityToken` (`context.JsonRpcMessage as JsonRpcRequest` → `Params._meta`) and sets `context.User = ClaimsPrincipal(token)`. Per request, not per connection.
+- **Orchestrator** performs the handshake (NOT the LLM): per agent, calls `authenticate()`, stores the token, and binds that agent's tool calls with `McpClientTool.WithMeta({ identityToken })` so every request carries its identity. This is the exact mirror of the HTTP arm where the harness logs in and the cookie auto-attaches — **the LLM never touches identity in either arm** (removes any LLM-side identity confound; parity, not equality).
+- **Unchanged & reused:** `make_move(ClaimsPrincipal, gameId, position)`, `resolveMove`, `PlayerAssignmentStore`, instance/DI tools, the message-filter-always-sets-an-(empty)-principal invariant.
+
+### Revised acceptance (the real thesis proof)
+Over **one shared connection**: two agents authenticate (distinct tokens); requests tagged with token A bind/move as X, token B as O; turns alternate; an out-of-turn move is rejected `not_your_turn`; a third distinct token is rejected `game_full`. This proves per-request identity separation on a shared connection — which the original per-connection smoke structurally could not show. Plus: a request with no `_meta` identity → clean `unauthenticated`. Engine-side unit tests for `PlayerAssignmentStore`/`resolveMove` carry forward unchanged.
