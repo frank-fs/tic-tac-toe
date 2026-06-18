@@ -88,7 +88,7 @@ let private executeTurn
                     |> Map.ofSeq
 
                 sw.Restart()
-                let! rawOutput = mcpClients.CallToolAsync(call.Name, args, config.Cancellation)
+                let! rawOutput = mcpClients.CallToolAsync(call.Name, args, config.IdentityToken, config.Cancellation)
                 sw.Stop()
                 let output = inlineSnapshots rawOutput
 

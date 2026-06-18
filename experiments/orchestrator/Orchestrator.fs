@@ -19,7 +19,7 @@ open TicTacToe.Orchestrator.Agent
 [<Literal>]
 let private cellWaitSeconds = 300
 
-let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) (cancellation: CancellationToken) : AgentConfig =
+let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (baseUrl: string) (initialMessage: string) (identityToken: string option) (cancellation: CancellationToken) : AgentConfig =
     { Id = $"agent-{slot}"
       Persona = persona
       Model = cell.Model
@@ -30,7 +30,8 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       ForceToolUse = true
       MaxTurns = cell.MaxTurnsPerAgent
       Temperature = cell.Temperature
-      Cancellation = cancellation }
+      Cancellation = cancellation
+      IdentityToken = identityToken }
 
 // Protocol-general literacy for the HTTP agents (no game-specific coaching): how to
 // read the uniform interface their http_request tool surfaces.
@@ -174,7 +175,10 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
             |> Option.defaultValue ""
 
         // ERPC: one shared MCP server process for all 3 agents so they see the same game state.
-        // Pre-create a game so agents find it immediately via list_games and get explicit role assignments.
+        // The shared process is still correct for shared state; identities are now per-REQUEST —
+        // each agent's tool calls carry its own token in MCP `_meta.identityToken` (see makeAgentConfig
+        // / McpClientSet.CallToolAsync), so distinct seats are bound over the one stdio connection.
+        // Pre-create a game so agents find it immediately and get explicit role assignments.
         let! sharedClientsOpt =
             if cell.Variant = ERPC then
                 async {
@@ -196,12 +200,35 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
                     return Some gameId
                 }
 
+        // ERPC: mint a distinct server identity per agent up front. Each token rides every
+        // tool call that agent makes via `_meta` (transparent to the LLM), binding it to its
+        // own seat over the shared connection. Non-ERPC arms get None.
+        let mintToken (clients: McpClientSet) : Async<string> =
+            async {
+                let! json = clients.CallToolAsync("authenticate", Map.empty, None, cellCts.Token) |> Async.AwaitTask
+                try return (JsonNode.Parse(json) :?> JsonObject).["token"].GetValue<string>()
+                with _ -> return failwith $"ERPC authenticate failed: {json}"
+            }
+
+        let! slotTokens =
+            match sharedClientsOpt with
+            | None -> async { return Map.ofList [1, None; 2, None; 3, None] }
+            | Some clients ->
+                async {
+                    let mutable acc = Map.empty
+                    for slot in [1; 2; 3] do
+                        let! token = mintToken clients
+                        acc <- Map.add slot (Some token) acc
+                    return acc
+                }
+
         let (p1, p2, p3) = cell.Personas
         let agentsWithMeta =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
                 let initialMsg = slotMessage (surfaceOf cell.McpServers) cell.Variant baseUrl
-                let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg cellCts.Token) sharedClientsOpt
+                let token = slotTokens |> Map.find slot
+                let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg token cellCts.Token) sharedClientsOpt
                 slot, persona, agent)
         let agents = agentsWithMeta |> List.map (fun (_, _, a) -> a)
 

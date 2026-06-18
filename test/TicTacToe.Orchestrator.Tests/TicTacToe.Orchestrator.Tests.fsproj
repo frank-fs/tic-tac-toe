@@ -8,6 +8,7 @@
     <Compile Include="MetricsTests.fs" />
     <Compile Include="ServerLogTailTests.fs" />
     <Compile Include="PersistenceTests.fs" />
+    <Compile Include="IdentityInjectionTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

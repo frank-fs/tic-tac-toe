@@ -59,6 +59,7 @@ type AgentConfig = {
     MaxTurns: int
     Temperature: float
     Cancellation: System.Threading.CancellationToken   // per-cell; cancelled at wall-clock cap to abort in-flight turns
+    IdentityToken: string option   // ERPC: per-agent server token, injected into each tool call's `_meta`. None for other arms.
 }
 
 // ── Instrumentation: Layer 2 (tool calls) ────────────────────────────────────
