@@ -7,10 +7,10 @@ F# .NET 10.0 — HATEOAS discovery layers (F0–F8) vs. RPC MCP null hypothesis.
 ```bash
 dotnet build
 dotnet test test/TicTacToe.Engine.Tests/
-dotnet test test/TicTacToe.Orchestrator.Tests/
+dotnet test test/TicTacToe.Web.Tests/
 ```
 
-See `test/CLAUDE.md` for integration test setup.
+See `test/CLAUDE.md` for integration test setup, and `experiments/test/CLAUDE.md` for comparison-arm (Simple, orchestrator) tests.
 
 ## Workflow
 

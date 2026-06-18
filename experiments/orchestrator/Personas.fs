@@ -74,18 +74,16 @@ let private scriptedProcedure =
 let scriptedX : Persona = {
     Name = "scripted-x"
     SystemPrompt =
-        "You are player X in a scripted tic-tac-toe game. Claim your role as X (on a tool-based " +
-        "server, join the game as X; X moves first). Your moves, in order, are: TopLeft, then " +
-        "TopCenter, then TopRight. " + scriptedProcedure
+        "You are player X in a scripted tic-tac-toe game; X moves first, so you open. Your " +
+        "moves, in order, are: TopLeft, then TopCenter, then TopRight. " + scriptedProcedure
 }
 
 let scriptedO : Persona = {
     Name = "scripted-o"
     SystemPrompt =
-        "You are player O in a scripted tic-tac-toe game. Claim your role as O (on a tool-based " +
-        "server, join the game as O). X moves first, so after opening the game, wait by re-reading " +
-        "the game's board until it is O's turn — do not leave the game to wait. Your moves, in " +
-        "order, are: MiddleCenter, then BottomLeft. " + scriptedProcedure
+        "You are player O in a scripted tic-tac-toe game. X moves first, so after opening the " +
+        "game, wait by re-reading the game's board until it is O's turn — do not leave the game " +
+        "to wait. Your moves, in order, are: MiddleCenter, then BottomLeft. " + scriptedProcedure
 }
 
 let observer : Persona = {

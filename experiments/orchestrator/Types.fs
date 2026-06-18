@@ -160,7 +160,7 @@ module Variant =
     let defaultPort = function Proto -> 5228 | Simple -> 5328 | ERPC -> 0
     let projectPath = function
         | Proto  -> "src/TicTacToe.Web/TicTacToe.Web.fsproj"
-        | Simple -> "src/TicTacToe.Web.Simple/TicTacToe.Web.Simple.fsproj"
+        | Simple -> "experiments/src/TicTacToe.Web.Simple/TicTacToe.Web.Simple.fsproj"
         | ERPC   -> ""
 
 module Backend =

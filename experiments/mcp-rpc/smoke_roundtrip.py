@@ -9,8 +9,8 @@ filter projects it onto context.User so make_move derives the seat from it.
 Cases on ONE connection:
   1. authenticate (no _meta) x2 -> token A, token B (distinct).
   2. new_game -> gameId.
-  3. make_move _meta=A, TopLeft -> board[0]='X', turn 'O'   (A binds to X).
-  4. make_move _meta=B, TopCenter -> board[1]='O', turn 'X' (B binds to O; alternation).
+  3. make_move _meta=A, TopLeft -> board['TopLeft']='X', turn 'O'   (A binds to X).
+  4. make_move _meta=B, TopCenter -> board['TopCenter']='O', turn 'X' (B binds to O; alternation).
   5. make_move _meta=A, MiddleCenter -> success            (A still X across the shared connection).
   6. make_move with NO _meta token -> clean {"error":"unauthenticated"}.
   7. make_move with _meta.identityToken=123 (integer, not string) -> clean {"error":"unauthenticated"}
@@ -120,8 +120,8 @@ def call(srv, req_id, name, arguments, identity_token=None):
     })
 
 
-def expect_move(srv, req_id, token, position, game_id, idx, mark, next_turn, label):
-    """make_move with _meta token; assert board[idx]==mark and next turn."""
+def expect_move(srv, req_id, token, position, game_id, mark, next_turn, label):
+    """make_move with _meta token; assert board[position]==mark and next turn."""
     mv = call(srv, req_id, "make_move",
               {"gameId": game_id, "position": position}, identity_token=token)
     payload = tool_payload(mv)
@@ -130,13 +130,13 @@ def expect_move(srv, req_id, token, position, game_id, idx, mark, next_turn, lab
     if "error" in payload:
         fail(f"{label}: expected success, got error", json.dumps(payload))
     board = payload.get("board")
-    if not isinstance(board, list) or len(board) != 9:
-        fail(f"{label}: not a 9-cell board", json.dumps(payload))
-    if board[idx] != mark:
-        fail(f"{label}: expected {mark!r} at index {idx}, got {board[idx]!r}", json.dumps(payload))
+    if not isinstance(board, dict) or len(board) != 9:
+        fail(f"{label}: not a 9-square named board", json.dumps(payload))
+    if board.get(position) != mark:
+        fail(f"{label}: expected {mark!r} at {position}, got {board.get(position)!r}", json.dumps(payload))
     if payload.get("whoseTurn") != next_turn:
         fail(f"{label}: expected turn {next_turn!r}, got {payload.get('whoseTurn')!r}", json.dumps(payload))
-    print(f"PASS: {label} -> board[{idx}]={mark!r}, turn {next_turn!r}.")
+    print(f"PASS: {label} -> board[{position!r}]={mark!r}, turn {next_turn!r}.")
     return payload
 
 
@@ -166,13 +166,13 @@ def main():
         print(f"new_game -> gameId={game_id}")
 
         # 3. A -> X at TopLeft
-        expect_move(srv, 5, a, "TopLeft", game_id, 0, "X", "O", "case3 A->X")
+        expect_move(srv, 5, a, "TopLeft", game_id, "X", "O", "case3 A->X")
 
         # 4. B -> O at TopCenter, turn back to X
-        expect_move(srv, 6, b, "TopCenter", game_id, 1, "O", "X", "case4 B->O alternation")
+        expect_move(srv, 6, b, "TopCenter", game_id, "O", "X", "case4 B->O alternation")
 
         # 5. A still X -> MiddleCenter
-        expect_move(srv, 7, a, "MiddleCenter", game_id, 4, "X", "O", "case5 A-still-X")
+        expect_move(srv, 7, a, "MiddleCenter", game_id, "X", "O", "case5 A-still-X")
 
         # 6. make_move with NO _meta token -> clean unauthenticated
         print("case6 no-_meta: make_move WITHOUT identityToken ->")

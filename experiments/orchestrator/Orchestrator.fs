@@ -54,10 +54,10 @@ let private browserHint =
 let private slotMessage (surface: AgentSurface) (variant: Variant) (baseUrl: string) : string =
     match surface with
     | Rpc ->
-        "The game server is ready. Call list_games to find the game, then join_game to claim " +
-        "your player role (X or O) — it returns a playerToken. Read the board with get_state. " +
-        "To move, call make_move with your playerToken and a position; it only succeeds on your " +
-        "turn. get_state only reflects new moves when you call it again."
+        "The game server is ready. Call list_games to find the game, then read the board with " +
+        "get_state. To move, call make_move with a position — the server knows which side you " +
+        "are (X or O) and the move only succeeds on your turn. get_state only reflects new moves " +
+        "when you call it again."
     | Browser ->
         $"The game is a web app at {baseUrl}. {browserHint}"
     | Http ->

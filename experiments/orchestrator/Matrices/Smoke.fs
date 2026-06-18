@@ -14,7 +14,7 @@ let private httpServer = {
 let private mcpServer = {
     Name = "tictactoe-mcp"
     Command = "dotnet"
-    Arguments = [| "run"; "--project"; "src/TicTacToe.Mcp/" |]
+    Arguments = [| "run"; "--project"; "experiments/mcp-rpc/" |]
 }
 
 // Browser surfaces for the tool A/B/C: render JS + project the accessibility tree.
@@ -90,7 +90,7 @@ let simpleAb : CellSpec list =
 
 // L3 instructed baseline: fully-scripted X/O + observer. Proves the harness+tool can run a
 // full game to completion (GameOver) when the agent isn't the variable. Role-enforced ERPC
-// (join_game + playerToken) vs Simple's session-bound roles. 1×each first to confirm the
+// (per-request _meta identity) vs Simple's session-bound roles. 1×each first to confirm the
 // completion path fires, then sample for a completion rate.
 let instructed : CellSpec list = [
     cell "instructed-browsegrab" Simple scriptedX scriptedO observer [browsegrabServer]

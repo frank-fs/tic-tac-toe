@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\TicTacToe.Engine\TicTacToe.Engine.fsproj" />
+    <ProjectReference Include="..\..\..\src\TicTacToe.Engine\TicTacToe.Engine.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

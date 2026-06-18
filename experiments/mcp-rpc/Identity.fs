@@ -63,10 +63,11 @@ type PlayerAssignmentStore() =
         agent.PostAndReply(fun reply -> TryAssign(gameId, token, isXTurn, reply))
 
 open TicTacToe.Engine
+open System.Text.Json.Nodes
 
 /// Outcome of a move attempt, ready to be boxed into the MCP JSON response.
 type MoveOutcome =
-    | Moved of board: string[] * whoseTurn: string * status: string
+    | Moved of board: JsonObject * whoseTurn: string * status: string
     | Rejected of code: string
 
 let allPositions =
@@ -74,13 +75,18 @@ let allPositions =
        MiddleLeft; MiddleCenter; MiddleRight
        BottomLeft; BottomCenter; BottomRight |]
 
-let renderBoard (gs: GameState) : string[] =
-    allPositions
-    |> Array.map (fun pos ->
-        match gs.TryGetValue pos with
-        | true, Taken X -> "X"
-        | true, Taken O -> "O"
-        | _ -> "")
+/// Board as 9 named squares (TopLeft..BottomRight) -> "X" | "O" | "".
+/// Named keys (not a positional array) so the agent reads squares by name.
+let renderBoard (gs: GameState) : JsonObject =
+    let obj = JsonObject()
+    for pos in allPositions do
+        let label =
+            match gs.TryGetValue pos with
+            | true, Taken X -> "X"
+            | true, Taken O -> "O"
+            | _ -> ""
+        obj[pos.ToString()] <- JsonValue.Create(label)
+    obj
 
 let stateOf (result: MoveResult) : GameState =
     match result with

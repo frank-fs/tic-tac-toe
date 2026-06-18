@@ -4,14 +4,14 @@
 
 ```bash
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/TicTacToe.Web/ --urls http://localhost:5228 &>/tmp/tictactoe-web.log &
-DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/TicTacToe.Web.Simple/ --urls http://localhost:5328 &>/tmp/tictactoe-web-simple.log &
 ```
 
 ## Playwright Tests
 
 ```bash
 TEST_BASE_URL=http://localhost:5228 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test TicTacToe.Web.Tests/
-TEST_BASE_URL=http://localhost:5328 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test TicTacToe.Web.Simple.Tests/
 ```
 
 `dotnet test TicTacToe.sln` defaults to `localhost:5000` — always set `TEST_BASE_URL`.
+
+Comparison-arm integration tests (Simple) live in `experiments/test/` — see `experiments/test/CLAUDE.md`.

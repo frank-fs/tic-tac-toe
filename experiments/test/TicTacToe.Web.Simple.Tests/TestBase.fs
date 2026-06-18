@@ -89,7 +89,7 @@ type TestBase() =
                 ()
             with ex ->
                 let message =
-                    $"Cannot connect to {baseUrl}. Ensure the server is running: dotnet run --project src/TicTacToe.Web.Simple/"
+                    $"Cannot connect to {baseUrl}. Ensure the server is running: dotnet run --project experiments/src/TicTacToe.Web.Simple/"
                 raise (Exception(message, ex))
         }
 

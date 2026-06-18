@@ -1,7 +1,10 @@
 module TicTacToe.McpRpc.Tools
 
+open System.Collections.Concurrent
 open System.ComponentModel
 open System.Security.Claims
+open System.Text.Json
+open System.Text.Json.Nodes
 open ModelContextProtocol.Server
 open TicTacToe.Engine
 open TicTacToe.Model
@@ -10,6 +13,11 @@ open TicTacToe.McpRpc.Identity
 type AuthResponse = { token: string }
 type NewGameResponse = { gameId: string }
 
+/// Final snapshot of a finished game, retained for reads after the supervisor
+/// drops it (GameSupervisor removes a game on completion — Engine.fs OnCompleted).
+type private CompletedState =
+    { Board: JsonObject; WhoseTurn: string; Status: string }
+
 [<McpServerToolType>]
 type TicTacToeTools
     (
@@ -17,16 +25,38 @@ type TicTacToeTools
         assignments: PlayerAssignmentStore
     ) =
 
+    // stdio transport is sequential (one request at a time), so these reads/writes
+    // cannot interleave. Retains finished games for post-game get_board/get_state.
+    let completedGames = ConcurrentDictionary<string, CompletedState>()
+
     [<McpServerTool>]
     [<Description("Authenticate as a player. Returns an identity token; pass it on each subsequent call's `_meta.identityToken` to bind your moves to a seat.")>]
     member _.authenticate() : AuthResponse =
         { token = System.Guid.NewGuid().ToString("N") }
 
     [<McpServerTool>]
-    [<Description("Create a new tic-tac-toe game. Returns a gameId to use in subsequent calls. X always moves first.")>]
-    member _.new_game() : NewGameResponse =
-        let gameId, _ = supervisor.CreateGame()
-        { gameId = gameId }
+    [<Description("List all active in-progress games. Returns an array of {gameId, whoseTurn, status}.")>]
+    member _.list_games() : string =
+        let games =
+            supervisor.ListActiveGames()
+            |> List.choose (fun id ->
+                match supervisor.GetGame id with
+                | None -> None
+                | Some game ->
+                    let result = game.GetState()
+                    let obj = JsonObject()
+                    obj["gameId"] <- JsonValue.Create(id)
+                    obj["whoseTurn"] <- JsonValue.Create(whoseTurnStr result)
+                    obj["status"] <- JsonValue.Create(statusStr result)
+                    Some(obj :> JsonNode))
+        JsonSerializer.Serialize(games)
+
+    [<McpServerTool>]
+    [<Description("Create a new tic-tac-toe game. Returns a gameId to use in subsequent calls. X always moves first. Only one game may be active at a time; if one already exists this returns {error: \"MaxGamesReached\"}.")>]
+    member _.new_game() : obj =
+        match supervisor.TryCreateGame(Some 1) with
+        | None -> box {| error = "MaxGamesReached" |}
+        | Some(gameId, _) -> box { gameId = gameId }
 
     [<McpServerTool>]
     [<Description("Make a move. You must authenticate first; the server derives your side (X or O) from your identity. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
@@ -42,14 +72,16 @@ type TicTacToeTools
             | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
 
         match resolveMove supervisor assignments token gameId position with
-        | Moved(board, turn, status) -> box {| board = board; whoseTurn = turn; status = status |}
+        | Moved(board, turn, status) ->
+            if status = "won" || status = "draw" then
+                completedGames[gameId] <- { Board = board; WhoseTurn = turn; Status = status }
+            box {| board = board; whoseTurn = turn; status = status |}
         | MoveOutcome.Rejected code -> box {| error = code; position = position |}
 
     [<McpServerTool>]
-    [<Description("Get the current board state for a game: 9 cells (index 0=TopLeft to 8=BottomRight), whose turn it is, status, and valid moves.")>]
+    [<Description("Get the current board state for a game: 9 squares keyed by name (TopLeft..BottomRight) with value \"X\"/\"O\"/\"\", whose turn it is, status, and valid moves.")>]
     member _.get_board([<Description("The game ID returned by new_game")>] gameId: string) : obj =
-        match supervisor.GetGame(gameId) with
-        | None -> box {| error = "game_not_found"; gameId = gameId |}
+        match supervisor.GetGame gameId with
         | Some game ->
             let result = game.GetState()
             box
@@ -57,12 +89,20 @@ type TicTacToeTools
                    whoseTurn = whoseTurnStr result
                    status = statusStr result
                    validMoves = validMoves result |}
+        | None ->
+            match completedGames.TryGetValue gameId with
+            | true, c ->
+                box
+                    {| board = c.Board
+                       whoseTurn = c.WhoseTurn
+                       status = c.Status
+                       validMoves = ([||]: string[]) |}
+            | _ -> box {| error = "game_not_found"; gameId = gameId |}
 
     [<McpServerTool>]
-    [<Description("Get full game state including board, turn, status, and valid moves for the game.")>]
+    [<Description("Get full game state including gameId, board (9 squares keyed by name, value \"X\"/\"O\"/\"\"), whose turn, status, and valid moves.")>]
     member _.get_state([<Description("The game ID returned by new_game")>] gameId: string) : obj =
-        match supervisor.GetGame(gameId) with
-        | None -> box {| error = "game_not_found"; gameId = gameId |}
+        match supervisor.GetGame gameId with
         | Some game ->
             let result = game.GetState()
             box
@@ -71,3 +111,13 @@ type TicTacToeTools
                    whoseTurn = whoseTurnStr result
                    status = statusStr result
                    validMoves = validMoves result |}
+        | None ->
+            match completedGames.TryGetValue gameId with
+            | true, c ->
+                box
+                    {| gameId = gameId
+                       board = c.Board
+                       whoseTurn = c.WhoseTurn
+                       status = c.Status
+                       validMoves = ([||]: string[]) |}
+            | _ -> box {| error = "game_not_found"; gameId = gameId |}
