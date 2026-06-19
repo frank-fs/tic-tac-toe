@@ -24,6 +24,7 @@
     <Compile Include="AffordanceTests.fs" />
     <Compile Include="ProtoPeServerRenderTests.fs" />
     <Compile Include="SseBroadcastTests.fs" />
+    <Compile Include="PerGameStreamTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
