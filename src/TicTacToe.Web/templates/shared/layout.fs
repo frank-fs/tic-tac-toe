@@ -26,7 +26,7 @@ module layout =
             main () { content }
         }
 
-    let html (ctx: HttpContext) (content: HtmlElement) =
+    let htmlWithStream (ctx: HttpContext) (streamUrl: string) (content: HtmlElement) =
         html (lang = "en") {
             head () {
                 title () {
@@ -49,5 +49,9 @@ module layout =
                 )
             }
 
-            body().attr("data-init", "@get('/sse')") { mainLayout ctx content }
+            body().attr("data-init", sprintf "@get('%s')" streamUrl) { mainLayout ctx content }
         }
+
+    /// Default page: subscribes to the global dashboard stream.
+    let html (ctx: HttpContext) (content: HtmlElement) =
+        htmlWithStream ctx "/sse" content

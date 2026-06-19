@@ -313,7 +313,8 @@ let getGame (ctx: HttpContext) =
             let gameCount = supervisor.GetActiveGameCount()
             ctx.Response.Headers.CacheControl <- "no-cache, private"
             ctx.Response.Headers.Vary <- "Cookie"
-            let element = renderGameBoard gameId result userId assignment gameCount |> withBanner ctx |> layout.html ctx
+            let body = renderGameBoard gameId result userId assignment gameCount |> withBanner ctx
+            let element = layout.htmlWithStream ctx (sprintf "/games/%s/sse" gameId) body
             ctx.Response.ContentType <- "text/html; charset=utf-8"
             do! Render.toStreamAsync ctx.Response.Body element
         | None ->
