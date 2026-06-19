@@ -15,41 +15,59 @@ type SseEvent =
     | RemoveElement of selector: string
     | PatchSignals of json: string
 
-/// Thread-safe collection of subscriber channels with user identity
-let private subscribers = ConcurrentDictionary<Guid, string * Channel<SseEvent>>()
+/// Thread-safe collection of subscriber channels: (userId, gameFilter, channel).
+/// gameFilter = None  -> dashboard subscriber (receives every game's events).
+/// gameFilter = Some gameId -> per-game subscriber (receives only that game's events).
+let private subscribers = ConcurrentDictionary<Guid, string * string option * Channel<SseEvent>>()
 
-/// Create a new subscriber channel for an SSE connection with user identity
-/// Returns a tuple of (Channel, IDisposable) where disposing unsubscribes and completes the channel
-let subscribe (userId: string) : Channel<SseEvent> * IDisposable =
+/// Create a new subscriber channel for an SSE connection.
+/// gameFilter None = dashboard (all games); Some gameId = only that game.
+/// Returns (Channel, IDisposable); disposing unsubscribes and completes the channel.
+let subscribe (userId: string) (gameFilter: string option) : Channel<SseEvent> * IDisposable =
     let channel = Channel.CreateUnbounded<SseEvent>()
     let id = Guid.NewGuid()
-    subscribers.TryAdd(id, (userId, channel)) |> ignore
+    subscribers.TryAdd(id, (userId, gameFilter, channel)) |> ignore
 
     let disposable =
         { new IDisposable with
             member __.Dispose() =
                 match subscribers.TryRemove(id) with
-                | true, (_, ch) -> ch.Writer.Complete()
+                | true, (_, _, ch) -> ch.Writer.Complete()
                 | false, _ -> () }
 
     (channel, disposable)
 
-/// Broadcast an event to ALL active SSE connections
+/// A dashboard (None) subscriber receives every game; a Some-filtered subscriber
+/// receives only its own game.
+let private receivesGame (gameFilter: string option) (gameId: string) =
+    match gameFilter with
+    | None -> true
+    | Some gid -> gid = gameId
+
+/// Broadcast an event to ALL active SSE connections (used for global signals/removals).
 let broadcast (event: SseEvent) =
-    for KeyValue(_, (_, ch)) in subscribers do
+    for KeyValue(_, (_, _, ch)) in subscribers do
         ch.Writer.TryWrite(event) |> ignore
 
-/// Send an event to a specific user's SSE connections
+/// Send an event to a specific user's SSE connections.
 let sendToUser (userId: string) (event: SseEvent) =
-    for KeyValue(_, (uid, ch)) in subscribers do
+    for KeyValue(_, (uid, _, ch)) in subscribers do
         if uid = userId then
             ch.Writer.TryWrite(event) |> ignore
 
-/// Broadcast an event per role: maps each subscriber's userId to the appropriate event
-let broadcastPerRole (renderForRole: string -> SseEvent) =
-    for KeyValue(_, (userId, ch)) in subscribers do
-        let event = renderForRole userId
-        ch.Writer.TryWrite(event) |> ignore
+/// Broadcast a per-role event for a specific game: reaches the dashboard subscribers
+/// and that game's per-game subscribers, each rendered for their own userId.
+let broadcastPerRoleForGame (gameId: string) (renderForRole: string -> SseEvent) =
+    for KeyValue(_, (userId, gameFilter, ch)) in subscribers do
+        if receivesGame gameFilter gameId then
+            ch.Writer.TryWrite(renderForRole userId) |> ignore
+
+/// Broadcast an event to dashboard (None-filter) subscribers only. Used for the
+/// new-game append: a per-game subscriber must not receive another game's board.
+let broadcastToDashboard (event: SseEvent) =
+    for KeyValue(_, (_, gameFilter, ch)) in subscribers do
+        if Option.isNone gameFilter then
+            ch.Writer.TryWrite(event) |> ignore
 
 /// Helper to write SSE events to response
 let writeSseEvent (ctx: HttpContext) (event: SseEvent) =

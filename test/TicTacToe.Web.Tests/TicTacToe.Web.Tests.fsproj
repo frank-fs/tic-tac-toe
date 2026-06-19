@@ -23,6 +23,7 @@
     <Compile Include="UserIdentityTests.fs" />
     <Compile Include="AffordanceTests.fs" />
     <Compile Include="ProtoPeServerRenderTests.fs" />
+    <Compile Include="SseBroadcastTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

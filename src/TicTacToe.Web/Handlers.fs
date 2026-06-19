@@ -68,7 +68,7 @@ let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssi
                         let renderForRole userId =
                             let element = renderGameBoard gameId result userId assignment gameCount
                             PatchElements (fun tw -> Render.toTextWriterAsync tw element)
-                        broadcastPerRole renderForRole
+                        broadcastPerRoleForGame gameId renderForRole
 
                     member _.OnError(_) = ()
 
@@ -183,7 +183,7 @@ let home (ctx: HttpContext) =
 let sse (ctx: HttpContext) =
     task {
         let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-        let (myChannel, subscription) = subscribe userId
+        let (myChannel, subscription) = subscribe userId None
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
 
