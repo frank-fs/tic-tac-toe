@@ -22,7 +22,7 @@ type ConfiguredServer(initialGames: int, maxGames: int) =
         up (DirectoryInfo(AppContext.BaseDirectory))
 
     static let freePort () =
-        let listener = TcpListener(IPAddress.Loopback, 0)
+        let listener = new TcpListener(IPAddress.Loopback, 0)
         listener.Start()
         let port = (listener.LocalEndpoint :?> IPEndPoint).Port
         listener.Stop()
