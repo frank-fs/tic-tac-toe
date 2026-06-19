@@ -5,80 +5,134 @@ open System.IO
 open System.Net.Http
 open System.Threading
 open System.Threading.Tasks
+open Microsoft.Playwright
 open NUnit.Framework
 
-/// E2E for #62 per-game streams. Connect-resync uses raw HttpClient (read the first SSE
-/// frame); append/morph uses Playwright (the JS path).
-[<TestFixture>]
-type PerGameStreamTests() =
-    let mutable client: HttpClient = null
-    let mutable handler: HttpClientHandler = null
+/// Base fixture: launches a TicTacToe.Web server with the given game config plus a
+/// Playwright browser and an authenticated HttpClient, all torn down at the end.
+[<AbstractClass>]
+type ConfiguredServerFixture(initialGames: int, maxGames: int) =
+    let mutable server : ConfiguredServer = Unchecked.defaultof<ConfiguredServer>
+    let mutable playwright : IPlaywright = null
+    let mutable browser : IBrowser = null
+    let mutable handler : HttpClientHandler = null
+    let mutable client : HttpClient = null
 
-    let baseUrl =
-        Environment.GetEnvironmentVariable("TEST_BASE_URL")
-        |> Option.ofObj
-        |> Option.filter (fun s -> not (String.IsNullOrEmpty(s)))
-        |> Option.defaultValue "http://localhost:5000"
+    member _.BaseUrl = server.BaseUrl
+    member _.Client = client
 
     [<OneTimeSetUp>]
-    member _.Setup() : Task =
+    member _.OneTimeSetUp() : Task =
         task {
+            server <- new ConfiguredServer(initialGames, maxGames)
+            let! pw = Playwright.CreateAsync()
+            playwright <- pw
+            let! b = pw.Chromium.LaunchAsync()
+            browser <- b
             handler <- new HttpClientHandler(CookieContainer = Net.CookieContainer(), AllowAutoRedirect = false)
-            client <- new HttpClient(handler, BaseAddress = Uri(baseUrl))
+            client <- new HttpClient(handler, BaseAddress = Uri(server.BaseUrl))
             let! _ = client.GetAsync("/login")
             ()
         }
 
     [<OneTimeTearDown>]
-    member _.Teardown() =
-        if not (isNull client) then client.Dispose(); client <- null
-        if not (isNull handler) then handler.Dispose(); handler <- null
+    member _.OneTimeTearDown() =
+        if not (isNull client) then client.Dispose()
+        if not (isNull handler) then handler.Dispose()
+        if not (isNull browser) then browser.CloseAsync().GetAwaiter().GetResult()
+        if not (isNull playwright) then playwright.Dispose()
+        if not (obj.ReferenceEquals(server, null)) then (server :> IDisposable).Dispose()
 
-    member private _.CreateGame() : Task<string> =
+    /// A fresh authenticated browser page in its own context (own cookie/identity).
+    member this.NewPlayerPage() : Task<IPage> =
         task {
-            let! resp = client.PostAsync("/games", null)
-            let loc = resp.Headers.Location.ToString()
-            return loc.Substring("/games/".Length)
+            let! ctx = browser.NewContextAsync()
+            let! page = ctx.NewPageAsync()
+            let! _ = page.GotoAsync($"{this.BaseUrl}/login")
+            return page
         }
 
-    /// AC3: opening /games/{id}/sse after a move yields that board's current state first.
+
+/// Experiment config: 1 pre-created game, creation capped at 1 — the run conditions all
+/// three arms (ERPC, Simple, Proto) share.
+[<TestFixture>]
+type ExperimentConfigStreamTests() =
+    inherit ConfiguredServerFixture(1, 1)
+
+    /// A move on the single game updates the board live (morph in place): the placed mark
+    /// appears and there is still exactly one board element (no duplicate, no clear).
+    [<Test>]
+    member this.``move on the single game morphs the board live in place``() : Task =
+        task {
+            let! page = this.NewPlayerPage()
+            let! _ = page.GotoAsync($"{this.BaseUrl}/")
+            do! TestHelpers.waitForVisible page ".game-board" 10000
+            let! boardsBefore = page.Locator(".game-board").CountAsync()
+            Assert.That(boardsBefore, Is.EqualTo 1, "experiment config starts with exactly one game")
+            do! page.Locator(".square-clickable").First.ClickAsync()
+            do! TestHelpers.waitForVisible page ".game-board .player" 10000
+            let! boardsAfter = page.Locator(".game-board").CountAsync()
+            Assert.That(boardsAfter, Is.EqualTo 1, "move must morph in place — still one board, no duplicate")
+            let! marks = page.Locator(".game-board .player").CountAsync()
+            Assert.That(marks, Is.GreaterThanOrEqualTo 1, "the placed mark must be visible after the live update")
+        }
+
+    /// Under MaxGames=1, a second create is rejected (uniform interface).
+    [<Test>]
+    member this.``second game creation is rejected at the cap``() : Task =
+        task {
+            use! resp = this.Client.PostAsync("/games", null)
+            Assert.That(int resp.StatusCode, Is.EqualTo 409, "creating past MaxGames=1 must be rejected with 409")
+            let! body = resp.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain "MaxGamesReached", "rejection body names the cap")
+        }
+
+    /// Per-game connect-resync: opening /games/{id}/sse after a move yields that board's
+    /// current state as the first payload.
     [<Test>]
     member this.``per-game stream first payload contains the current board``() : Task =
         task {
-            let! gameId = this.CreateGame()
-            // Make a move so the board is non-empty (so resync content is observable).
+            let! home = this.Client.GetAsync("/")
+            let! html = home.Content.ReadAsStringAsync()
+            let marker = "id=\"game-"
+            let idx = html.IndexOf(marker)
+            Assert.That(idx, Is.GreaterThanOrEqualTo 0, "dashboard must contain the pre-created game board")
+            let start = idx + marker.Length
+            let gameId = html.Substring(start, html.IndexOf("\"", start) - start)
             use form = new FormUrlEncodedContent([ Collections.Generic.KeyValuePair("player","X"); Collections.Generic.KeyValuePair("position","TopLeft") ])
-            let! _ = client.PostAsync($"/games/{gameId}", form)
-
+            let! _ = this.Client.PostAsync($"/games/{gameId}", form)
             use req = new HttpRequestMessage(HttpMethod.Get, $"/games/{gameId}/sse")
             req.Headers.TryAddWithoutValidation("datastar-request", "true") |> ignore
             use cts = new CancellationTokenSource(TimeSpan.FromSeconds 5.0)
-            use! resp = client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token)
+            use! resp = this.Client.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token)
             use! stream = resp.Content.ReadAsStreamAsync(cts.Token)
             use reader = new StreamReader(stream)
-            // Read the first ~2KB of the stream (the connect-resync frame).
-            let buf = Array.zeroCreate<char> 2048
-            let! n = reader.ReadAsync(buf.AsMemory(0, buf.Length)).AsTask()
-            let payload = String(buf, 0, n)
-            Assert.That(payload, Does.Contain $"game-{gameId}", "first SSE frame must carry this game's board")
+            let sb = System.Text.StringBuilder()
+            let buf = Array.zeroCreate<char> 1024
+            let mutable keepReading = true
+            while keepReading && not (sb.ToString().Contains $"game-{gameId}") do
+                let! n = reader.ReadAsync(buf.AsMemory(0, buf.Length)).AsTask()
+                if n <= 0 then keepReading <- false else sb.Append(buf, 0, n) |> ignore
+            Assert.That(sb.ToString(), Does.Contain $"game-{gameId}", "first per-game SSE frames must carry the current board")
         }
 
-    /// AC2 + AC4: a game created while a dashboard stream is open is appended live, and a
-    /// move morphs the board in place (exactly one board element, no duplicate).
+
+/// Multi-game (dev dashboard) config: several games, creation allowed.
+[<TestFixture>]
+type MultiGameConfigStreamTests() =
+    inherit ConfiguredServerFixture(6, 50)
+
+    /// Creating a game on the connected dashboard appends it live (board count grows by one)
+    /// and it is a single element (no duplicate).
     [<Test>]
-    member this.``dashboard appends a new game live and keeps one board element``() : Task =
+    member this.``new game appended live to the dashboard as a single board``() : Task =
         task {
-            let! playwright = Microsoft.Playwright.Playwright.CreateAsync()
-            let! browser = playwright.Chromium.LaunchAsync()
-            let! page = browser.NewPageAsync()
-            let! _ = page.GotoAsync($"{baseUrl}/login")
-            let! _ = page.GotoAsync($"{baseUrl}/")
-            // Create a game via the API on the shared cookie client; the open dashboard must gain it.
-            let! gameId = this.CreateGame()
-            do! TestHelpers.waitForCount page $"#game-{gameId}" 1 5000
-            // A move morphs in place — still exactly one board element for this game.
-            use form = new FormUrlEncodedContent([ Collections.Generic.KeyValuePair("player","X"); Collections.Generic.KeyValuePair("position","TopLeft") ])
-            let! _ = client.PostAsync($"/games/{gameId}", form)
-            do! TestHelpers.waitForCount page $"#game-{gameId}" 1 5000
-            do! browser.CloseAsync()
+            let! page = this.NewPlayerPage()
+            let! _ = page.GotoAsync($"{this.BaseUrl}/")
+            do! TestHelpers.waitForVisible page ".new-game-btn" 10000
+            let! before = page.Locator(".game-board").CountAsync()
+            do! page.Locator(".new-game-btn").ClickAsync()
+            do! TestHelpers.waitForCount page ".game-board" (before + 1) 10000
+            let! after = page.Locator(".game-board").CountAsync()
+            Assert.That(after, Is.EqualTo(before + 1), "exactly one new board appended — no duplicate")
         }
