@@ -188,9 +188,6 @@ let sse (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
 
         try
-            // Clear loading state when client connects
-            do! Datastar.streamPatchElements (fun tw -> tw.WriteAsync("""<div id="games-container" class="games-container"></div>""")) ctx
-
             // Send all existing games to the connecting client, personalized to their role.
             // One snapshot round-trip instead of a GetGame/GetState per game (no N+1, and no
             // hang if a game is mid-disposal).
@@ -199,8 +196,7 @@ let sse (ctx: HttpContext) =
             for (gameId, state) in snapshot do
                 let assignment = assignmentManager.GetAssignment(gameId)
                 let element = renderGameBoard gameId state userId assignment gameCount
-                let opts = { PatchElementsOptions.Defaults with Selector = ValueSome (Selector "#games-container"); PatchMode = ElementPatchMode.Append }
-                do! Datastar.streamPatchElementsWithOptions opts (fun tw -> Render.toTextWriterAsync tw element) ctx
+                do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
 
             // Keep connection open, forwarding all broadcast events
             while not ctx.RequestAborted.IsCancellationRequested do
@@ -251,7 +247,7 @@ let createGame (ctx: HttpContext) =
                         member _.OnNext(result) =
                             let gameCount = supervisor.GetActiveGameCount()
                             let element = renderGameBoard gameId result "" None gameCount
-                            broadcast (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
+                            broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                         member _.OnError(_) = ()
                         member _.OnCompleted() = () }
@@ -472,7 +468,7 @@ let resetGame (ctx: HttpContext) =
                                 member _.OnNext(result) =
                                     let gameCount = supervisor.GetActiveGameCount()
                                     let element = renderGameBoard newGameId result "" None gameCount
-                                    broadcast (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
+                                    broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                                 member _.OnError(_) = ()
                                 member _.OnCompleted() = () }
