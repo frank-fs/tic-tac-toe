@@ -133,6 +133,12 @@ let gameDelete =
         post Handlers.deleteGame
     }
 
+let gameSse =
+    resource "/games/{id}/sse" {
+        name "GameSse"
+        datastar Handlers.gameSse
+    }
+
 /// Create initial games on application startup
 let createInitialGames (app: IApplicationBuilder) =
     let lifetime =
@@ -189,6 +195,7 @@ let main args =
         resource gameById
         resource gameReset
         resource gameDelete
+        resource gameSse
     }
 
     0

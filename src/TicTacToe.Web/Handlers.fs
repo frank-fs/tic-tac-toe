@@ -210,6 +210,38 @@ let sse (ctx: HttpContext) =
         subscription.Dispose()
     }
 
+/// Per-game SSE endpoint — streams ONLY this game's events. On connect it sends a
+/// morph-by-id snapshot of the current board (connect-resync, no container clear), then
+/// forwards that game's broadcasts. Mirrors the dashboard `sse` but filtered to one game.
+let gameSse (ctx: HttpContext) =
+    task {
+        let gameId = ctx.Request.RouteValues.["id"] |> string
+        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+        let (myChannel, subscription) = subscribe userId (Some gameId)
+        let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+        let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+
+        try
+            // Connect-resync: send the current board so a connect-after-move shows current state.
+            match supervisor.TryGetState(gameId) with
+            | Some result ->
+                let assignment = assignmentManager.GetAssignment(gameId)
+                let gameCount = supervisor.GetActiveGameCount()
+                let element = renderGameBoard gameId result userId assignment gameCount
+                do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
+            | None -> ()
+
+            while not ctx.RequestAborted.IsCancellationRequested do
+                let! event = myChannel.Reader.ReadAsync(ctx.RequestAborted).AsTask()
+                do! writeSseEvent ctx event
+        with
+        | :? OperationCanceledException -> ()
+        | :? ChannelClosedException -> ()
+        | _ -> ()
+
+        subscription.Dispose()
+    }
+
 
 // ============================================================================
 // REST API Handlers for Multi-Game Support
