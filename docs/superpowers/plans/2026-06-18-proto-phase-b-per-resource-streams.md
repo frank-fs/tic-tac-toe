@@ -539,6 +539,25 @@ git commit -m "test(web): per-game stream connect-resync + dashboard live-append
 
 ---
 
+## Task 5 — as implemented (revised 2026-06-19)
+
+Task 5 was redesigned during execution (see the spec's "Implementation note"). Instead of a
+single external-server append test (flaky; and the append path never runs under the experiment
+cap), the suite uses a **configurable-server harness**:
+
+- **Create** `test/TicTacToe.Web.Tests/ConfiguredServer.fs` — launches the built `TicTacToe.Web`
+  dll on a free port with `TICTACTOE_INITIAL_GAMES` / `TICTACTOE_MAX_GAMES`, polls readiness,
+  kills on dispose.
+- **`PerGameStreamTests.fs`** holds `ConfiguredServerFixture` (base: server + Playwright +
+  authed HttpClient) and two fixtures:
+  - `ExperimentConfigStreamTests(1, 1)`: move-morphs-live, second-create-rejected (409),
+    per-game connect-resync.
+  - `MultiGameConfigStreamTests(6, 50)`: new-game appended live as a single board.
+- fsproj `<Compile>` order: `SseBroadcastTests.fs`, `ConfiguredServer.fs`, `PerGameStreamTests.fs`.
+
+Verified: new fixtures green 3/3 in isolation; full `dotnet test test/TicTacToe.Web.Tests/`
+118/118. Commits: `5079b2b` (harness + tests), `b12b320` (FS0760 fix).
+
 ## Final verification
 
 - [ ] `dotnet build` (whole game solution) — 0 errors.

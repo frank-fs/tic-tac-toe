@@ -129,6 +129,32 @@ render and the dashboard stream connect could be absent until its first move or 
 no-JS freshness path covers it). Acceptable under the "connect-resync, no Last-Event-ID" scope;
 documented rather than engineered around.
 
+## Implementation note (2026-06-19): config-driven E2E
+
+During implementation the experiment config surfaced a refinement to the test approach. The
+arms (ERPC, Simple, Proto) all run with `InitialGames=1, MaxGames=1` (server starts with one
+game, rejects further creates), so the dev multi-game "append a new game" path is never
+exercised in a run. A cross-client append test against an externally-started server was also
+timing-flaky (the live append has no replay; a game created before the watcher's `/sse`
+connected was lost).
+
+Resolution: a **configurable-server E2E harness** (`ConfiguredServer`) launches the built web
+app on a free port with chosen `TICTACTOE_INITIAL_GAMES` / `TICTACTOE_MAX_GAMES`, waits for
+readiness, and disposes after — so each fixture pins its own config and owns clean state. Two
+fixtures result:
+- **`ExperimentConfigStreamTests` (1/1)** — the single game's move **morphs live in place**
+  (board stays one element; AC4), a second create is **rejected** (`409 MaxGamesReached`), and
+  the per-game stream **connect-resync** carries the current board (AC3). This is the run
+  condition all three arms share.
+- **`MultiGameConfigStreamTests` (6/unlimited)** — a new game is **appended live** to the open
+  dashboard as a single board (AC2 + AC4) via the in-page create affordance (deterministic
+  because the click goes through connected Datastar).
+
+AC1 (filtering) stays a pure unit test; AC5 (no-JS) is the unchanged Phase A suite. The
+cross-client append behavior was additionally verified by hand (curl stream + a real browser:
+exactly one board, no duplicate). All new tests are deterministic (ran clean repeatedly); the
+full Web.Tests suite is green (118/118).
+
 ## Risks
 
 - **Double-subscribe:** `getGame` and the per-game stream both touch `subscribeToGame` — assert
