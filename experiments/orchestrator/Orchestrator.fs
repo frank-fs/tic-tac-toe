@@ -33,15 +33,6 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       Cancellation = cancellation
       IdentityToken = identityToken }
 
-// Protocol-general literacy for the HTTP agents (no game-specific coaching): how to
-// read the uniform interface their http_request tool surfaces.
-let private httpHint =
-    "Use the http_request tool (method, url, headers, body). The response status code " +
-    "tells you whether your action was accepted (2xx) or rejected (4xx); the Content-Type " +
-    "tells you how to read the body and which controls are available. To submit a form, set " +
-    "the Content-Type header to application/x-www-form-urlencoded and put the form's fields " +
-    "in body, e.g. name=value&name2=value2."
-
 // Protocol-general literacy for a browser agent: read the rendered page semantically via
 // snapshot, act, then re-snapshot to read the new state. Network inspection is offered
 // conditionally — some browser tools (browsegrab) expose no network log.
@@ -51,7 +42,7 @@ let private browserHint =
     "the updated controls and their states reflect whether your action was accepted. If your tools " +
     "expose the network log, you can also inspect the HTTP status (2xx accepted, 4xx rejected)."
 
-let private slotMessage (surface: AgentSurface) (variant: Variant) (baseUrl: string) : string =
+let private slotMessage (surface: AgentSurface) (baseUrl: string) : string =
     match surface with
     | Rpc ->
         "The game server is ready. Call list_games to find the game, then read the board with " +
@@ -60,15 +51,8 @@ let private slotMessage (surface: AgentSurface) (variant: Variant) (baseUrl: str
         "when you call it again."
     | Browser ->
         $"The game is a web app at {baseUrl}. {browserHint}"
-    | Http ->
-        match variant with
-        | Simple ->
-            $"The game server is at {baseUrl}. {httpHint} Re-request a resource to see new moves."
-        | _ ->
-            $"The game server is at {baseUrl}. {httpHint} If a response is text/event-stream it " +
-            $"stays open — re-request that URL to drain new moves as they are pushed."
 
-// HTTP cells: stop waiting on the FIRST of — a GameOver in the server log (a real
+// Browser cells: stop waiting on the FIRST of — a GameOver in the server log (a real
 // win/draw), or all agents having given up (hit MaxTurns) — capped at maxWaitSeconds.
 // Without the agents-done check a dead cell idles the full cap. GetSnapshot is polled
 // with a short timeout so a wedged agent can't block the poll itself.
@@ -226,7 +210,7 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let agentsWithMeta =
             [1, p1; 2, p2; 3, p3]
             |> List.map (fun (slot, persona) ->
-                let initialMsg = slotMessage (surfaceOf cell.McpServers) cell.Variant baseUrl
+                let initialMsg = slotMessage (surfaceOf cell.McpServers) baseUrl
                 let token = slotTokens |> Map.find slot
                 let agent = createAgent (makeAgentConfig cell slot persona baseUrl initialMsg token cellCts.Token) sharedClientsOpt
                 slot, persona, agent)

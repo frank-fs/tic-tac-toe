@@ -1,5 +1,10 @@
 # Persona: Beginner
 
+> ⚠️ **Superseded.** The live persona prompts are hardcoded (surface-agnostic) in
+> `experiments/orchestrator/Personas.fs`. The `http_request`/RPVA/HTTP-discovery framing
+> below is from the removed raw-HTTP (`mcp-http`) generation; web arms now interact via
+> browsegrab. Retained for historical context.
+
 **ID**: `beginner`
 **Version**: 1.2.0
 **Experiment Stage**: H1 definition; active in F0–F4 measurement runs

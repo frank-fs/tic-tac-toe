@@ -1,4 +1,7 @@
 #!/usr/bin/env pwsh
+# ⚠️ Outdated — references the superseded E0/E1/E_RPC + http_request generation (removed
+# raw-HTTP mcp-http client). The current harness runs via experiments/orchestrator (Smoke.fs
+# matrices); web arms interact through browsegrab. Retained for historical context.
 <#
 .SYNOPSIS
 G0 smoke test — runs 4 canary cells through the orchestrator and validates output.

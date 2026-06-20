@@ -42,24 +42,33 @@ close the small-model gap?*
 | **Simple** | server-rendered HTML, form POST | classic, no-JS; intentionally naive (renders all cells, disables occupied) |
 | **Proto** | reactive HTML, datastar + SSE, CQRS/event-sourcing | move = command (`202`); board = projection (SSE) |
 
-HTTP agents drive both Simple and Proto through `mcp-http/` — a hypertext-faithful
-HTTP client that surfaces the HTTP envelope (status, headers) and holds
-`text/event-stream` responses open, draining events as small deltas. No browser.
+Agents drive both Simple and Proto through `browsegrab` — a token-efficient browser
+tool that renders the page and projects its **accessibility tree** (semantic controls,
+labels, states, stable `eN` refs). It realises the core thesis' contract — the agent
+consumes the a11y tree — instead of making the agent parse raw HTML itself.
+
+> **Preferred future direction (non-browser):** Simple and Proto are progressively
+> enhanced — forms and links live in the *served* HTML, no JS render required — so an
+> affordance-projecting client could deliver the same legible a11y-tree surface *without*
+> driving a headless browser. browsegrab is the working interaction method today; the
+> lighter-weight non-browser projector remains the goal.
 
 ## Hypotheses under test
 
-1. **Tooling fairness** — when the HTTP agent has protocol-native tools (envelope
-   visible, streams drainable) equal to ERPC's, the remaining gap is
-   representation legibility + model capability, not the tooling. *(Established:
-   the early "ERPC wins / HTTP abandons" result was a tooling confound.)*
+1. **Tooling fairness** — when the web agent reads a legible accessibility-tree
+   surface (browsegrab) comparable to ERPC's structured tools, the remaining gap is
+   representation legibility + model capability, not the tooling. *(Established: the
+   early "ERPC wins / HTTP abandons" result was a tooling confound — a raw-HTML
+   client put the affordance-extraction burden on the agent.)*
 2. **SSE small-deltas help small models** — event-sourced projections pushed over
-   SSE are small updates → less context per turn than re-reading a full page →
-   help a small model get further. Testable browser-free once the write path is
-   progressively enhanced.
-3. **Progressive enhancement democratises agent access** — a PE app (command via
-   plain form, projection via SSE) lets a small model play where the
-   datastar-only / browser-required version cannot. The headline interaction
-   effect.
+   SSE are small updates → less context per turn than re-reading a full page → help
+   a small model get further. Tested in a later **streaming** round; this round is
+   request/response (snapshot → act → re-snapshot), no live stream.
+3. **Progressive enhancement democratises agent access** — Proto's enriched,
+   progressively-enhanced semantics (explicit turn + affordances in the served HTML,
+   command via plain form) let a small model play where Simple's intentionally-naive
+   HTML leaves it stalling. The headline interaction effect. *(The non-browser
+   affordance-projector above is what would let this run without any browser at all.)*
 
 ## Axes
 

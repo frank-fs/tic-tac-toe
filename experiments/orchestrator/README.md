@@ -1,5 +1,13 @@
 # TicTacToe Orchestrator
 
+> ⚠️ **Outdated — describes a superseded generation.** The E0/E1/E_RPC setups, RPVA
+> metrics, `http_request` tool, and `HttpAgent.fs`/`RpcAgent.fs`/`AnthropicClient.fs`/
+> `Runner.fs`/`Classifier.fs` below **no longer exist**. The current orchestrator is a
+> three-agent, local-model harness: cells are defined in `Matrices/Smoke.fs`, personas in
+> `Personas.fs`, surfaces in `Types.fs` (`Rpc` = native MCP for ERPC, `Browser` = browsegrab
+> for Simple/Proto). The raw-HTTP `mcp-http` client has been removed. This file is retained
+> for historical context only and needs a rewrite.
+
 A CLI tool that drives a Claude-compatible language model against the tic-tac-toe server, captures full interaction transcripts, and outputs per-game metrics as structured JSON. Used in the H2 harness of the agent-hypothesis experiment to measure how different model/setup combinations navigate HTTP affordances versus direct RPC tools.
 
 ---
