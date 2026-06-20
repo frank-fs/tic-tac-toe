@@ -406,15 +406,29 @@ let makeMove (ctx: HttpContext) =
                     // Command accepted; the new board is projected via the SSE event stream.
                     subscribeToGame gameId game assignmentManager supervisor
                     game.MakeMove(moveAction)
-                    let movePos = match moveAction with | XMove p | OMove p -> p.ToString()
-                    eventLog.LogEvent("move_accepted", gameId, role = role, move = movePos)
-                    match game.GetState() with
-                    | Won(gs, winner) ->
-                        let moveCount = gs |> Seq.filter (fun kv -> kv.Value <> Empty) |> Seq.length
-                        eventLog.LogEvent("game_over", gameId, outcome = $"{winner.ToString().ToLower()}_wins", moveCount = moveCount)
-                    | Draw _ ->
-                        eventLog.LogEvent("game_over", gameId, outcome = "draw", moveCount = 9)
-                    | _ -> ()
+                    let movePos = match moveAction with | XMove p | OMove p -> p
+                    let after = game.GetState()
+                    // TryAssignAndValidate only checks player + turn; the engine still rejects
+                    // an occupied square (keeps prior state, fire-and-forget). Confirm the move
+                    // actually landed before logging it accepted, else metrics over-count.
+                    let gsAfter =
+                        match after with
+                        | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
+                    let applied =
+                        match gsAfter.TryGetValue movePos with
+                        | true, Taken mark -> string mark = role
+                        | _ -> false
+                    if applied then
+                        eventLog.LogEvent("move_accepted", gameId, role = role, move = movePos.ToString())
+                        match after with
+                        | Won(gs, winner) ->
+                            let moveCount = gs |> Seq.filter (fun kv -> kv.Value <> Empty) |> Seq.length
+                            eventLog.LogEvent("game_over", gameId, outcome = $"{winner.ToString().ToLower()}_wins", moveCount = moveCount)
+                        | Draw _ ->
+                            eventLog.LogEvent("game_over", gameId, outcome = "draw", moveCount = 9)
+                        | _ -> ()
+                    else
+                        eventLog.LogEvent("move_rejected", gameId, role = role, reason = "PositionTaken")
                     if wantsHtml then
                         ctx.Response.StatusCode <- 303
                         ctx.Response.Headers.Location <- $"/games/{gameId}"
