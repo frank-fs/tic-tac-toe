@@ -286,6 +286,8 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
 let runMatrix (repoRoot: string) (matrixName: string) (cells: CellSpec list) : Async<unit> =
     async {
+        let stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss")
+        archivePriorRun repoRoot matrixName (cells |> List.map (fun c -> c.Id)) stamp
         printfn $"[matrix] starting: {matrixName} ({cells.Length} cells)"
         let results = System.Collections.Generic.List<CellResult>()
 

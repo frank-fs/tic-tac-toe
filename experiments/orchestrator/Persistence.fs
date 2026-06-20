@@ -25,6 +25,19 @@ let private cellSpecToJson (cell: CellSpec) =
        max_turns_per_agent = cell.MaxTurnsPerAgent
        temperature = cell.Temperature |}
 
+/// Move any prior results for this run's cells (+ the matrix manifest) into
+/// results/archive/<stamp>/ so a fresh run never appends to a stale log or reads a
+/// previous run's leftovers. No-op for names with no existing directory.
+let archivePriorRun (repoRoot: string) (matrixName: string) (cellIds: string list) (stamp: string) =
+    let resultsDir = Path.Combine(repoRoot, "experiments", "results")
+    let archiveDir = Path.Combine(resultsDir, "archive", stamp)
+    let move (name: string) =
+        let src = Path.Combine(resultsDir, name)
+        if Directory.Exists src then
+            Directory.CreateDirectory archiveDir |> ignore
+            Directory.Move(src, Path.Combine(archiveDir, name))
+    (matrixName :: cellIds) |> List.iter move
+
 let saveCell (repoRoot: string) (cellId: string) (result: CellResult) =
     let cellDir = Path.Combine(repoRoot, "experiments", "results", cellId)
     let transcriptsDir = Path.Combine(cellDir, "transcripts")
