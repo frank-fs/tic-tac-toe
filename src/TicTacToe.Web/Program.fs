@@ -14,6 +14,7 @@ open Frank.Datastar
 open Frank.OpenApi
 open TicTacToe.Web
 open TicTacToe.Web.Model
+open TicTacToe.Web.EventLog
 open TicTacToe.Engine
 open TicTacToe.Web.Extensions
 
@@ -48,6 +49,10 @@ let configureServices (services: IServiceCollection) =
         .AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ())
         .AddSingleton<GameLimits>(fun _ -> gameLimits ())
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
+        .AddSingleton<EventLog>(fun _ ->
+            match Environment.GetEnvironmentVariable("TICTACTOE_REQUEST_LOG_PATH") with
+            | null | "" -> EventLog()
+            | path -> EventLog(path))
         .AddSingleton<IClaimsTransformation, GameUserClaimsTransformation>()
         .AddResponseCompression(fun opts ->
             opts.EnableForHttps <- true

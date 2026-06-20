@@ -7,6 +7,7 @@ let private mcpServer = {
     Name = "tictactoe-mcp"
     Command = "dotnet"
     Arguments = [| "run"; "--project"; "experiments/mcp-rpc/" |]
+    Env = [||]
 }
 
 // Browser surfaces for the tool A/B/C: render JS + project the accessibility tree.
@@ -15,12 +16,14 @@ let private playwrightServer = {
     Name = "playwright"
     Command = "npx"
     Arguments = [| "@playwright/mcp@latest"; "--headless"; "--isolated" |]
+    Env = [||]
 }
 
 let private chromeDevtoolsServer = {
     Name = "chrome-devtools"
     Command = "npx"
     Arguments = [| "chrome-devtools-mcp@latest"; "--headless"; "--isolated" |]
+    Env = [||]
 }
 
 // Token-efficient a11y-tree browser for local LLMs: stable e1/e2 refs + Playwright
@@ -30,6 +33,7 @@ let private browsegrabServer = {
     Name = "browsegrab"
     Command = "browsegrab-mcp"
     Arguments = [||]
+    Env = [||]
 }
 
 let private cell id variant p1 p2 p3 mcpServers = {

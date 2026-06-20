@@ -9,6 +9,7 @@ open ModelContextProtocol.Server
 open TicTacToe.Engine
 open TicTacToe.Model
 open TicTacToe.McpRpc.Identity
+open TicTacToe.McpRpc.EventLog
 
 type AuthResponse = { token: string }
 type NewGameResponse = { gameId: string }
@@ -22,12 +23,16 @@ type private CompletedState =
 type TicTacToeTools
     (
         supervisor: GameSupervisor,
-        assignments: PlayerAssignmentStore
+        assignments: PlayerAssignmentStore,
+        eventLog: EventLog
     ) =
 
     // stdio transport is sequential (one request at a time), so these reads/writes
     // cannot interleave. Retains finished games for post-game get_board/get_state.
     let completedGames = ConcurrentDictionary<string, CompletedState>()
+
+    // First-seat tracking per (gameId, side) so player_assigned fires once per role.
+    let seatedRoles = ConcurrentDictionary<string, bool>()
 
     [<McpServerTool>]
     [<Description("Authenticate as a player. Returns an identity token; pass it on each subsequent call's `_meta.identityToken` to bind your moves to a seat.")>]
@@ -72,11 +77,28 @@ type TicTacToeTools
             | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
 
         match resolveMove supervisor assignments token gameId position with
-        | Moved(board, turn, status) ->
+        | Moved(board, turn, status, side) ->
+            let role = side.ToString()
+            if seatedRoles.TryAdd($"{gameId}:{role}", true) then
+                eventLog.LogEvent("player_assigned", gameId, role = role)
+            eventLog.LogEvent("move_accepted", gameId, role = role, move = position)
             if status = "won" || status = "draw" then
                 completedGames[gameId] <- { Board = board; WhoseTurn = turn; Status = status }
+                let moveCount =
+                    board |> Seq.filter (fun kv -> kv.Value <> null && kv.Value.GetValue<string>() <> "") |> Seq.length
+                // whoseTurn on a won game is "X won"/"O won"; normalize to "x_wins"/"o_wins".
+                let outcome =
+                    if status = "draw" then "draw"
+                    else $"""{turn.Split(' ').[0].ToLower()}_wins"""
+                eventLog.LogEvent("game_over", gameId, outcome = outcome, moveCount = moveCount)
             box {| board = board; whoseTurn = turn; status = status |}
-        | MoveOutcome.Rejected code -> box {| error = code; position = position |}
+        | MoveOutcome.Rejected code ->
+            let role =
+                token
+                |> Option.bind (fun t -> assignments.SeatOf(gameId, t))
+                |> Option.defaultValue "unassigned"
+            eventLog.LogEvent("move_rejected", gameId, role = role, reason = code)
+            box {| error = code; position = position |}
 
     [<McpServerTool>]
     [<Description("Get the current board state for a game: 9 squares keyed by name (TopLeft..BottomRight) with value \"X\"/\"O\"/\"\", whose turn it is, status, and valid moves.")>]

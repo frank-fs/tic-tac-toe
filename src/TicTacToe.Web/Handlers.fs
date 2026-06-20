@@ -340,6 +340,8 @@ let makeMove (ctx: HttpContext) =
         let assignmentManager =
             ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
 
+        let eventLog = ctx.RequestServices.GetRequiredService<TicTacToe.Web.EventLog.EventLog>()
+
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
         // Get user ID from authenticated user
@@ -381,21 +383,45 @@ let makeMove (ctx: HttpContext) =
                 let currentState = game.GetState()
                 let xTurn = isXTurn currentState
 
+                // Snapshot seats before assignment so we can detect a first seat claim.
+                let before = assignmentManager.GetAssignment(gameId)
+                let hadSeat (a: PlayerAssignment option) (uid: string) =
+                    match a with
+                    | Some a -> a.PlayerXId = Some uid || a.PlayerOId = Some uid
+                    | None -> false
+
                 // Validate and potentially assign player
-                let (validationResult, _) =
+                let (validationResult, assignment) =
                     assignmentManager.TryAssignAndValidate(gameId, uid, xTurn)
+
+                let role =
+                    if assignment.PlayerXId = Some uid then "X"
+                    elif assignment.PlayerOId = Some uid then "O"
+                    else "unassigned"
 
                 match validationResult with
                 | Allowed ->
+                    if not (hadSeat before uid) && (role = "X" || role = "O") then
+                        eventLog.LogEvent("player_assigned", gameId, role = role)
                     // Command accepted; the new board is projected via the SSE event stream.
                     subscribeToGame gameId game assignmentManager supervisor
                     game.MakeMove(moveAction)
+                    let movePos = match moveAction with | XMove p | OMove p -> p.ToString()
+                    eventLog.LogEvent("move_accepted", gameId, role = role, move = movePos)
+                    match game.GetState() with
+                    | Won(gs, winner) ->
+                        let moveCount = gs |> Seq.filter (fun kv -> kv.Value <> Empty) |> Seq.length
+                        eventLog.LogEvent("game_over", gameId, outcome = $"{winner.ToString().ToLower()}_wins", moveCount = moveCount)
+                    | Draw _ ->
+                        eventLog.LogEvent("game_over", gameId, outcome = "draw", moveCount = 9)
+                    | _ -> ()
                     if wantsHtml then
                         ctx.Response.StatusCode <- 303
                         ctx.Response.Headers.Location <- $"/games/{gameId}"
                     else
                         ctx.Response.StatusCode <- 202
                 | Rejected reason ->
+                    eventLog.LogEvent("move_rejected", gameId, role = role, reason = reason.ToString())
                     let slug = rejectionSlug reason
                     if wantsHtml then
                         // No-JS: redirect to the game carrying the reason, so the refreshed page

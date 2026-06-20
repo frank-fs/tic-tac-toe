@@ -17,6 +17,7 @@ type McpServerConfig = {
     Name: string
     Command: string
     Arguments: string[]
+    Env: (string * string)[]
 }
 
 /// The interaction surface an agent is given — drives the protocol-literacy prompt.
@@ -101,10 +102,10 @@ type AgentSnapshot = {
 
 type ServerLogEvent =
     | GameCreated     of gameId: string * timestamp: DateTimeOffset
-    | PlayerAssigned  of gameId: string * sessionId: string * role: string * timestamp: DateTimeOffset
-    | MoveAccepted    of gameId: string * sessionId: string * move: string * timestamp: DateTimeOffset
+    | PlayerAssigned  of gameId: string * role: string * timestamp: DateTimeOffset
+    | MoveAccepted    of gameId: string * role: string * move: string * timestamp: DateTimeOffset
     | GameOver        of gameId: string * outcome: string * moveCount: int * timestamp: DateTimeOffset
-    | MoveRejected    of gameId: string * sessionId: string * reason: string * timestamp: DateTimeOffset
+    | MoveRejected    of gameId: string * role: string * reason: string * timestamp: DateTimeOffset
 
 // ── Metrics ───────────────────────────────────────────────────────────────────
 
@@ -127,6 +128,7 @@ type CellMetrics = {
     [<JsonPropertyName("duration_seconds")>] DurationSeconds: float
     [<JsonPropertyName("role_assignments")>] RoleAssignments: RoleAssignment list
     [<JsonPropertyName("per_agent")>] PerAgent: Map<string, PerAgentMetrics>
+    [<JsonPropertyName("total_tokens")>] TotalTokens: int
 }
 
 type CellResult = {

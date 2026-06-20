@@ -225,8 +225,10 @@ let makeMove (ctx: HttpContext) =
                 if not (acceptsJson ctx) then
                     do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
                 logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 400, Some "InvalidMove", Some currentResult, None)
+                logger.LogEvent("move_rejected", arenaId, role = "unassigned", reason = "InvalidMove")
             | Some move ->
                 let xTurn = isXTurn currentResult
+                let before = assignmentManager.GetAssignment(arenaId)
                 let (validationResult, assignment) = assignmentManager.TryAssignAndValidate(arenaId, uid, xTurn)
 
                 let playerRole =
@@ -234,6 +236,13 @@ let makeMove (ctx: HttpContext) =
                     | Some xId, _ when xId = uid -> "X"
                     | _, Some oId when oId = uid -> "O"
                     | _ -> "unassigned"
+
+                let hadSeat =
+                    match before with
+                    | Some a -> a.PlayerXId = Some uid || a.PlayerOId = Some uid
+                    | None -> false
+                if not hadSeat && (playerRole = "X" || playerRole = "O") then
+                    logger.LogEvent("player_assigned", arenaId, role = playerRole)
 
                 match validationResult with
                 | Allowed ->
@@ -249,6 +258,7 @@ let makeMove (ctx: HttpContext) =
                         else
                             do! renderArenaHtml ctx arenaId currentResult (Some "That square is already taken.")
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 422, Some "PositionTaken", Some currentResult, None)
+                        logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = "PositionTaken")
                     | Some nextResult ->
                         if acceptsJson ctx then
                             ctx.Response.ContentType <- "application/json"
@@ -283,6 +293,7 @@ let makeMove (ctx: HttpContext) =
                     else
                         do! renderArenaHtml ctx arenaId currentResult (Some msg)
                     logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 403, Some (reason.ToString()), Some currentResult, None)
+                    logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = reason.ToString())
     }
 
 /// DELETE /arenas/{id} (via POST /arenas/{id}/delete form workaround)

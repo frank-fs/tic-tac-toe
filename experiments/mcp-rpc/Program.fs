@@ -10,6 +10,7 @@ open ModelContextProtocol.Protocol
 open ModelContextProtocol.Server
 open TicTacToe.Engine
 open TicTacToe.McpRpc.Identity
+open TicTacToe.McpRpc.EventLog
 
 let private configureLogging (builder: HostApplicationBuilder) =
     // All logs go to stderr; stdout is reserved for MCP JSON-RPC communication
@@ -70,6 +71,11 @@ let main _ =
 
     builder.Services.AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ()) |> ignore
     builder.Services.AddSingleton<PlayerAssignmentStore>() |> ignore
+    builder.Services.AddSingleton<EventLog>(fun _ ->
+        match System.Environment.GetEnvironmentVariable("TICTACTOE_REQUEST_LOG_PATH") with
+        | null | "" -> EventLog()
+        | path -> EventLog(path))
+    |> ignore
 
     builder.Services
         .AddMcpServer()

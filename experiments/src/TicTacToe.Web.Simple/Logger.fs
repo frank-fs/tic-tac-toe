@@ -61,7 +61,7 @@ type RequestLogger(?logPath: string) =
         obj["board_state_after"] <- boardAfter |> Option.map (fun r -> JsonNode.Parse(JsonSerializer.Serialize(boardArray r))) |> Option.defaultValue (JsonValue.Create(null: string) :> JsonNode)
         writeJson obj
 
-    member _.LogEvent(eventType: string, gameId: string, ?role: string, ?outcome: string, ?moveCount: int, ?move: string) =
+    member _.LogEvent(eventType: string, gameId: string, ?role: string, ?outcome: string, ?moveCount: int, ?move: string, ?reason: string) =
         let obj = JsonObject()
         obj["event_type"] <- JsonValue.Create(eventType)
         obj["timestamp"] <- JsonValue.Create(DateTimeOffset.UtcNow.ToString("o"))
@@ -70,4 +70,5 @@ type RequestLogger(?logPath: string) =
         outcome |> Option.iter (fun o -> obj["outcome"] <- JsonValue.Create(o))
         moveCount |> Option.iter (fun n -> obj["move_count"] <- JsonValue.Create(n))
         move |> Option.iter (fun m -> obj["move"] <- JsonValue.Create(m))
+        reason |> Option.iter (fun r -> obj["reason"] <- JsonValue.Create(r))
         writeJson obj

@@ -166,7 +166,12 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         let! sharedClientsOpt =
             if cell.Variant = ERPC then
                 async {
-                    let clients = new McpClientSet(cell.McpServers)
+                    // ERPC writes its event log to a FILE (never stdout) via this env var,
+                    // so per-role metrics can be computed the same way as the browser arms.
+                    let erpcServers =
+                        cell.McpServers
+                        |> List.map (fun s -> { s with Env = Array.append s.Env [| "TICTACTOE_REQUEST_LOG_PATH", logPath |] })
+                    let clients = new McpClientSet(erpcServers)
                     do! clients.InitializeAsync(cellCts.Token) |> Async.AwaitTask
                     return Some clients
                 }
@@ -255,11 +260,14 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
 
         let events = (startTail logPath).GetEvents() @ erpcEvents
 
-        let sessionMap = Map.empty
-        let roles = resolveRoles events sessionMap
+        let totalTokens =
+            transcriptList
+            |> Seq.collect (fun t -> t.LlmTurns)
+            |> Seq.sumBy (fun turn -> turn.InputTokens + turn.OutputTokens)
+        let roles = resolveRoles events
 
         let durationSeconds = sw.Elapsed.TotalSeconds
-        let metrics = computeCellMetrics cell.Id (transcriptList |> Seq.toList) roles sessionMap events durationSeconds cellStart
+        let metrics = computeCellMetrics cell.Id (transcriptList |> Seq.toList) roles events durationSeconds cellStart totalTokens
 
         let result = {
             CellSpec = cell

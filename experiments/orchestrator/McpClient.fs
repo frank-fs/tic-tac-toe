@@ -81,6 +81,10 @@ type McpClientSet(configs: McpServerConfig list) =
                     Name = cfg.Name,
                     Command = cfg.Command,
                     Arguments = cfg.Arguments)
+                if cfg.Env.Length > 0 then
+                    let envVars = Dictionary<string, string>()
+                    for (k, v) in cfg.Env do envVars.[k] <- v
+                    opts.EnvironmentVariables <- envVars
                 let transport = StdioClientTransport(opts)
                 let! client = McpClient.CreateAsync(transport, cancellationToken = ct)
                 let! toolList = client.ListToolsAsync(cancellationToken = ct)

@@ -2,20 +2,25 @@ module TicTacToe.Orchestrator.Metrics
 
 open TicTacToe.Orchestrator.Types
 
-let resolveRoles (events: ServerLogEvent list) (sessionMap: Map<string, string>) : RoleAssignment list =
-    let assignedSessions =
-        events
-        |> List.choose (function
-            | PlayerAssigned(_, sid, role, _) -> Some(sid, role)
-            | _ -> None)
-        |> Map.ofList
+let private rolesFromEvents (events: ServerLogEvent list) : string list =
+    events
+    |> List.choose (function
+        | PlayerAssigned(_, role, _) -> Some role
+        | MoveAccepted(_, role, _, _) -> Some role
+        | MoveRejected(_, role, _, _) -> Some role
+        | _ -> None)
+    |> List.distinct
 
-    sessionMap |> Map.toList |> List.map (fun (agentId, sid) ->
-        let role =
-            assignedSessions
-            |> Map.tryFind sid
-            |> Option.defaultValue "Observer"
-        { AgentId = agentId; Role = role })
+// Each arm names the same rejection differently (Simple "OutOfTurn", Proto "NotYourTurn",
+// ERPC "not_your_turn"). Normalize before comparing so out-of-turn is cross-arm comparable.
+let private isOutOfTurn (reason: string) : bool =
+    match reason.ToLowerInvariant().Replace("_", "") with
+    | "outofturn" | "notyourturn" -> true
+    | _ -> false
+
+let resolveRoles (events: ServerLogEvent list) : RoleAssignment list =
+    rolesFromEvents events
+    |> List.map (fun role -> { AgentId = ""; Role = role })
 
 let deriveOutcome (events: ServerLogEvent list) (allAbandoned: bool) : string * string =
     let gameOverEvent =
@@ -24,62 +29,54 @@ let deriveOutcome (events: ServerLogEvent list) (allAbandoned: bool) : string * 
     | Some outcome -> (outcome, "server_log")
     | None -> ("abandoned", "abandoned")
 
-let computePerAgentMetrics
+let computePerRoleMetrics
     (transcripts: AgentTranscript list)
-    (roles: RoleAssignment list)
-    (sessionMap: Map<string, string>)
     (events: ServerLogEvent list)
     : Map<string, PerAgentMetrics> =
 
-    let tokens (t: AgentTranscript) =
-        t.LlmTurns |> List.sumBy (fun turn -> turn.InputTokens + turn.OutputTokens)
-
-    roles |> List.map (fun ra ->
-        let sid = sessionMap |> Map.tryFind ra.AgentId |> Option.defaultValue ""
-        let agentTranscript = transcripts |> List.tryFind (fun t -> t.AgentId = ra.AgentId)
-        let agentTokens = agentTranscript |> Option.map tokens |> Option.defaultValue 0
-
+    rolesFromEvents events |> List.map (fun role ->
         let accepted =
-            events |> List.filter (function MoveAccepted(_, s, _, _) -> s = sid | _ -> false) |> List.length
+            events |> List.filter (function MoveAccepted(_, r, _, _) -> r = role | _ -> false) |> List.length
         let rejected =
-            events |> List.filter (function MoveRejected(_, s, _, _) -> s = sid | _ -> false) |> List.length
+            events |> List.filter (function MoveRejected(_, r, _, _) -> r = role | _ -> false) |> List.length
         let outOfTurn =
             events |> List.filter (function
-                | MoveRejected(_, s, reason, _) -> s = sid && reason = "OutOfTurn"
+                | MoveRejected(_, r, reason, _) -> r = role && isOutOfTurn reason
                 | _ -> false) |> List.length
         let total = accepted + rejected
 
         let rpva =
-            if ra.Role = "Observer" || accepted = 0 then None
+            if role = "Observer" || accepted = 0 then None
             else Some(float total / float accepted)
         let invalidRate =
             if total = 0 then 0.0
             else float rejected / float total
 
-        ra.Role, {
+        role, {
             Rpva = rpva
             InvalidRate = invalidRate
             OutOfTurnAttempts = outOfTurn
-            Tokens = agentTokens
+            Tokens = 0
         }) |> Map.ofList
 
 let computeCellMetrics
     (cellId: string)
     (transcripts: AgentTranscript list)
     (roles: RoleAssignment list)
-    (sessionMap: Map<string, string>)
     (events: ServerLogEvent list)
     (durationSeconds: float)
     (startedAt: System.DateTimeOffset)
+    (totalTokens: int)
     : CellMetrics =
 
     let allAbandoned = transcripts |> List.forall (fun t -> t.Aborted)
     let (outcome, signal) = deriveOutcome events allAbandoned
-    let perAgent = computePerAgentMetrics transcripts roles sessionMap events
+    let perAgent = computePerRoleMetrics transcripts events
 
     { CellId = cellId
       Outcome = outcome
       CompletionSignal = signal
       DurationSeconds = durationSeconds
       RoleAssignments = roles
-      PerAgent = perAgent }
+      PerAgent = perAgent
+      TotalTokens = totalTokens }

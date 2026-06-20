@@ -25,6 +25,10 @@ type private StoreMessage =
         token: string *
         isXTurn: bool *
         AsyncReplyChannel<MoveValidationResult>
+    | SeatOf of
+        gameId: string *
+        token: string *
+        AsyncReplyChannel<string option>
 
 /// Thread-safe (token, gameId) -> seat binding. Decision table mirrors
 /// src/TicTacToe.Web/Model.fs:58-103, emitting the assigned side on success.
@@ -54,6 +58,14 @@ type PlayerAssignmentStore() =
                         let result, updated = decide current token isXTurn
                         reply.Reply result
                         return! loop (state |> Map.add gameId updated)
+                    | SeatOf(gameId, token, reply) ->
+                        let current = state |> Map.tryFind gameId |> Option.defaultValue emptyAssignment
+                        let seat =
+                            if current.PlayerXId = Some token then Some "X"
+                            elif current.PlayerOId = Some token then Some "O"
+                            else None
+                        reply.Reply seat
+                        return! loop state
                 }
 
             loop Map.empty)
@@ -62,12 +74,17 @@ type PlayerAssignmentStore() =
     member _.TryAssignAndValidate(gameId: string, token: string, isXTurn: bool) : MoveValidationResult =
         agent.PostAndReply(fun reply -> TryAssign(gameId, token, isXTurn, reply))
 
+    /// Read-only: which seat (if any) this token already holds in the game. Used to
+    /// attribute rejected moves to the caller's role for per-role metrics.
+    member _.SeatOf(gameId: string, token: string) : string option =
+        agent.PostAndReply(fun reply -> SeatOf(gameId, token, reply))
+
 open TicTacToe.Engine
 open System.Text.Json.Nodes
 
 /// Outcome of a move attempt, ready to be boxed into the MCP JSON response.
 type MoveOutcome =
-    | Moved of board: JsonObject * whoseTurn: string * status: string
+    | Moved of board: JsonObject * whoseTurn: string * status: string * side: Player
     | Rejected of code: string
 
 let allPositions =
@@ -180,9 +197,9 @@ let resolveMove
             let move = match side with | X -> XMove pos | O -> OMove pos
             game.MakeMove move
             let after = game.GetState()
-            return (renderBoard (stateOf after), whoseTurnStr after, statusStr after)
+            return (renderBoard (stateOf after), whoseTurnStr after, statusStr after, side)
         }
 
     match outcome with
-    | Ok(board, whoseTurn, status) -> Moved(board, whoseTurn, status)
+    | Ok(board, whoseTurn, status, side) -> Moved(board, whoseTurn, status, side)
     | Result.Error code -> MoveOutcome.Rejected code
