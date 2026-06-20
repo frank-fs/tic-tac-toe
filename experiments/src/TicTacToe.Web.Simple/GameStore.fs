@@ -47,8 +47,14 @@ type GameStore(?maxGames: int) =
                     | Update(id, move, reply) ->
                         match state.TryGetValue(id) with
                         | true, current ->
+                            // An invalid move yields Error but must NOT overwrite the live game:
+                            // persisting it wedges the shared game (no transition out of Error),
+                            // locking out both players. Mirror the Engine actor (Engine.fs MakeMove):
+                            // report the rejection, keep the prior state.
                             let next = makeMove (current, move)
-                            state.[id] <- next
+                            match next with
+                            | Error _ -> ()
+                            | _ -> state.[id] <- next
                             reply.Reply(Some next)
                         | false, _ ->
                             reply.Reply(None)
