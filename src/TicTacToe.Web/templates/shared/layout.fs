@@ -7,6 +7,13 @@ open TicTacToe.Web
 #nowarn "3391"
 
 module layout =
+    /// Baseline switch: when TICTACTOE_DISABLE_JS=1, omit the datastar bundle and the
+    /// SSE auto-connect so the page is pure progressive-enhancement HTML (native form
+    /// POST + full reload) — equivalent to a JS-disabled browser, which browsegrab cannot
+    /// configure. Read once at module init (immutable).
+    let private jsEnabled =
+        System.Environment.GetEnvironmentVariable "TICTACTOE_DISABLE_JS" <> "1"
+
     let mainLayout (ctx: HttpContext) (content: HtmlElement) =
         let userIdOpt =
             if not (isNull ctx.User) then
@@ -42,14 +49,18 @@ module layout =
 
                 // CSS styles will be added here
 
-                script (
-                    type' = "module",
-                    src = "https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-RC.7/bundles/datastar.js",
-                    crossorigin = "anonymous"
-                )
+                if jsEnabled then
+                    script (
+                        type' = "module",
+                        src = "https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.0-RC.7/bundles/datastar.js",
+                        crossorigin = "anonymous"
+                    )
             }
 
-            body().attr("data-init", sprintf "@get('%s')" streamUrl) { mainLayout ctx content }
+            let bodyEl =
+                if jsEnabled then body().attr("data-init", sprintf "@get('%s')" streamUrl)
+                else body ()
+            bodyEl { mainLayout ctx content }
         }
 
     /// Default page: subscribes to the global dashboard stream.

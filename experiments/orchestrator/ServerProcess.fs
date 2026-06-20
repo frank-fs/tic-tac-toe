@@ -119,9 +119,15 @@ let startServer (repoRoot: string) (commit: string) (variant: Variant) : Task<Se
 let startServerForCell (repoRoot: string) (cell: CellSpec) : Task<ServerHandle> =
     let logPath = Path.Combine(repoRoot, "experiments", "results", cell.Id, "server-requests.jsonl")
     Directory.CreateDirectory(Path.GetDirectoryName(logPath)) |> ignore
-    let extraEnv = [|
+    // Baseline runs Proto in no-JS progressive-enhancement mode (stable refs, native
+    // form POST) since browsegrab cannot disable JS in the browser. Simple has no SSE.
+    let baseEnv = [|
         "TICTACTOE_INITIAL_GAMES", string cell.InitialGames
         "TICTACTOE_MAX_GAMES", string cell.MaxGames
         "TICTACTOE_REQUEST_LOG_PATH", logPath
     |]
+    let extraEnv =
+        match cell.Variant with
+        | Proto -> Array.append baseEnv [| "TICTACTOE_DISABLE_JS", "1" |]
+        | _ -> baseEnv
     startServerWithEnv repoRoot "HEAD" cell.Variant extraEnv
