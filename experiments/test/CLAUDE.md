@@ -9,8 +9,7 @@ DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project experiments/src/Tic
 TEST_BASE_URL=http://localhost:5328 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test experiments/test/TicTacToe.Web.Simple.Tests/
 ```
 
-## Orchestrator
+## Haiku-subagent harness
 
-```bash
-dotnet test experiments/test/TicTacToe.Orchestrator.Tests/
-```
+The F# orchestrator (gemma driver) was removed 2026-06-21 — the active harness is
+prompt-driven: Claude haiku subagents play over curl/MCP. See `experiments/haiku-subagents/`.
