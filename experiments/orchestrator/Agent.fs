@@ -64,7 +64,7 @@ let private executeTurn
                 let nudge =
                     match surfaceOf config.McpServers with
                     | Rpc -> "The game is in progress. Call get_state to see the current board, then make your move."
-                    | Browser -> "The game is in progress. Take a fresh snapshot to see the current board, then act."
+                    | Browser -> "The game is in progress. Navigate to the page again to refresh it, then snapshot to see the current board, then act."
                 appendUserText messages nudge |> ignore
                 return (currentTurns @ [turn], true)
             else

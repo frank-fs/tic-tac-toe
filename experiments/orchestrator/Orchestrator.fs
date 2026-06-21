@@ -34,14 +34,16 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       IdentityToken = identityToken }
 
 // Protocol-general literacy for a browser agent: read the rendered page semantically via
-// snapshot, act, then re-snapshot to read the new state. Network inspection is offered
-// conditionally — some browser tools (browsegrab) expose no network log.
+// snapshot, act, then re-navigate + snapshot to read the new state (no-JS page does not
+// self-update — the re-fetch is the navigate, mirroring the RPC arm's "call get_state
+// again"). Network inspection is offered conditionally — some browser tools (browsegrab)
+// expose no network log.
 let private browserHint =
     "Navigate to the page, then take a snapshot to read its accessibility tree (the controls, " +
-    "their labels and states). Click a control to act — a move only applies on your turn. A snapshot " +
-    "only reflects new moves — yours or your opponent's — when you take it again, so snapshot again to " +
-    "see the current state. If your tools expose the network log, you can also inspect the HTTP status " +
-    "(2xx accepted, 4xx rejected)."
+    "their labels and states). Click a control to act — a move only applies on your turn. The page " +
+    "does not update on its own, so to see new moves — yours or your opponent's — navigate to the " +
+    "page again, then snapshot to read the current state. If your tools expose the network log, you " +
+    "can also inspect the HTTP status (2xx accepted, 4xx rejected)."
 
 let private slotMessage (surface: AgentSurface) (baseUrl: string) : string =
     match surface with
