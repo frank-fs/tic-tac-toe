@@ -1,0 +1,5 @@
+{"event_type":"player_assigned","timestamp":"2026-06-21T03:45:27.1817580\u002B00:00","game_id":"c113b366-86fa-412e-81fb-1cdabeb6e628","role":"X"}
+{"event_type":"move_accepted","timestamp":"2026-06-21T03:45:27.1866360\u002B00:00","game_id":"c113b366-86fa-412e-81fb-1cdabeb6e628","role":"X","move":"TopLeft"}
+{"event_type":"player_assigned","timestamp":"2026-06-21T03:45:31.4236460\u002B00:00","game_id":"c113b366-86fa-412e-81fb-1cdabeb6e628","role":"O"}
+{"event_type":"move_rejected","timestamp":"2026-06-21T03:45:31.4239210\u002B00:00","game_id":"c113b366-86fa-412e-81fb-1cdabeb6e628","role":"O","reason":"PositionTaken"}
+{"event_type":"move_rejected","timestamp":"2026-06-21T03:46:01.4867270\u002B00:00","game_id":"c113b366-86fa-412e-81fb-1cdabeb6e628","role":"unassigned","reason":"NotAPlayer"}

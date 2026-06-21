@@ -45,3 +45,11 @@ game_state*.md
 
 # Orchestrator archived prior runs (kept locally, not versioned)
 experiments/results/archive/
+
+# Python bytecode from experiment scripts
+experiments/scripts/__pycache__/
+__pycache__/
+*.pyc
+
+# Local MCP-http venv scratch (mcp-http removed from versioning 2026-06-21)
+mcp-http/
