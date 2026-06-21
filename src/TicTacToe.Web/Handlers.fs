@@ -409,15 +409,15 @@ let makeMove (ctx: HttpContext) =
                     let movePos = match moveAction with | XMove p | OMove p -> p
                     let after = game.GetState()
                     // TryAssignAndValidate only checks player + turn; the engine still rejects
-                    // an occupied square (keeps prior state, fire-and-forget). Confirm the move
-                    // actually landed before logging it accepted, else metrics over-count.
-                    let gsAfter =
-                        match after with
-                        | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
+                    // an occupied square (keeps prior state, fire-and-forget). A move applied
+                    // iff it advanced the turn or ended the game — a same-turn result means it
+                    // was rejected (covers an opponent's taken square AND replaying your own,
+                    // which "is the square mine?" could not distinguish).
                     let applied =
-                        match gsAfter.TryGetValue movePos with
-                        | true, Taken mark -> string mark = role
-                        | _ -> false
+                        match currentState, after with
+                        | XTurn _, XTurn _ | OTurn _, OTurn _ -> false
+                        | _, Error _ -> false
+                        | _ -> true
                     if applied then
                         eventLog.LogEvent("move_accepted", gameId, role = role, move = movePos.ToString())
                         match after with
