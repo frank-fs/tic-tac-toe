@@ -33,27 +33,50 @@ let private makeAgentConfig (cell: CellSpec) (slot: int) (persona: Persona) (bas
       Cancellation = cancellation
       IdentityToken = identityToken }
 
-// Protocol-general literacy for a browser agent: read the rendered page semantically via
-// snapshot, act, then re-navigate + snapshot to read the new state (no-JS page does not
-// self-update — the re-fetch is the navigate, mirroring the RPC arm's "call get_state
-// again"). Network inspection is offered conditionally — some browser tools (browsegrab)
-// expose no network log.
+// Shared mental model. An LLM treats one read as permanently valid; this names the gap by
+// framing the game as two-player request/response where REFRESH (re-requesting state) is a
+// REQUIRED skill, not an optional check. Surface-bound below: REFRESH = navigate+snapshot
+// (browser) or get_state (RPC). Moves are NOT scripted — the agent still chooses where to play.
+let private concurrencyModel =
+    "This is a live two-player game played over request/response: you and your opponent each " +
+    "act against one shared game state on the server. Every response you receive is only a " +
+    "snapshot of that state at that instant — the moment your opponent acts, your snapshot is " +
+    "stale. Nothing is pushed to you; the only way to observe your opponent's move is to request " +
+    "the state again. Treat REFRESH — re-requesting the current state — as a required step before " +
+    "every move, never an optional check. "
+
+// Browser binding of the per-turn protocol; mirrors the RPC arm step-for-step. REFRESH = navigate
+// to the game's page + snapshot. The no-JS page does not self-update, so the re-fetch is the navigate.
 let private browserHint =
-    "Navigate to the page, then take a snapshot to read its accessibility tree (the controls, " +
-    "their labels and states). Click a control to act — a move only applies on your turn. The page " +
-    "does not update on its own, so to see new moves — yours or your opponent's — navigate to the " +
-    "page again, then snapshot to read the current state. If your tools expose the network log, you " +
-    "can also inspect the HTTP status (2xx accepted, 4xx rejected)."
+    "On this web app, REFRESH means: navigate to the game's page (the page showing the board — " +
+    "from a list, click into the game), then take a snapshot to read its accessibility tree (the " +
+    "controls, their labels and states). Each turn: (1) REFRESH — this is the only way to see new " +
+    "moves, yours or your opponent's. (2) Immediately before you move, REFRESH once more so you act " +
+    "on the current board; a stale snapshot submits stale data and is rejected. (3) Click your move " +
+    "by the ref id (e1, e2, …) from the LATEST snapshot, not a ref you saw earlier — a move only " +
+    "applies on your turn. (4) After moving, REFRESH to confirm it was accepted; the turn then passes " +
+    "to your opponent. (5) Do not move again right away — keep REFRESHing until the board shows it is " +
+    "YOUR turn; acting off-turn is an error. (6) A rejection, an error, or 'not your turn' means your " +
+    "view was stale, never that you should stop: REFRESH, wait for your turn, then retry. Keep going " +
+    "until the game is actually over (a win or a draw). If your tools expose the network log, you can " +
+    "also inspect the HTTP status (2xx accepted, 4xx rejected)."
 
 let private slotMessage (surface: AgentSurface) (baseUrl: string) : string =
     match surface with
     | Rpc ->
-        "The game server is ready. Call list_games to find the game, then read the board with " +
-        "get_state. To move, call make_move with a position — the server knows which side you " +
-        "are (X or O) and the move only succeeds on your turn. get_state only reflects new moves " +
-        "when you call it again."
+        concurrencyModel +
+        "On this tool server, REFRESH means: call get_state to read the current board. Call " +
+        "list_games to find the game; the server knows which side you are (X or O). Each turn: " +
+        "(1) REFRESH — this is the only way to see new moves, yours or your opponent's. " +
+        "(2) Immediately before you move, REFRESH once more so you act on the current state. " +
+        "(3) Call make_move with your position — a move only succeeds on your turn. (4) After moving, " +
+        "REFRESH to confirm it was accepted; the turn then passes to your opponent. (5) Do not move " +
+        "again right away — keep REFRESHing until it is YOUR turn; acting off-turn is an error. " +
+        "(6) A rejection, an error, or 'not your turn' means your view was stale, never that you " +
+        "should stop: REFRESH, wait for your turn, then retry. Keep going until the game is actually " +
+        "over (a win or a draw)."
     | Browser ->
-        $"The game is a web app at {baseUrl}. {browserHint}"
+        $"The game is a web app at {baseUrl}. {concurrencyModel}{browserHint}"
 
 // Browser cells: stop waiting on the FIRST of — a GameOver in the server log (a real
 // win/draw), or all agents having given up (hit MaxTurns) — capped at maxWaitSeconds.
@@ -287,16 +310,60 @@ let private runCell (repoRoot: string) (cell: CellSpec) : Async<CellResult> =
         return result
     }
 
+// A spawned MCP server may carry a relative `--project <path>`. The child process inherits the
+// orchestrator's cwd, so a relative path breaks whenever the orchestrator is launched from
+// anywhere but the repo root (observed: "server shut down unexpectedly" — the project path did
+// not resolve). Absolutize against repoRoot so the spawn is cwd-independent.
+let private absolutizeMcpPaths (repoRoot: string) (cells: CellSpec list) : CellSpec list =
+    let fixArgs (args: string[]) =
+        match Array.tryFindIndex ((=) "--project") args with
+        | Some i when i + 1 < args.Length && not (Path.IsPathRooted args.[i + 1]) ->
+            let copy = Array.copy args
+            copy.[i + 1] <- Path.GetFullPath(Path.Combine(repoRoot, args.[i + 1]))
+            copy
+        | _ -> args
+    let fixCfg (cfg: McpServerConfig) =
+        if cfg.Command = "dotnet" then { cfg with Arguments = fixArgs cfg.Arguments } else cfg
+    cells |> List.map (fun c -> { c with McpServers = c.McpServers |> List.map fixCfg })
+
+// Pre-build any dotnet-based MCP server project so the cell can spawn it with --no-build. A bare
+// `dotnet run` builds at connect time: build output on stdout corrupts the stdio MCP handshake,
+// and a build concurrent with the orchestrator's own contends on shared obj/. Build once, loud.
+let private prebuildMcpServers (cells: CellSpec list) : unit =
+    let projectOf (cfg: McpServerConfig) =
+        if cfg.Command = "dotnet" && Array.contains "run" cfg.Arguments then
+            Array.tryFindIndex ((=) "--project") cfg.Arguments
+            |> Option.bind (fun i -> Array.tryItem (i + 1) cfg.Arguments)
+        else None
+    cells
+    |> List.collect (fun c -> c.McpServers)
+    |> List.choose projectOf
+    |> List.distinct
+    |> List.iter (fun proj ->
+        printfn $"[matrix] pre-building MCP server: {proj}"
+        let psi = ProcessStartInfo("dotnet", $"build \"{proj}\" --nologo -v q", UseShellExecute = false)
+        use p = Process.Start(psi)
+        p.WaitForExit()
+        if p.ExitCode <> 0 then failwithf "pre-build of MCP server %s failed (exit %d)" proj p.ExitCode)
+
 let runMatrix (repoRoot: string) (matrixName: string) (cells: CellSpec list) : Async<unit> =
     async {
+        let cells = absolutizeMcpPaths repoRoot cells
         let stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss")
         archivePriorRun repoRoot matrixName (cells |> List.map (fun c -> c.Id)) stamp
+        prebuildMcpServers cells
         printfn $"[matrix] starting: {matrixName} ({cells.Length} cells)"
         let results = System.Collections.Generic.List<CellResult>()
 
+        // Per-cell isolation: one cell's failure (e.g. a flaky MCP connect) must not abandon the
+        // rest of the matrix. Log and continue. (Server dispose on a mid-cell throw is not yet
+        // covered — a failed cell may leak its web server until process exit; acceptable for now.)
         for cell in cells do
-            let! result = runCell repoRoot cell
-            results.Add(result)
+            try
+                let! result = runCell repoRoot cell
+                results.Add(result)
+            with ex ->
+                printfn $"[cell] FAILED: {cell.Id} — {ex.Message} (continuing)"
 
         saveManifest repoRoot matrixName cells (results |> Seq.toList)
         printfn $"[matrix] complete: {matrixName}"

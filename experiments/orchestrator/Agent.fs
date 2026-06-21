@@ -63,8 +63,8 @@ let private executeTurn
             if config.ForceToolUse then
                 let nudge =
                     match surfaceOf config.McpServers with
-                    | Rpc -> "The game is in progress. Call get_state to see the current board, then make your move."
-                    | Browser -> "The game is in progress. Navigate to the page again to refresh it, then snapshot to see the current board, then act."
+                    | Rpc -> "The game is in progress and it may now be your turn. Call get_state to read the current board; if it is your turn, make your move; if not, keep calling get_state until it is. A rejection means your view was stale — re-read and retry, do not stop."
+                    | Browser -> "The game is in progress and it may now be your turn. Navigate to the game's page again and snapshot to read the current board; if it is your turn, click your move by its latest ref; if not, keep navigating and snapshotting until it is. A rejection means your view was stale — re-read and retry, do not stop."
                 appendUserText messages nudge |> ignore
                 return (currentTurns @ [turn], true)
             else

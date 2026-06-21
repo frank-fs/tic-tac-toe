@@ -6,7 +6,7 @@ open TicTacToe.Orchestrator.Personas
 let private mcpServer = {
     Name = "tictactoe-mcp"
     Command = "dotnet"
-    Arguments = [| "run"; "--project"; "experiments/mcp-rpc/" |]
+    Arguments = [| "run"; "--project"; "experiments/mcp-rpc/"; "--no-build" |]
     Env = [||]
 }
 
