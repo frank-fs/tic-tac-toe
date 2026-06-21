@@ -64,17 +64,23 @@ type TicTacToeTools
         | Some(gameId, _) -> box { gameId = gameId }
 
     [<McpServerTool>]
-    [<Description("Make a move. You must authenticate first; the server derives your side (X or O) from your identity. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
+    [<Description("Make a move. Authenticate first to get an identity token, then pass it as identityToken (or via _meta.identityToken); the server derives your side (X or O) from it. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
     member _.make_move
         (
             user: ClaimsPrincipal,
             [<Description("The game ID returned by new_game")>] gameId: string,
-            [<Description("Board position: TopLeft | TopCenter | TopRight | MiddleLeft | MiddleCenter | MiddleRight | BottomLeft | BottomCenter | BottomRight")>] position: string
+            [<Description("Board position: TopLeft | TopCenter | TopRight | MiddleLeft | MiddleCenter | MiddleRight | BottomLeft | BottomCenter | BottomRight")>] position: string,
+            [<System.Runtime.InteropServices.Optional; System.Runtime.InteropServices.DefaultParameterValue("")>]
+            [<Description("Your identity token from authenticate(). Pass it here when your client cannot set _meta.identityToken (e.g. a generic MCP client). Falls back to _meta if omitted.")>] identityToken: string
         ) : obj =
+        // Explicit param wins (portable to any MCP client); else fall back to the
+        // _meta-bridged ClaimsPrincipal (the bespoke orchestrator's per-request path).
         let token =
-            match user with
-            | null -> None
-            | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
+            if not (System.String.IsNullOrWhiteSpace identityToken) then Some identityToken
+            else
+                match user with
+                | null -> None
+                | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
 
         match resolveMove supervisor assignments token gameId position with
         | Moved(board, turn, status, side) ->
