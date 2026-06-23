@@ -1,87 +1,63 @@
 # Experiment Hypothesis
 
-How well can an LLM agent *play* a game it discovers through a web interface,
-versus through purpose-built RPC tools — and what about the interface design
-decides the outcome?
+Can an agent, given **only a URL and an abstract goal** ("review this app and
+interact with it"), **recognize** what the app is, **interact** with it
+correctly, and **pursue** its goal — *even though the app is a two-player game
+with server-assigned roles*? And does enriching the app's surface let a
+**smaller model** do what previously took a larger one?
 
-## Core thesis: accessibility ≈ agent-ability
+> Full design, measurement model, and pre-registered predictions:
+> [`docs/superpowers/specs/2026-06-23-cold-start-discovery-reset-design.md`](../docs/superpowers/specs/2026-06-23-cold-start-discovery-reset-design.md).
 
-A web UI encodes meaning in three layers:
+## Core thesis: legibility ≈ agent-ability ≈ affordable-ability
 
-| Layer | Carries | A text/HTTP agent gets it? |
-|-------|---------|----------------------------|
-| **Structure** (HTML/DOM) | elements, forms, links | yes |
-| **Behavior** (JS, e.g. datastar) | clicks → POSTs, live patches | only with a JS engine |
-| **Presentation** (CSS) | turn highlight, colour, layout | no — invisible, and it bloats context |
+A cold-start agent is a non-visual consumer, like a screen reader. The meaning
+it needs lives in layers, and each layer is a thing we can switch on or off:
 
-An agent is a non-visual consumer — like a screen reader. The barriers a
-screen-reader user hits (meaning trapped in CSS, behaviour trapped in JS, no
-semantic affordances) are the same barriers an agent hits. So:
+| Layer | Carries | Drives which bar |
+|-------|---------|------------------|
+| **Affordances** (A) | forms, links, explicit turn + available actions | game-play (won't help *find* the app; won't let you *misplay* it) |
+| **Accessibility** (C) | ARIA roles, landmarks, `aria-live`, semantic structure | discovery (the suspected surprise — a11y as weak-semantic) |
+| **Semantic discovery** (Sd) | `Allow`/`Link`/ALPS/JSON Home — how to navigate *this app* | discovery |
+| **Ontology** (So) | schema.org/Game, JSON-LD, classification, sibling-game + strategy links — what this app *is in the world* | **both** — and a beginner becomes an expert through ontology, never through bare discovery |
 
-- the agent's contract should be the **accessibility tree** (post-render,
-  semantic, CSS-stripped);
-- meaning must live in semantics/ARIA, never CSS-only (this is just WCAG);
-- **building a hypermedia API an agent can use is the same discipline as
-  building an accessible web app.**
+Building a hypermedia API an agent can use cold is the same discipline as
+building an accessible web app — and ontology is what lets the agent reach past
+the app into the broader domain it already knows.
 
-## The regressive burden
+## What's under test
 
-A capable model can brute-force an inaccessible JS app by orchestrating many
-tools (snapshot, click, wait, inspect-network) and holding that state across
-turns. A small model drowns in the coordination. So **inaccessibility excludes
-the least-capable agents** — exactly as poor accessibility excludes the users
-with the least capacity to work around it. The interesting result is therefore
-an **interaction effect**, not a main effect: *does progressive enhancement
-close the small-model gap?*
+A **2⁴ factorial** (A × C × Sd × So → 16 served surfaces from one app's
+toggles), crossed with a **descending model ladder** (Haiku-4.5 anchor → OSS).
+Every run is **multiparty**: three cold-start agents connect, the server assigns
+X / O / observer by arrival order, and no agent knows its role until it
+interacts. The **observer** — which must recognize from discovery alone that it
+can *only watch* — is the sharpest proof that affordances are used correctly.
 
-## Variants (the same game, three interfaces)
+The headline is an **interaction effect**, not a main effect: *all layers
+together, by large margins* (super-additivity), and a **cost-efficiency
+crossover** — a leaner model on a rich surface matching a heavier model on a
+bare one (e.g. `gemma-4 @ full ≈ Haiku-4.5 @ Simple`).
 
-| Variant | Interface | Notes |
-|---------|-----------|-------|
-| **ERPC** | purpose-built MCP tools (`list_games`/`get_state`/`make_move`) | RPC null hypothesis; structured state |
-| **Simple** | server-rendered HTML, form POST | classic, no-JS; intentionally naive (renders all cells, disables occupied) |
-| **Proto** | reactive HTML, datastar + SSE, CQRS/event-sourcing | move = command (`202`); board = projection (SSE) |
+## Variants and brackets
 
-Agents drive both Simple and Proto through `browsegrab` — a token-efficient browser
-tool that renders the page and projects its **accessibility tree** (semantic controls,
-labels, states, stable `eN` refs). It realises the core thesis' contract — the agent
-consumes the a11y tree — instead of making the agent parse raw HTML itself.
-
-> **Preferred future direction (non-browser):** Simple and Proto are progressively
-> enhanced — forms and links live in the *served* HTML, no JS render required — so an
-> affordance-projecting client could deliver the same legible a11y-tree surface *without*
-> driving a headless browser. browsegrab is the working interaction method today; the
-> lighter-weight non-browser projector remains the goal.
-
-## Hypotheses under test
-
-1. **Tooling fairness** — when the web agent reads a legible accessibility-tree
-   surface (browsegrab) comparable to ERPC's structured tools, the remaining gap is
-   representation legibility + model capability, not the tooling. *(Established: the
-   early "ERPC wins / HTTP abandons" result was a tooling confound — a raw-HTML
-   client put the affordance-extraction burden on the agent.)*
-2. **SSE small-deltas help small models** — event-sourced projections pushed over
-   SSE are small updates → less context per turn than re-reading a full page → help
-   a small model get further. Tested in a later **streaming** round; this round is
-   request/response (snapshot → act → re-snapshot), no live stream.
-3. **Progressive enhancement democratises agent access** — Proto's enriched,
-   progressively-enhanced semantics (explicit turn + affordances in the served HTML,
-   command via plain form) let a small model play where Simple's intentionally-naive
-   HTML leaves it stalling. The headline interaction effect. *(The non-browser
-   affordance-projector above is what would let this run without any browser at all.)*
-
-## Axes
-
-- **Interface**: ERPC / Simple / Proto.
-- **Model size**: small (e.g. `gemma-4-e4b`) vs capable (e.g. a ~14B) — to surface
-  the regressive burden.
-- **Affordance richness** (future F1–F8): semantic/ARIA layers — roles, landmarks,
-  `aria-live`, link relations, ALPS. "Discovery" is reading accessibility
-  affordances.
+| Variant | Role |
+|---------|------|
+| **The 16-cell app** | the factorial — Simple = affordances-off preset, Proto (no-JS) = affordances-on preset |
+| **V_swagger** | floor bracket — same paths, OpenAPI, role-uniform, no state-affordances; *outside* the cube |
+| **ERPC** | ceiling bracket — MCP, discovery via `tools/list` handshake; a *reference paradigm*, not a cold-start peer (RPC doesn't play by the same rules) |
 
 ## Measures
 
-Outcome (won / draw / abandoned), accepted moves, rejection codes the agent
-actually receives, turns and tokens per game, time-to-completion. Abandonment is
-not a hard failure — a slow-but-progressing game truncated by the per-cell cap is
-distinct from a genuine stall.
+Per party, per run: **recognize** (graded 2-moment discovery report +
+first-action coherence + role-discrimination), **interact** (accepted/rejected +
+codes), **pursue-completion** (won/draw/abandoned, turns, tokens, time),
+**pursue-quality** (blunder rate / distance-from-optimal — where ontology's
+beginner→expert effect lands), and **friction** (read:write, 4xx). Abandonment
+is not a hard failure — a slow-but-progressing game is distinct from a stall.
+
+---
+
+*Prior framing (accessibility-only, browsegrab-coupled, three-arm) is
+superseded by this reset; accessibility survives as factor **C**. The streaming
+round (SSE small-deltas) is out of scope here — request/response only.*
