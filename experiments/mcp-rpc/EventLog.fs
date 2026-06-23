@@ -31,7 +31,7 @@ type EventLog(?logPath: string) =
 
     member _.LogEvent(eventType: string, gameId: string,
                       ?role: string, ?move: string, ?reason: string,
-                      ?outcome: string, ?moveCount: int) =
+                      ?outcome: string, ?moveCount: int, ?whoseTurn: string) =
         let obj = JsonObject()
         obj["event_type"] <- JsonValue.Create(eventType)
         obj["timestamp"] <- JsonValue.Create(DateTimeOffset.UtcNow.ToString("o"))
@@ -41,4 +41,5 @@ type EventLog(?logPath: string) =
         reason |> Option.iter (fun r -> obj["reason"] <- JsonValue.Create(r))
         outcome |> Option.iter (fun o -> obj["outcome"] <- JsonValue.Create(o))
         moveCount |> Option.iter (fun n -> obj["move_count"] <- JsonValue.Create(n))
+        whoseTurn |> Option.iter (fun t -> obj["whose_turn"] <- JsonValue.Create(t))
         writeJson obj

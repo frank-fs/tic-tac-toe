@@ -112,6 +112,7 @@ type TicTacToeTools
         match supervisor.GetGame gameId with
         | Some game ->
             let result = game.GetState()
+            eventLog.LogEvent("state_read", gameId, whoseTurn = whoseTurnStr result)
             box
                 {| board = renderBoard (stateOf result)
                    whoseTurn = whoseTurnStr result
@@ -133,6 +134,9 @@ type TicTacToeTools
         match supervisor.GetGame gameId with
         | Some game ->
             let result = game.GetState()
+            // Symmetric read accounting: ERPC reads (polls) are otherwise invisible
+            // to the event log, unlike the curl arms' GETs captured by the HTTP proxy.
+            eventLog.LogEvent("state_read", gameId, whoseTurn = whoseTurnStr result)
             box
                 {| gameId = gameId
                    board = renderBoard (stateOf result)
