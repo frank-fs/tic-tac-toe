@@ -12,7 +12,7 @@ let discoveryInstruction =
      Work in two stages.\n\n\
      STAGE 1 — DISCOVER (read-only). Issue read requests to learn what this is. When \
      you can, reply with EXACTLY one line of JSON and nothing else:\n\
-     DISCOVERY {\"appIs\":\"...\",\"goal\":\"...\",\"isMultiplayer\":true|false,\"howToParticipate\":\"...\"}\n\n\
+     DISCOVERY {\"appIs\":\"...\",\"goal\":\"...\",\"howToParticipate\":\"...\"}\n\n\
      STAGE 2 — PARTICIPATE. Take part and pursue the goal. The system that assigns you \
      a part may accept or refuse your attempts; learn your part from how it responds. \
      Once you know it, reply with one line of JSON and nothing else:\n\
