@@ -2,7 +2,6 @@ module TicTacToe.Web.Simple.Tests.GameTests
 
 open System
 open System.Net.Http
-open System.Text.Json
 open System.Threading.Tasks
 open NUnit.Framework
 open Microsoft.Playwright
@@ -504,7 +503,7 @@ type RestartTests() =
         }
 
 // ============================================================================
-// Rejection reason tests — typed OutOfTurn and NotAPlayer
+// Rejection reason tests — OutOfTurn and NotAPlayer surfaced as HTML (no JSON floor)
 // ============================================================================
 
 [<TestFixture>]
@@ -512,8 +511,9 @@ type RejectionTests() =
     inherit TestBase()
 
     [<Test>]
-    member this.``Out-of-turn move returns 403 OutOfTurn``() : Task =
+    member this.``Out-of-turn move returns 403 with HTML rejection``() : Task =
         task {
+            // Asking for JSON must NOT yield a JSON error body — Simple is an HTML-only floor
             use client = new HttpClient()
             client.DefaultRequestHeaders.Add("Accept", "application/json")
 
@@ -541,14 +541,18 @@ type RejectionTests() =
             let! resp = client.SendAsync(req)
 
             Assert.That(int resp.StatusCode, Is.EqualTo(403), $"Expected 403, got {int resp.StatusCode}")
+
+            let contentType = resp.Content.Headers.ContentType.ToString()
+            Assert.That(contentType, Does.Contain("text/html"), $"Expected HTML response, got '{contentType}'")
+            Assert.That(contentType, Does.Not.Contain("application/json"))
+
             let! body = resp.Content.ReadAsStringAsync()
-            let doc = JsonDocument.Parse(body)
-            let errorVal = doc.RootElement.GetProperty("error").GetString()
-            Assert.That(errorVal, Is.EqualTo("OutOfTurn"), $"Expected OutOfTurn, got '{errorVal}'")
+            Assert.That(body, Does.Contain("not your turn"), "Expected the prose rejection message in rendered HTML")
+            Assert.That(body, Does.Not.Contain("\"error\""), "No structured JSON error token may leak")
         }
 
     [<Test>]
-    member this.``Third player returns 403 NotAPlayer``() : Task =
+    member this.``Third player returns 403 with HTML rejection``() : Task =
         task {
             // Assign both slots: P1=X, P2=O
             let! arenaUrl = createArena this.Page this.TimeoutMs
@@ -558,7 +562,7 @@ type RejectionTests() =
             let! _ = p2.GotoAsync(arenaUrl)
             do! clickNth p2 2 this.TimeoutMs           // P2 → O
 
-            // P3: third browser context, then try to move via JSON
+            // P3: third browser context, then try to move requesting JSON
             let! p3Ctx = this.Browser.NewContextAsync()
             let! p3 = p3Ctx.NewPageAsync()
             let options = PageGotoOptions(Timeout = Nullable(float32 this.TimeoutMs))
@@ -582,10 +586,14 @@ type RejectionTests() =
             let! resp = client.SendAsync(req)
 
             Assert.That(int resp.StatusCode, Is.EqualTo(403), $"Expected 403, got {int resp.StatusCode}")
+
+            let contentType = resp.Content.Headers.ContentType.ToString()
+            Assert.That(contentType, Does.Contain("text/html"), $"Expected HTML response, got '{contentType}'")
+            Assert.That(contentType, Does.Not.Contain("application/json"))
+
             let! body = resp.Content.ReadAsStringAsync()
-            let doc = JsonDocument.Parse(body)
-            let errorVal = doc.RootElement.GetProperty("error").GetString()
-            Assert.That(errorVal, Is.EqualTo("NotAPlayer"), $"Expected NotAPlayer, got '{errorVal}'")
+            Assert.That(body, Does.Contain("not a player"), "Expected the prose rejection message in rendered HTML")
+            Assert.That(body, Does.Not.Contain("\"error\""), "No structured JSON error token may leak")
 
             do! p3Ctx.CloseAsync()
         }
@@ -632,8 +640,12 @@ type MaxGamesTests() =
                 let! resp = client.SendAsync(req)
 
                 Assert.That(int resp.StatusCode, Is.EqualTo(409), $"Expected 409, got {int resp.StatusCode}")
+
+                let contentType = resp.Content.Headers.ContentType.ToString()
+                Assert.That(contentType, Does.Contain("text/html"), $"Expected HTML response, got '{contentType}'")
+                Assert.That(contentType, Does.Not.Contain("application/json"))
+
                 let! body = resp.Content.ReadAsStringAsync()
-                let doc = JsonDocument.Parse(body)
-                let errorVal = doc.RootElement.GetProperty("error").GetString()
-                Assert.That(errorVal, Is.EqualTo("MaxGamesReached"), $"Expected MaxGamesReached, got '{errorVal}'")
+                Assert.That(body, Does.Contain("Max games reached"), $"Expected HTML capacity message, got '{body}'")
+                Assert.That(body, Does.Not.Contain("\"error\""), "No structured JSON error token may leak")
         }

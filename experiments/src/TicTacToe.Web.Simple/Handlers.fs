@@ -16,12 +16,8 @@ open TicTacToe.Web.Simple.templates.game
 open TicTacToe.Web.Simple.templates.home
 
 // ============================================================================
-// Content Negotiation (error responses only — board state always renders HTML)
+// Naive-HTML floor — every response is HTML, never a structured JSON payload
 // ============================================================================
-
-let private wantsJsonErrors (ctx: HttpContext) =
-    ctx.Request.Headers.Accept
-    |> Seq.exists (fun v -> v.Contains("application/json"))
 
 let private sessionId (ctx: HttpContext) =
     ctx.Request.Cookies.TryGetValue("TicTacToe.SimpleUser")
@@ -121,8 +117,8 @@ let createArena (ctx: HttpContext) =
         match store.Create() with
         | None ->
             ctx.Response.StatusCode <- 409
-            ctx.Response.ContentType <- "application/json"
-            do! ctx.Response.WriteAsJsonAsync({| error = "MaxGamesReached" |})
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync("Max games reached.")
             logger.LogRequest(rid, sid, None, "unassigned", "POST", "/arenas", 409, Some "MaxGamesReached", None, None)
         | Some (arenaId, _) ->
             logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", "/arenas", 302, None, None, None)
@@ -130,7 +126,7 @@ let createArena (ctx: HttpContext) =
             ctx.Response.Redirect($"/arenas/{arenaId}")
     }
 
-/// GET /arenas/{id} — get arena (HTML or JSON)
+/// GET /arenas/{id} — render the arena board as HTML
 let getArena (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
@@ -204,11 +200,7 @@ let makeMove (ctx: HttpContext) =
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 404, None, Some currentResult, None)
                     | Some (Error(_, _)) ->
                         ctx.Response.StatusCode <- 422
-                        if wantsJsonErrors ctx then
-                            ctx.Response.ContentType <- "application/json"
-                            do! ctx.Response.WriteAsJsonAsync({| error = "PositionTaken" |})
-                        else
-                            do! renderArenaHtml ctx arenaId currentResult (Some "That square is already taken.")
+                        do! renderArenaHtml ctx arenaId currentResult (Some "That square is already taken.")
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 422, Some "PositionTaken", Some currentResult, None)
                         logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = "PositionTaken")
                     | Some nextResult ->
@@ -235,11 +227,7 @@ let makeMove (ctx: HttpContext) =
                         | InvalidMove -> "Invalid move."
 
                     ctx.Response.StatusCode <- 403
-                    if wantsJsonErrors ctx then
-                        ctx.Response.ContentType <- "application/json"
-                        do! ctx.Response.WriteAsJsonAsync({| error = reason.ToString() |})
-                    else
-                        do! renderArenaHtml ctx arenaId currentResult (Some msg)
+                    do! renderArenaHtml ctx arenaId currentResult (Some msg)
                     logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 403, Some (reason.ToString()), Some currentResult, None)
                     logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = reason.ToString())
     }
@@ -254,10 +242,7 @@ let deleteArena (ctx: HttpContext) =
         store.Delete(arenaId)
         assignmentManager.RemoveGame(arenaId)
 
-        if wantsJsonErrors ctx then
-            ctx.Response.StatusCode <- 204
-        else
-            ctx.Response.Redirect("/")
+        ctx.Response.Redirect("/")
     }
 
 /// POST /arenas/{id}/restart — reset arena state
