@@ -16,10 +16,10 @@ open TicTacToe.Web.Simple.templates.game
 open TicTacToe.Web.Simple.templates.home
 
 // ============================================================================
-// Content Negotiation
+// Content Negotiation (error responses only — board state always renders HTML)
 // ============================================================================
 
-let private acceptsJson (ctx: HttpContext) =
+let private wantsJsonErrors (ctx: HttpContext) =
     ctx.Request.Headers.Accept
     |> Seq.exists (fun v -> v.Contains("application/json"))
 
@@ -108,48 +108,6 @@ let private renderArenaHtml (ctx: HttpContext) (arenaId: string) (result: MoveRe
     Render.toStreamAsync ctx.Response.Body element
 
 // ============================================================================
-// Arena DTOs for JSON
-// ============================================================================
-
-[<CLIMutable>]
-type ArenaJson =
-    { id: string
-      board: string[]
-      status: string
-      whoseTurn: string option }
-
-let private toArenaJson (arenaId: string) (result: MoveResult) : ArenaJson =
-    let board =
-        [ TopLeft; TopCenter; TopRight
-          MiddleLeft; MiddleCenter; MiddleRight
-          BottomLeft; BottomCenter; BottomRight ]
-        |> List.map (fun pos ->
-            let (|State|) = function
-                | XTurn(s, _) | OTurn(s, _) | Won(s, _) | Draw s | Error(s, _) -> s
-            let (State state) = result
-            match state.TryGetValue(pos) with
-            | true, Taken X -> "X"
-            | true, Taken O -> "O"
-            | _ -> "")
-        |> Array.ofList
-
-    let status =
-        match result with
-        | XTurn _ -> "InProgress"
-        | OTurn _ -> "InProgress"
-        | Won(_, player) -> $"{player}Wins"
-        | Draw _ -> "Draw"
-        | Error _ -> "Error"
-
-    let whoseTurn =
-        match result with
-        | XTurn _ -> Some "X"
-        | OTurn _ -> Some "O"
-        | _ -> None
-
-    { id = arenaId; board = board; status = status; whoseTurn = whoseTurn }
-
-// ============================================================================
 // Arena CRUD
 // ============================================================================
 
@@ -182,11 +140,7 @@ let getArena (ctx: HttpContext) =
         | None ->
             ctx.Response.StatusCode <- 404
         | Some result ->
-            if acceptsJson ctx then
-                ctx.Response.ContentType <- "application/json"
-                do! ctx.Response.WriteAsJsonAsync(toArenaJson arenaId result)
-            else
-                do! renderArenaHtml ctx arenaId result None
+            do! renderArenaHtml ctx arenaId result None
     }
 
 /// POST /arenas/{id} — make a move
@@ -220,10 +174,8 @@ let makeMove (ctx: HttpContext) =
 
             match Move.TryParse(playerRaw, positionRaw) with
             | None ->
-                // Status applies to both representations; HTML also re-renders with the message.
                 ctx.Response.StatusCode <- 400
-                if not (acceptsJson ctx) then
-                    do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
+                do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
                 logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 400, Some "InvalidMove", Some currentResult, None)
                 logger.LogEvent("move_rejected", arenaId, role = "unassigned", reason = "InvalidMove")
             | Some move ->
@@ -252,7 +204,7 @@ let makeMove (ctx: HttpContext) =
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 404, None, Some currentResult, None)
                     | Some (Error(_, _)) ->
                         ctx.Response.StatusCode <- 422
-                        if acceptsJson ctx then
+                        if wantsJsonErrors ctx then
                             ctx.Response.ContentType <- "application/json"
                             do! ctx.Response.WriteAsJsonAsync({| error = "PositionTaken" |})
                         else
@@ -260,11 +212,7 @@ let makeMove (ctx: HttpContext) =
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 422, Some "PositionTaken", Some currentResult, None)
                         logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = "PositionTaken")
                     | Some nextResult ->
-                        if acceptsJson ctx then
-                            ctx.Response.ContentType <- "application/json"
-                            do! ctx.Response.WriteAsJsonAsync(toArenaJson arenaId nextResult)
-                        else
-                            do! renderArenaHtml ctx arenaId nextResult None
+                        do! renderArenaHtml ctx arenaId nextResult None
                         // boardBefore is currentResult from store.Get above; store.Update is a separate call,
                         // so a concurrent move between the two can make boardBefore stale by one move.
                         logger.LogRequest(rid, sid, Some arenaId, playerRole, "POST", path, 200, None, Some currentResult, Some nextResult)
@@ -287,7 +235,7 @@ let makeMove (ctx: HttpContext) =
                         | InvalidMove -> "Invalid move."
 
                     ctx.Response.StatusCode <- 403
-                    if acceptsJson ctx then
+                    if wantsJsonErrors ctx then
                         ctx.Response.ContentType <- "application/json"
                         do! ctx.Response.WriteAsJsonAsync({| error = reason.ToString() |})
                     else
@@ -306,7 +254,7 @@ let deleteArena (ctx: HttpContext) =
         store.Delete(arenaId)
         assignmentManager.RemoveGame(arenaId)
 
-        if acceptsJson ctx then
+        if wantsJsonErrors ctx then
             ctx.Response.StatusCode <- 204
         else
             ctx.Response.Redirect("/")
@@ -325,10 +273,6 @@ let restartArena (ctx: HttpContext) =
         match store.Reset(arenaId) with
         | None ->
             ctx.Response.StatusCode <- 404
-        | Some result ->
-            if acceptsJson ctx then
-                ctx.Response.ContentType <- "application/json"
-                do! ctx.Response.WriteAsJsonAsync(toArenaJson arenaId result)
-            else
-                ctx.Response.Redirect($"/arenas/{arenaId}")
+        | Some _ ->
+            ctx.Response.Redirect($"/arenas/{arenaId}")
     }

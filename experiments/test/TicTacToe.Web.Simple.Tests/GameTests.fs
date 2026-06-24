@@ -183,50 +183,46 @@ type InvalidMoveTests() =
 
 [<TestFixture>]
 type JsonApiTests() =
-    inherit TestBase()
+    let baseUrl =
+        System.Environment.GetEnvironmentVariable("TEST_BASE_URL")
+        |> Option.ofObj
+        |> Option.filter (fun s -> not (System.String.IsNullOrEmpty(s)))
+        |> Option.defaultValue "http://localhost:5328"
 
-    /// 7. GET /arenas/{id} with Accept: application/json returns JSON with board/status/whoseTurn
+    /// 7. GET /arenas/{id} with Accept: application/json still returns HTML board (Simple is a naive-HTML floor)
     [<Test>]
-    member this.``GET /arenas/{id} with Accept application/json returns JSON``() : Task =
+    member this.``GET arena with Accept application-json still returns HTML board``() : Task =
         task {
-            // Navigate to new arena to get an ID
-            let! _ = this.Page.ClickAsync("button[type='submit']")
-            do! this.Page.WaitForURLAsync("**/arenas/**", PageWaitForURLOptions(Timeout = Nullable(float32 this.TimeoutMs)))
+            // Handler stores cookies; AllowAutoRedirect=false so we can capture Location header
+            let cookieJar = System.Net.CookieContainer()
+            use client =
+                new HttpClient(
+                    HttpClientHandler(AllowAutoRedirect = false, CookieContainer = cookieJar),
+                    disposeHandler = true)
 
-            let arenaUrl = this.Page.Url
+            // Visit /login to get auth cookie (mirrors TestBase.SetupPage)
+            let! _ = client.GetAsync($"{baseUrl}/login")
 
-            // Use HttpClient with Accept: application/json
-            use client = new HttpClient()
-            client.DefaultRequestHeaders.Add("Accept", "application/json")
+            // Create a new arena; follow the redirect manually
+            let! created = client.PostAsync($"{baseUrl}/arenas", null)
+            let loc = created.Headers.Location.ToString()  // /arenas/{id} (relative or absolute)
+            let arenaUrl =
+                if loc.StartsWith("http") then loc
+                else $"{baseUrl}{loc}"
 
-            let! response = client.GetAsync(arenaUrl)
-            Assert.That(int response.StatusCode, Is.EqualTo(200), "Expected 200 OK")
+            // Request same arena with Accept: application/json — Simple must ignore it
+            use req = new HttpRequestMessage(HttpMethod.Get, arenaUrl)
+            req.Headers.Accept.ParseAdd("application/json")
+            let! resp = client.SendAsync(req)
 
-            let contentType = response.Content.Headers.ContentType.MediaType
-            Assert.That(contentType, Does.Contain("application/json"), $"Expected JSON response, got {contentType}")
+            Assert.That(int resp.StatusCode, Is.EqualTo(200), $"Expected 200 OK, got {int resp.StatusCode}")
 
-            let! body = response.Content.ReadAsStringAsync()
-            let doc = JsonDocument.Parse(body)
-            let root = doc.RootElement
+            let contentType = resp.Content.Headers.ContentType.ToString()
+            Assert.That(contentType, Does.Not.Contain("application/json"))
 
-            // Must have board field
-            Assert.That(root.TryGetProperty("board", ref Unchecked.defaultof<_>), Is.True, "JSON missing 'board' field")
-
-            // Must have status field
-            Assert.That(root.TryGetProperty("status", ref Unchecked.defaultof<_>), Is.True, "JSON missing 'status' field")
-
-            // Must have whoseTurn field
-            Assert.That(root.TryGetProperty("whoseTurn", ref Unchecked.defaultof<_>), Is.True, "JSON missing 'whoseTurn' field")
-
-            // Board should have 9 elements
-            let boardProp = root.GetProperty("board")
-            Assert.That(boardProp.GetArrayLength(), Is.EqualTo(9), "Board should have 9 elements")
-
-            // New game: whoseTurn should be "X"
-            let whoseTurn = root.GetProperty("whoseTurn")
-            // whoseTurn might be a string "X" or a JSON object with "some" wrapper
-            // Check it's not null/missing
-            Assert.That(whoseTurn.ValueKind, Is.Not.EqualTo(JsonValueKind.Null), "whoseTurn should not be null for a new game")
+            let! body = resp.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain("aria-label="))         // HTML board rendered, not JSON
+            Assert.That(body, Does.Not.Contain("\"whoseTurn\""))   // no JSON board payload
         }
 
 // ============================================================================
