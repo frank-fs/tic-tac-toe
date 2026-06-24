@@ -224,6 +224,62 @@ type JsonApiTests() =
             Assert.That(body, Does.Not.Contain("\"whoseTurn\""))   // no JSON board payload
         }
 
+    /// 8. PositionTaken (422) rejection is HTML, even when JSON is requested — no JSON contaminant
+    [<Test>]
+    member this.``Taken-square move returns 422 with HTML rejection``() : Task =
+        task {
+            // Identity A — its own cookie jar
+            let jarA = System.Net.CookieContainer()
+            use clientA =
+                new HttpClient(
+                    HttpClientHandler(AllowAutoRedirect = false, CookieContainer = jarA),
+                    disposeHandler = true)
+            let! _ = clientA.GetAsync($"{baseUrl}/login")
+
+            // A creates an arena; follow the redirect manually to get /arenas/{id}
+            let! created = clientA.PostAsync($"{baseUrl}/arenas", null)
+            let loc = created.Headers.Location.ToString()
+            let arenaUrl =
+                if loc.StartsWith("http") then loc else $"{baseUrl}{loc}"
+
+            // A plays X at TopLeft — A becomes player X, accepted, now it's O's turn
+            use reqA = new HttpRequestMessage(HttpMethod.Post, arenaUrl)
+            reqA.Content <- new FormUrlEncodedContent(
+                [| System.Collections.Generic.KeyValuePair("player", "X")
+                   System.Collections.Generic.KeyValuePair("position", "TopLeft") |])
+            let! respA = clientA.SendAsync(reqA)
+            Assert.That(int respA.StatusCode, Is.EqualTo(200), $"A's first move expected 200, got {int respA.StatusCode}")
+            let ctA = respA.Content.Headers.ContentType.ToString()
+            Assert.That(ctA, Does.Contain("text/html"), $"A's move expected HTML, got '{ctA}'")
+
+            // Identity B — distinct cookie jar, becomes player O
+            let jarB = System.Net.CookieContainer()
+            use clientB =
+                new HttpClient(
+                    HttpClientHandler(AllowAutoRedirect = false, CookieContainer = jarB),
+                    disposeHandler = true)
+            let! _ = clientB.GetAsync($"{baseUrl}/login")
+
+            // B plays O at TopLeft — it's O's turn, but TopLeft is already taken → PositionTaken (422)
+            // Request JSON explicitly: Simple must still answer HTML
+            use reqB = new HttpRequestMessage(HttpMethod.Post, arenaUrl)
+            reqB.Headers.Accept.ParseAdd("application/json")
+            reqB.Content <- new FormUrlEncodedContent(
+                [| System.Collections.Generic.KeyValuePair("player", "O")
+                   System.Collections.Generic.KeyValuePair("position", "TopLeft") |])
+            let! respB = clientB.SendAsync(reqB)
+
+            Assert.That(int respB.StatusCode, Is.EqualTo(422), $"Expected 422 PositionTaken, got {int respB.StatusCode}")
+
+            let contentType = respB.Content.Headers.ContentType.ToString()
+            Assert.That(contentType, Does.Contain("text/html"), $"Expected HTML response, got '{contentType}'")
+            Assert.That(contentType, Does.Not.Contain("application/json"))
+
+            let! body = respB.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain("already taken"), "Expected the prose rejection message in rendered HTML")
+            Assert.That(body, Does.Not.Contain("\"error\""), "No structured JSON error token may leak")
+        }
+
 // ============================================================================
 // Full game flows — two browser contexts (two distinct cookie identities)
 // ============================================================================
