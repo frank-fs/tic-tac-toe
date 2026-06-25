@@ -1084,3 +1084,16 @@ git commit -m "feat(discovery-harness): CLI + observed e2e; SP1 walking skeleton
 **Type consistency:** `Transcript`/reports/`BoardSnapshot` (Task 3) used identically in 5–7. `HtmlBoard.parse`/`positions` (Task 2) used in 5–6. `Optimal.isBlunder` (Task 4) used in 5. `SeatConfig`/`runSeat`/`parseAction` (Task 6) used in 7. `RunConfig`/`runGame`/`realizedSeat`/`resultsJson` (Task 7) used in 8. The Task-7 `{ t with Seat = realized }` re-stamp matches `Grader`'s `t.Seat` use for role-discrimination and quality.
 
 **TDD coverage:** every pure unit has a failing-test-first step (Tasks 0,1,2,3,4,5,6,7). The live-LLM loop is the sole run-verified boundary (Task 8), per Global Constraints.
+
+---
+
+## Implementation Deltas (from live e2e verification)
+
+The Task-8 e2e (Haiku-4.5 vs Simple `0000`) surfaced four harness defects fixed in `e4f0833` — none reported by the task implementers; all caught by the controller re-running the e2e and inspecting the proxy log:
+
+1. **`terminalOutcome` 404≠terminal** — a 404 in cold start means "path not found, try another," not game-over. Was killing each seat on its first wrong-path guess. Only win/draw prose is terminal now.
+2. **`parseAction` `/\S+`→`/\S*`** — a bare `GET /` (fetch the base-URL root) was unparseable, forcing agents to guessed longer paths. `+ test`.
+3. **Base-URL seed (contract mechanic)** — `runSeat` now establishes identity (`GET /login`, driver-owned) and hands the agent the SERVED base-URL content as its first observation. Faithful to "review the app at this URL"; without it agents never read the root and only REST-guessed (`/move`, `/api`, `/game`). **Constant across all cells.**
+4. **`groundTruthSeats`** — realized seat from ARRIVAL ORDER (the stagger), not the agent's unreliable self-report (which had labeled all three "X"). `role_discrimination` is now self-report-vs-truth.
+
+**Validated result:** X and O agents discover→seat→play→reach terminal with blunder scoring; the observer keeps attempting moves, gets `NotAPlayer`/405/409, and `role_discrimination=false` — it does NOT recognize it is a spectator on the naive floor. A real, correctly-measured floor finding, not a harness failure. Criterion #2's "observer role_disc=true" was mis-specified (it baked in an expected outcome); the skeleton's job is to MEASURE role-discrimination, which it does.
