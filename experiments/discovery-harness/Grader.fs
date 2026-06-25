@@ -26,8 +26,16 @@ let private roleNamed (r: RoleReport) =
 
 let private isObserverSeat (seat: string) = seat.ToLowerInvariant().Contains "observ"
 
+// Match the Simple app's rendered rejection PROSE (Handlers.fs), not internal tokens —
+// BodySnippet carries the HTML the agent actually saw. Falls back to the HTTP status.
 let private codeOf (snippet: string) (status: int) =
-    [ "NotYourTurn"; "NotAPlayer" ] |> List.tryFind snippet.Contains |> Option.defaultValue (string status)
+    let low = snippet.ToLowerInvariant()
+    if low.Contains "not your turn" then "NotYourTurn"
+    elif low.Contains "not a player" then "NotAPlayer"
+    elif low.Contains "already taken" then "PositionTaken"
+    elif low.Contains "invalid move" then "InvalidMove"
+    elif low.Contains "already over" then "GameOver"
+    else string status
 
 let private recognize (t: Transcript) : RecognizeScore =
     let appIs, goal, mp =

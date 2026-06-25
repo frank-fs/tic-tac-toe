@@ -27,12 +27,20 @@ let ``observer claiming it can act fails role-discrimination`` () =
     Assert.False((Grader.grade t).Recognize.RoleDiscriminationCorrect)
 
 [<Fact>]
-let ``rejected NotAPlayer move tallied with code`` () =
+let ``rejected NotAPlayer move tallied with code from real prose`` () =
     let t = t0 "observer"
     t.Requests.Add { Method = "POST"; Path = "/arenas/g1"; Body = Some "player=X&position=TopLeft"
-                     Status = 403; BodySnippet = "Rejected NotAPlayer" }
+                     Status = 403; BodySnippet = "<p>You are not a player in this arena.</p>" }
     let s = Grader.grade t
     Assert.Equal(0, s.AcceptedMoves); Assert.Equal(1, s.RejectedMoves); Assert.Contains("NotAPlayer", s.RejectionCodes)
+
+[<Fact>]
+let ``NotYourTurn prose yields distinct code, not bare status`` () =
+    let t = t0 "X"
+    t.Requests.Add { Method = "POST"; Path = "/arenas/g1"; Body = Some "player=X&position=TopLeft"
+                     Status = 403; BodySnippet = "<p>It's not your turn.</p>" }
+    let s = Grader.grade t
+    Assert.Contains("NotYourTurn", s.RejectionCodes); Assert.DoesNotContain("403", s.RejectionCodes)
 
 [<Fact>]
 let ``a blundered accepted move is counted`` () =
