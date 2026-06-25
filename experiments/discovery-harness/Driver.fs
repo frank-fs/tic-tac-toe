@@ -20,7 +20,9 @@ let private newClient () =
     let h = new HttpClientHandler(AllowAutoRedirect = false, UseCookies = true, CookieContainer = CookieContainer())
     new HttpClient(h, Timeout = TimeSpan.FromSeconds 30.0)
 
-let private actionRe = Regex(@"\b(GET|POST)\s+(/\S+)(?:\s+(.*\S))?", RegexOptions.IgnoreCase)
+// Path is /\S* (not /\S+) so a bare "GET /" — fetching the base-URL root, the most
+// basic cold-start action — parses to path "/". With /\S+ the root was unfetchable.
+let private actionRe = Regex(@"\b(GET|POST)\s+(/\S*)(?:\s+(.*\S))?", RegexOptions.IgnoreCase)
 
 let parseAction (text: string) : (string * string * string option) option =
     let m = actionRe.Match(text.Replace("`", " "))
@@ -32,11 +34,12 @@ let parseAction (text: string) : (string * string * string option) option =
 let private terminalTokens =
     [ "data-game-status=\"won\""; "data-game-status=\"draw\""; "wins!"; "it's a draw" ]
 
-let private terminalOutcome (status: int) (body: string) : string option =
-    if status = 404 then Some "ended"
-    else
-        let low = body.ToLowerInvariant()
-        if terminalTokens |> List.exists low.Contains then Some "over" else None
+// A 404 in cold start means "that path does not exist" — the agent must be free to
+// try another path, NOT stop. Simple never 404s a live game, so ONLY win/draw prose
+// is terminal; MaxActions + the move cap bound the loop otherwise.
+let private terminalOutcome (_status: int) (body: string) : string option =
+    let low = body.ToLowerInvariant()
+    if terminalTokens |> List.exists low.Contains then Some "over" else None
 
 let private send (client: HttpClient) (baseUrl: string) (m: string) (path: string) (body: string option) : int * string =
     let url = baseUrl.TrimEnd('/') + path
@@ -61,7 +64,18 @@ let runSeat (cfg: SeatConfig) : Transcript =
     let t = Transcript.empty cfg.Seat cfg.Persona.Name cfg.Model
     let messages = ResizeArray<string * string>()
     messages.Add("system", ColdStart.systemPrompt cfg.Base cfg.Persona)
-    messages.Add("user", "Begin Stage 1: explore the base URL to learn what this is.")
+    // Identity is driver-owned (cookie jar): establish it once via the conventional
+    // login route — not an agent-visible action — then hand the agent the SERVED
+    // content of the base URL it was told to review. Faithful to "review the app at
+    // this URL", and removes the artificial "agent must guess to even start" hurdle.
+    send client cfg.Base "GET" "/login" None |> ignore
+    let seedStatus, seedBody = send client cfg.Base "GET" "/" None
+    t.Requests.Add { Method = "GET"; Path = "/"; Body = None; Status = seedStatus
+                     BodySnippet = (if seedBody.Length <= 300 then seedBody else seedBody.[..299]) }
+    HtmlBoard.parse seedBody |> Option.iter (fun cells -> t.Boards.Add { AfterRequestIndex = 0; Cells = cells })
+    let seedObs = if seedBody.Length <= 4000 then seedBody else seedBody.[..3999] + " …[truncated]"
+    messages.Add("user", sprintf "You fetched the base URL. HTTP %d\n%s\n\nReview this, then reply with your DISCOVERY report or your next request." seedStatus seedObs)
+    t.Actions <- t.Actions + 1
     let mutable firstSeated = false
     let mutable stop = false
     while not stop && t.Actions < cfg.MaxActions do

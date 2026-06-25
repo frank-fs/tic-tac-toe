@@ -19,13 +19,20 @@ let private seatCfg (rc: RunConfig) label gate signal : Driver.SeatConfig =
       MaxActions = rc.MaxActions; MaxMoves = rc.MaxMoves; Window = rc.Window; PollSeconds = rc.PollSeconds
       StartGate = gate; SeatedSignal = signal }
 
-let realizedSeat (t: Transcript) : string =
-    let m = t.Role |> Option.map (fun r -> r.MyRole.ToLowerInvariant())
-    match m with
-    | Some s when s.Contains "observ" || s.Contains "spectat" || s.Contains "watch" -> "observer"
-    | Some s when s.Contains "x" -> "X"
-    | Some s when s.Contains "o" -> "O"
-    | _ -> if t.Requests |> Seq.exists (fun r -> r.Method = "POST" && r.Status < 400) then "player" else "observer"
+let private hasAccepted (t: Transcript) =
+    t.Requests |> Seq.exists (fun r -> r.Method = "POST" && r.Status < 400)
+
+// Ground-truth seat from ARRIVAL ORDER (not the agent's self-report, which is
+// unreliable). The orchestrator's stagger guarantees seatA seats before seatB, so the
+// first party with an accepted move is X, the second is O, everyone else is observer.
+// The agent's self-reported role is graded SEPARATELY (role_discrimination) against this.
+let groundTruthSeats (transcripts: Transcript list) : string list =
+    transcripts
+    |> List.mapFold (fun players t ->
+        if hasAccepted t then
+            (if players = 0 then "X" elif players = 1 then "O" else "observer"), players + 1
+        else "observer", players) 0
+    |> fst
 
 let runGame (rc: RunConfig) : Transcript list =
     // Plain `let` (not `use`): a timeout task below may call Set() after runGame
@@ -49,8 +56,10 @@ let runGame (rc: RunConfig) : Transcript list =
 
 let resultsJson (rc: RunConfig) (transcripts: Transcript list) : string =
     let parties = JsonArray()
-    for t in transcripts do
-        let realized = realizedSeat t
+    let seats = groundTruthSeats transcripts
+    for (t, realized) in List.zip transcripts seats do
+        // Stamp the ground-truth seat so the grader's role_discrimination compares the
+        // agent's self-reported canIAct against the TRUE seat, not against itself.
         let g = Grader.grade { t with Seat = realized }
         let p = JsonObject()
         p["seat"] <- JsonValue.Create realized
