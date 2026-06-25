@@ -124,3 +124,4 @@ Stated before any run.
 - Blunder-rate / distance-from-optimal scoring source (tic-tac-toe is solved → exact optimal table available).
 - V_swagger + ERPC bracket runs scheduled after Phase 1–2 land.
 - Streaming round (SSE small-deltas) — out of scope for this reset; request/response only.
+- **Seed back-off (deferred — not now).** Identity is currently driver-owned: the harness does a `GET /login` (cookie jar) then feeds the agent the served `GET /` body as its first observation (`Driver.fs` `runSeat`, lines 67–77). Preferred end-state is to *remove* the driver-owned `/login` and let the agent discover auth itself via a `302 → /login` redirect on the protected resource. Kept as a constant contract mechanic across all 16 cells for now so it is **not** a confound; revisit before bracket runs, not during SP2.
