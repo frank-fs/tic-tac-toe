@@ -597,7 +597,7 @@ let ``observer claiming it can act fails role-discrimination`` () =
 let ``rejected NotAPlayer move tallied with code`` () =
     let t = t0 "observer"
     t.Requests.Add { Method = "POST"; Path = "/arenas/g1"; Body = Some "player=X&position=TopLeft"
-                     Status = 403; BodySnippet = "Rejected NotAPlayer" }
+                     Status = 403; BodySnippet = "<p>You are not a player in this arena.</p>" }  // real HTML prose, not a token
     let s = Grader.grade t
     Assert.Equal(0, s.AcceptedMoves); Assert.Equal(1, s.RejectedMoves); Assert.Contains("NotAPlayer", s.RejectionCodes)
 
@@ -646,8 +646,16 @@ let private roleNamed (r: RoleReport) =
 
 let private isObserverSeat (seat: string) = seat.ToLowerInvariant().Contains "observ"
 
+// Simple renders rejection PROSE, not tokens — map the prose to a reason code so
+// NotAPlayer (observer) and NotYourTurn (out-of-turn), both HTTP 403, stay distinct.
 let private codeOf (snippet: string) (status: int) =
-    [ "NotYourTurn"; "NotAPlayer" ] |> List.tryFind snippet.Contains |> Option.defaultValue (string status)
+    let low = snippet.ToLowerInvariant()
+    if low.Contains "not your turn" then "NotYourTurn"
+    elif low.Contains "not a player" then "NotAPlayer"
+    elif low.Contains "already taken" then "PositionTaken"
+    elif low.Contains "invalid move" then "InvalidMove"
+    elif low.Contains "already over" then "GameOver"
+    else string status
 
 let private recognize (t: Transcript) : RecognizeScore =
     let appIs, goal, mp =
