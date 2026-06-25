@@ -6,16 +6,19 @@
   <ItemGroup>
     <Compile Include="../../oss-driver/Types.fs" />
     <Compile Include="../../oss-driver/Personas.fs" />
+    <Compile Include="../../oss-driver/LlmClient.fs" />
     <Compile Include="../ColdStart.fs" />
     <Compile Include="../HtmlBoard.fs" />
     <Compile Include="../Transcript.fs" />
     <Compile Include="../Optimal.fs" />
     <Compile Include="../Grader.fs" />
+    <Compile Include="../Driver.fs" />
     <Compile Include="ColdStartTests.fs" />
     <Compile Include="HtmlBoardTests.fs" />
     <Compile Include="TranscriptTests.fs" />
     <Compile Include="OptimalTests.fs" />
     <Compile Include="GraderTests.fs" />
+    <Compile Include="DriverTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
