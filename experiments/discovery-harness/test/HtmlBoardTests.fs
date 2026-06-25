@@ -14,10 +14,9 @@ let private fixture = """<div class="board"><form method="post" action="/arenas/
 let ``parses X O and empties in board order`` () =
     match HtmlBoard.parse fixture with
     | Some cells ->
-        Assert.Equal(9, cells.Length)
-        Assert.Equal("X", cells.[0])
-        Assert.Equal("O", cells.[4])
-        Assert.Equal("", cells.[1])
+        // Full 9-cell assertion: any positional shift / off-by-one corrupts the
+        // grader's blunder scorer, so check every slot, not a sample.
+        Assert.Equal<string[]>([| "X"; ""; ""; ""; "O"; ""; ""; ""; "" |], cells)
     | None -> Assert.Fail "expected a parsed board"
 
 [<Fact>]
