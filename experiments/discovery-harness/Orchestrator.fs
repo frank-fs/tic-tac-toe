@@ -28,14 +28,24 @@ let realizedSeat (t: Transcript) : string =
     | _ -> if t.Requests |> Seq.exists (fun r -> r.Method = "POST" && r.Status < 400) then "player" else "observer"
 
 let runGame (rc: RunConfig) : Transcript list =
-    use gateB = new ManualResetEventSlim(false)
-    use gateC = new ManualResetEventSlim(false)
+    // Plain `let` (not `use`): a timeout task below may call Set() after runGame
+    // returns; disposing the gates would turn that into an ObjectDisposedException.
+    let gateB = new ManualResetEventSlim(false)
+    let gateC = new ManualResetEventSlim(false)
+    let cts = new CancellationTokenSource()
     let cfgA = seatCfg rc "seatA" None (Some(fun () -> gateB.Set()))
     let cfgB = seatCfg rc "seatB" (Some gateB) (Some(fun () -> gateC.Set()))
     let cfgC = seatCfg rc "seatC" (Some gateC) None
-    Task.Run(fun () -> Thread.Sleep gateTimeoutMs; gateB.Set()) |> ignore
-    Task.Run(fun () -> Thread.Sleep gateTimeoutMs; gateC.Set()) |> ignore
-    [ cfgA; cfgB; cfgC ] |> List.map (fun c -> Task.Run(fun () -> Driver.runSeat c)) |> List.map (fun t -> t.Result)
+    // Bound (R10): release each gate after the timeout UNLESS the game ends first —
+    // cts.Cancel wakes the wait so the timeout task exits instead of lingering.
+    let timeout (g: ManualResetEventSlim) =
+        Task.Run(fun () -> if not (cts.Token.WaitHandle.WaitOne gateTimeoutMs) then g.Set())
+    timeout gateB |> ignore
+    timeout gateC |> ignore
+    let results =
+        [ cfgA; cfgB; cfgC ] |> List.map (fun c -> Task.Run(fun () -> Driver.runSeat c)) |> List.map (fun t -> t.Result)
+    cts.Cancel()
+    results
 
 let resultsJson (rc: RunConfig) (transcripts: Transcript list) : string =
     let parties = JsonArray()
