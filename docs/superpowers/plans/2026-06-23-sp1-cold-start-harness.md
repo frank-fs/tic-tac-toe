@@ -231,7 +231,7 @@ let discoveryInstruction =
      Work in two stages.\n\n\
      STAGE 1 — DISCOVER (read-only). Issue read requests to learn what this is. When \
      you can, reply with EXACTLY one line of JSON and nothing else:\n\
-     DISCOVERY {\"appIs\":\"...\",\"goal\":\"...\",\"isMultiplayer\":true|false,\"howToParticipate\":\"...\"}\n\n\
+     DISCOVERY {\"appIs\":\"...\",\"goal\":\"...\",\"howToParticipate\":\"...\"}\n\n\
      STAGE 2 — PARTICIPATE. Take part and pursue the goal. The system that assigns you \
      a part may accept or refuse your attempts; learn your part from how it responds. \
      Once you know it, reply with one line of JSON and nothing else:\n\
@@ -368,7 +368,7 @@ git commit -m "feat(discovery-harness): HTML board parser (real-fixture TDD)"
 **Interfaces:**
 - Produces:
   - `type ReqRecord = { Method: string; Path: string; Body: string option; Status: int; BodySnippet: string }`
-  - `type DiscoveryReport = { AppIs: string; Goal: string; IsMultiplayer: bool option; HowToParticipate: string }`
+  - `type DiscoveryReport = { AppIs: string; Goal: string; HowToParticipate: string }`
   - `type RoleReport = { MyRole: string; MyAffordances: string; CanIAct: bool option }`
   - `type BoardSnapshot = { AfterRequestIndex: int; Cells: string[] }`
   - `type Transcript = { Seat: string; Persona: string; Model: string; Requests: ResizeArray<ReqRecord>; mutable Discovery: DiscoveryReport option; mutable Role: RoleReport option; Boards: ResizeArray<BoardSnapshot>; mutable Outcome: string; mutable Tokens: int; mutable Actions: int; mutable MovesSubmitted: int }`
@@ -386,9 +386,9 @@ open TicTacToe.DiscoveryHarness.Transcript
 
 [<Fact>]
 let ``parses a DISCOVERY report line`` () =
-    let line = "DISCOVERY {\"appIs\":\"tic-tac-toe\",\"goal\":\"win\",\"isMultiplayer\":true,\"howToParticipate\":\"POST a move\"}"
+    let line = "DISCOVERY {\"appIs\":\"tic-tac-toe\",\"goal\":\"win\",\"howToParticipate\":\"POST a move\"}"
     match tryParseDiscovery line with
-    | Some d -> Assert.Equal("tic-tac-toe", d.AppIs); Assert.Equal(Some true, d.IsMultiplayer)
+    | Some d -> Assert.Equal("tic-tac-toe", d.AppIs); Assert.Equal("win", d.Goal)
     | None -> Assert.Fail "expected discovery"
 
 [<Fact>]
@@ -413,7 +413,7 @@ open System.Text.Json.Nodes
 open System.Text.RegularExpressions
 
 type ReqRecord = { Method: string; Path: string; Body: string option; Status: int; BodySnippet: string }
-type DiscoveryReport = { AppIs: string; Goal: string; IsMultiplayer: bool option; HowToParticipate: string }
+type DiscoveryReport = { AppIs: string; Goal: string; HowToParticipate: string }
 type RoleReport = { MyRole: string; MyAffordances: string; CanIAct: bool option }
 type BoardSnapshot = { AfterRequestIndex: int; Cells: string[] }
 
@@ -447,8 +447,7 @@ let private extract (prefix: string) (line: string) : JsonObject option =
 
 let tryParseDiscovery line =
     extract "DISCOVERY" line
-    |> Option.map (fun o -> { AppIs = str o "appIs"; Goal = str o "goal"
-                              IsMultiplayer = boolOpt o "isMultiplayer"; HowToParticipate = str o "howToParticipate" })
+    |> Option.map (fun o -> { AppIs = str o "appIs"; Goal = str o "goal"; HowToParticipate = str o "howToParticipate" })
 
 let tryParseRole line =
     extract "ROLE" line
@@ -561,7 +560,7 @@ git commit -m "feat(discovery-harness): tested minimax blunder scorer"
 `RecognizeScore = { AppIsHit; GoalHit; MultiplayerHit; RoleNamed; RoleDiscriminationCorrect; FirstActionCoherent : bool }`
 `Scores = { Recognize: RecognizeScore; AcceptedMoves; RejectedMoves: int; RejectionCodes: string list; Outcome: string; MovesToTerminal; Blunders; MovesScored; Actions; Tokens: int }`
 
-Rules: AppIsHit/GoalHit = discovery text contains any truth keyword; MultiplayerHit = `IsMultiplayer = Some true`; RoleNamed = role report present and names x/o/observer; RoleDiscriminationCorrect = observer→`canIAct=Some false`, X/O→`Some true`; FirstActionCoherent = first POST status ≠ 404; AcceptedMoves/RejectedMoves = POST <400 / ≥400; RejectionCodes = `NotYourTurn`/`NotAPlayer`/status from snippet; Blunders/MovesScored = replay accepted moves vs the latest `Boards` snapshot preceding each, via `Optimal.isBlunder` (board index from `HtmlBoard.positions`). Quality applies on every surface with board snapshots — no surface carve-out.
+Rules: AppIsHit/GoalHit = discovery text contains any truth keyword; MultiplayerHit = free text (appIs+goal+howToParticipate) contains any `multiplayerKw` (the frozen instruction no longer names a multiplayer field — agent surfaces it unprompted); RoleNamed = role report present and names x/o/observer; RoleDiscriminationCorrect = observer→`canIAct=Some false`, X/O→`Some true`; FirstActionCoherent = first POST status ≠ 404; AcceptedMoves/RejectedMoves = POST <400 / ≥400; RejectionCodes = `NotYourTurn`/`NotAPlayer`/status from snippet; Blunders/MovesScored = replay accepted moves vs the latest `Boards` snapshot preceding each, via `Optimal.isBlunder` (board index from `HtmlBoard.positions`). Quality applies on every surface with board snapshots — no surface carve-out.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -577,8 +576,8 @@ let private t0 seat = Transcript.empty seat "expert" "test"
 [<Fact>]
 let ``recognizes tic-tac-toe and multiplayer`` () =
     let t = t0 "X"
-    t.Discovery <- Some { AppIs = "a tic-tac-toe game"; Goal = "three in a row to win"
-                          IsMultiplayer = Some true; HowToParticipate = "post a move" }
+    t.Discovery <- Some { AppIs = "a two-player tic-tac-toe game"; Goal = "three in a row to win"
+                          HowToParticipate = "post a move against your opponent" }
     let s = Grader.grade t
     Assert.True(s.Recognize.AppIsHit); Assert.True(s.Recognize.GoalHit); Assert.True(s.Recognize.MultiplayerHit)
 
@@ -634,6 +633,9 @@ type Scores =
 
 let private appKw = [| "tic-tac-toe"; "tic tac toe"; "tictactoe"; "noughts" |]
 let private goalKw = [| "three in a row"; "3 in a row"; "win"; "row"; "line" |]
+// MultiplayerHit is graded from FREE TEXT (the frozen instruction no longer names a
+// multiplayer field — see ColdStart). The agent must surface multi-party-ness unprompted.
+let private multiplayerKw = [| "two player"; "two-player"; "multiplayer"; "multi-player"; "opponent"; "two players"; "other player"; "against" |]
 
 let private hits (kws: string[]) (text: string) =
     let low = text.ToLowerInvariant()
@@ -650,7 +652,8 @@ let private codeOf (snippet: string) (status: int) =
 let private recognize (t: Transcript) : RecognizeScore =
     let appIs, goal, mp =
         match t.Discovery with
-        | Some d -> hits appKw d.AppIs, hits goalKw d.Goal, d.IsMultiplayer = Some true
+        | Some d -> hits appKw d.AppIs, hits goalKw d.Goal,
+                    hits multiplayerKw (d.AppIs + " " + d.Goal + " " + d.HowToParticipate)
         | None -> false, false, false
     let named, discrim =
         match t.Role with
