@@ -13,12 +13,14 @@
     <Compile Include="../Optimal.fs" />
     <Compile Include="../Grader.fs" />
     <Compile Include="../Driver.fs" />
+    <Compile Include="../Orchestrator.fs" />
     <Compile Include="ColdStartTests.fs" />
     <Compile Include="HtmlBoardTests.fs" />
     <Compile Include="TranscriptTests.fs" />
     <Compile Include="OptimalTests.fs" />
     <Compile Include="GraderTests.fs" />
     <Compile Include="DriverTests.fs" />
+    <Compile Include="OrchestratorTests.fs" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.*" />
