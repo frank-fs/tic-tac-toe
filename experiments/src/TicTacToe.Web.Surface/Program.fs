@@ -1,4 +1,5 @@
 open System
+open System.Threading.Tasks
 open Microsoft.AspNetCore.Authentication
 open Microsoft.AspNetCore.Authentication.Cookies
 open Microsoft.AspNetCore.Builder
@@ -106,6 +107,44 @@ let arenaDelete =
         post Handlers.deleteArena
     }
 
+let profileResource =
+    resource "/profile" {
+        name "Profile"
+        requireAuth
+        get Handlers.profile
+    }
+
+let wellKnownHomeResource =
+    resource "/.well-known/home" {
+        name "WellKnownHome"
+        requireAuth
+        get Handlers.wellKnownHome
+    }
+
+let private optionsAllow (path: string) =
+    match path with
+    | "/" -> Some "GET, OPTIONS"
+    | "/arenas" -> Some "POST, OPTIONS"
+    | "/profile" | "/.well-known/home" -> Some "GET, OPTIONS"
+    | p when p.StartsWith "/arenas/" -> Some "GET, POST, DELETE, OPTIONS"
+    | _ -> None
+
+let useOptionsDiscovery (app: IApplicationBuilder) =
+    let surface = app.ApplicationServices.GetRequiredService<Surface>()
+    if not surface.Sd then app
+    else
+        app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+            task {
+                if ctx.Request.Method = "OPTIONS" then
+                    match optionsAllow ctx.Request.Path.Value with
+                    | Some allow ->
+                        ctx.Response.StatusCode <- 204
+                        ctx.Response.Headers.Append("Allow", allow)
+                    | None -> do! next.Invoke ctx
+                else
+                    do! next.Invoke ctx
+            } :> Task)
+
 /// Create initial arenas on application startup
 let createInitialArenas (app: IApplicationBuilder) =
     let lifetime =
@@ -150,6 +189,7 @@ let main args =
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
         plugBeforeRouting AntiforgeryApplicationBuilderExtensions.UseAntiforgery
         plugBeforeRouting createInitialArenas
+        plugBeforeRouting useOptionsDiscovery
 
         resource login
         resource logout
@@ -158,6 +198,8 @@ let main args =
         resource arenaById
         resource arenaRestart
         resource arenaDelete
+        resource profileResource
+        resource wellKnownHomeResource
     }
 
     0

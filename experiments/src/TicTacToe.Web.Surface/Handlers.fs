@@ -27,6 +27,22 @@ let private sessionId (ctx: HttpContext) =
 let private requestId () = Guid.NewGuid().ToString()
 
 // ============================================================================
+// Sd: semantic discovery header helpers
+// ============================================================================
+
+/// State-dependent Allow for an arena resource.
+let private arenaAllow (result: MoveResult) =
+    match result with
+    | XTurn _ | OTurn _ -> "GET, POST, DELETE, OPTIONS"
+    | _ -> "GET, DELETE, OPTIONS"   // terminal: no further moves
+
+let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: string option) =
+    ctx.Response.Headers.Append("Link", $"</profile>; rel=\"profile\", <{selfPath}>; rel=\"self\"")
+    match allow with
+    | Some a -> ctx.Response.Headers.Append("Allow", a)
+    | None -> ()
+
+// ============================================================================
 // Auth
 // ============================================================================
 
@@ -83,6 +99,7 @@ let home (ctx: HttpContext) =
             match store.MaxGames with
             | Some m -> arenas.Length < m
             | None -> true
+        if surface.Sd then setDiscoveryHeaders ctx "/" None
         let element = homePage surface ctx allowCreate arenas |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
@@ -138,6 +155,8 @@ let getArena (ctx: HttpContext) =
         | None ->
             ctx.Response.StatusCode <- 404
         | Some result ->
+            let surface = ctx.RequestServices.GetRequiredService<Surface>()
+            if surface.Sd then setDiscoveryHeaders ctx $"/arenas/{arenaId}" (Some (arenaAllow result))
             do! renderArenaHtml ctx arenaId result None
     }
 
@@ -262,4 +281,30 @@ let restartArena (ctx: HttpContext) =
             ctx.Response.StatusCode <- 404
         | Some _ ->
             ctx.Response.Redirect($"/arenas/{arenaId}")
+    }
+
+// ============================================================================
+// Sd: discovery document resources
+// ============================================================================
+
+/// GET /profile — ALPS profile of the app's affordances (Sd only).
+let profile (ctx: HttpContext) =
+    task {
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.Sd then
+            ctx.Response.StatusCode <- 404
+        else
+            ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
+            do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.alpsProfile
+    }
+
+/// GET /.well-known/home — JSON Home document (Sd only).
+let wellKnownHome (ctx: HttpContext) =
+    task {
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.Sd then
+            ctx.Response.StatusCode <- 404
+        else
+            ctx.Response.ContentType <- "application/json-home; charset=utf-8"
+            do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.jsonHome
     }
