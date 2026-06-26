@@ -10,6 +10,7 @@ open Frank.Builder
 open Frank.Auth
 open Frank.OpenApi
 open TicTacToe.Web.Surface
+open TicTacToe.Web.Surface.Surface
 open TicTacToe.Web.Surface.GameStore
 open TicTacToe.Web.Surface.Model
 open TicTacToe.Web.Surface.Logger
@@ -46,6 +47,7 @@ let configureServices (services: IServiceCollection) =
     services.AddAntiforgery() |> ignore
 
     services
+        .AddSingleton<Surface>(Surface.fromEnvironment())
         .AddSingleton<GameStore>(fun _ -> GameStore(?maxGames = maxGames()))
         .AddSingleton<RequestLogger>(fun _ -> RequestLogger(?logPath = requestLogPath()))
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
