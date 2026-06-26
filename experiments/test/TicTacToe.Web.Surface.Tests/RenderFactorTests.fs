@@ -40,3 +40,23 @@ let ``A1 gives the off-turn player no move forms`` () =
 let ``A1 gives an observer no move forms`` () =
     let out = renderArenaPage (cell true false false false) "g" (freshXTurn()) "observer" seated None |> html
     Assert.Equal(0, (out.Split("name=\"position\"").Length - 1))
+
+[<Fact>]
+let ``C0 emits no grid role and no live region`` () =
+    let out = renderArenaPage (cell false false false false) "g" (freshXTurn()) "userX" seated None |> html
+    Assert.DoesNotContain("role=\"grid\"", out)
+    Assert.DoesNotContain("aria-live", out)
+
+[<Fact>]
+let ``C1 emits grid role and a polite live region`` () =
+    let out = renderArenaPage (cell false true false false) "g" (freshXTurn()) "userX" seated None |> html
+    Assert.Contains("role=\"grid\"", out)
+    Assert.Contains("role=\"gridcell\"", out)
+    Assert.Contains("aria-live=\"polite\"", out)
+
+[<Fact>]
+let ``A1+C1 plain cells carry role=gridcell`` () =
+    // userO is off-turn on fresh X-turn game => all 9 squares are plain (non-affordance) cells
+    let out = renderArenaPage (cell true true false false) "g" (freshXTurn()) "userO" seated None |> html
+    Assert.Equal(0, (out.Split("name=\"position\"").Length - 1))
+    Assert.Contains("role=\"gridcell\"", out)

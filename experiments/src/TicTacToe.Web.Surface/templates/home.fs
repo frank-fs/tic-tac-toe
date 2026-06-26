@@ -36,13 +36,16 @@ let homePage (surface: Surface) (ctx: HttpContext) (allowCreate: bool) (arenas: 
         if arenas.IsEmpty then
             p (class' = "no-arenas") { "No games yet. Create one to start playing!" }
         else
-            ul (class' = "arenas-list") {
-                for (arenaId, result) in arenas do
-                    li (class' = "arena-item") {
-                        a (class' = "arena-link", href = $"/arenas/{arenaId}") {
-                            arenaId.[..7]
+            let arenaList =
+                let u = ul (class' = "arenas-list") {
+                    for (arenaId, result) in arenas do
+                        li (class' = "arena-item") {
+                            a (class' = "arena-link", href = $"/arenas/{arenaId}") {
+                                arenaId.[..7]
+                            }
+                            span (class' = "arena-status") { arenaStatusText result }
                         }
-                        span (class' = "arena-status") { arenaStatusText result }
-                    }
-            }
+                }
+                if surface.C then u.attr("role", "list") else u
+            arenaList
     }

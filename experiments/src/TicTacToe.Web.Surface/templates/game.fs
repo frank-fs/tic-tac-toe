@@ -77,10 +77,18 @@ let private legalForCaller (result: MoveResult) (role: Player option) : Set<Squa
     | OTurn(_, vo), Some O -> vo |> Array.map (fun (OPos p) -> p) |> Set.ofArray
     | _ -> Set.empty
 
+let private occupancyLabel (posStr: string) (isTaken: bool) (label: string) =
+    if isTaken then $"{posStr}, {label}" else $"{posStr}, empty"
+
+let private applyCell (surface: Surface) (posStr: string) (isTaken: bool) (label: string) (b: HtmlTag) =
+    if surface.C then
+        b.attr("role", "gridcell").attr("aria-label", occupancyLabel posStr isTaken label)
+    else b
+
 /// A1 non-affordance cell: plain, non-interactive.
-let private renderPlainCell (label: string) =
-    button(class' = "square", type' = "button", ariaLabel = "").attr("disabled", "disabled") { label }
-    :> HtmlElement
+let private renderPlainCell (surface: Surface) (posStr: string) (isTaken: bool) (label: string) =
+    let b = button(class' = "square", type' = "button", ariaLabel = "").attr("disabled", "disabled") { label }
+    applyCell surface posStr isTaken label b :> HtmlElement
 
 /// Render a single square.
 /// A0: All 9 squares rendered as form-POST buttons (naive design); occupied/inactive disabled.
@@ -94,20 +102,22 @@ let private renderSquare (surface: Surface) (legal: Set<SquarePosition>) (arenaI
         | _ -> false, "·"
     if surface.A then
         if Set.contains position legal then
+            let btn = applyCell surface posStr isTaken label (button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label })
             form (method = "post", action = $"/arenas/{arenaId}") {
                 input (type' = "hidden", name = "player", value = playerStr)
                 input (type' = "hidden", name = "position", value = posStr)
-                button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+                btn
             } :> HtmlElement
         else
-            renderPlainCell label
+            renderPlainCell surface posStr isTaken label
     else
         let clickable = isActive && not isTaken
-        let square =
+        let rawSquare =
             if clickable then
                 button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
             else
                 button(class' = "square", type' = "submit", ariaLabel = posStr).attr("disabled", "disabled") { label }
+        let square = applyCell surface posStr isTaken label rawSquare
         form (method = "post", action = $"/arenas/{arenaId}") {
             input (type' = "hidden", name = "player", value = playerStr)
             input (type' = "hidden", name = "position", value = posStr)
@@ -154,6 +164,20 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
     let playerStr = resolvePlayerStr assignment userId result
     let role = callerRole assignment userId
     let legal = legalForCaller result role
+    let board =
+        let d = div (class' = "board") {
+            for position in allPositions do
+                renderSquare surface legal arenaId playerStr state active position
+        }
+        if surface.C then d.attr("role", "grid") else d
+    let statusDiv =
+        let d = div (class' = "status") { status }
+        if surface.C then d.attr("aria-live", "polite") else d
+    let backLink : HtmlElement =
+        if surface.C then
+            nav () { a (class' = "back-link", href = "/") { "Back to game list" } }
+        else
+            a (class' = "back-link", href = "/") { "Back to game list" }
 
     Fragment() {
         style () {
@@ -192,17 +216,11 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
             div (class' = "error-msg") { msg }
         | None -> ()
 
-        div (class' = "board") {
-            for position in allPositions do
-                renderSquare surface legal arenaId playerStr state active position
-        }
-
-        div (class' = "status") { status }
-
+        board
+        statusDiv
         renderLegend assignment result
         renderControls arenaId
-
-        a (class' = "back-link", href = "/") { "Back to game list" }
+        backLink
     }
 
 /// CSS styles for the home page (arena list)
