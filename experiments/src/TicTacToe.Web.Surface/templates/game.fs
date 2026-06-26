@@ -62,31 +62,57 @@ let private isInProgress = function
 // Rendering
 // ============================================================================
 
-/// Render a single square as a form-POST button.
-/// All 9 squares are always rendered as buttons (naive design); a square is
-/// disabled only when it offers no valid move — it is occupied, or the game is
-/// over. Turn ownership is deliberately NOT modelled here: the server still
-/// rejects out-of-turn submissions, mirroring the naive HTML implementations
-/// this variant represents.
-let private renderSquare (arenaId: string) (playerStr: string) (state: GameState) (isActive: bool) (position: SquarePosition) =
+/// The caller's seat in this arena, if any.
+let private callerRole (assignment: PlayerAssignment option) (userId: string) =
+    match assignment with
+    | Some { PlayerXId = Some x } when x = userId -> Some X
+    | Some { PlayerOId = Some o } when o = userId -> Some O
+    | _ -> None
+
+/// Squares the caller may legally move into right now (empty unless it is the
+/// caller's turn). Reads the legal-move list the Engine already computed.
+let private legalForCaller (result: MoveResult) (role: Player option) : Set<SquarePosition> =
+    match result, role with
+    | XTurn(_, vx), Some X -> vx |> Array.map (fun (XPos p) -> p) |> Set.ofArray
+    | OTurn(_, vo), Some O -> vo |> Array.map (fun (OPos p) -> p) |> Set.ofArray
+    | _ -> Set.empty
+
+/// A1 non-affordance cell: plain, non-interactive.
+let private renderPlainCell (label: string) =
+    button(class' = "square", type' = "button", ariaLabel = "").attr("disabled", "disabled") { label }
+    :> HtmlElement
+
+/// Render a single square.
+/// A0: All 9 squares rendered as form-POST buttons (naive design); occupied/inactive disabled.
+/// A1: Only the caller's currently-legal moves rendered as forms; all others are plain cells.
+let private renderSquare (surface: Surface) (legal: Set<SquarePosition>) (arenaId: string) (playerStr: string) (state: GameState) (isActive: bool) (position: SquarePosition) =
     let posStr = position.ToString()
     let isTaken, label =
         match state.TryGetValue(position) with
         | true, Taken X -> true, "X"
         | true, Taken O -> true, "O"
         | _ -> false, "·"
-    let clickable = isActive && not isTaken
-    let square =
-        if clickable then
-            button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+    if surface.A then
+        if Set.contains position legal then
+            form (method = "post", action = $"/arenas/{arenaId}") {
+                input (type' = "hidden", name = "player", value = playerStr)
+                input (type' = "hidden", name = "position", value = posStr)
+                button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+            } :> HtmlElement
         else
-            button(class' = "square", type' = "submit", ariaLabel = posStr).attr("disabled", "disabled") { label }
-    form (method = "post", action = $"/arenas/{arenaId}") {
-        input (type' = "hidden", name = "player", value = playerStr)
-        input (type' = "hidden", name = "position", value = posStr)
-        square
-    }
-    :> HtmlElement
+            renderPlainCell label
+    else
+        let clickable = isActive && not isTaken
+        let square =
+            if clickable then
+                button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+            else
+                button(class' = "square", type' = "submit", ariaLabel = posStr).attr("disabled", "disabled") { label }
+        form (method = "post", action = $"/arenas/{arenaId}") {
+            input (type' = "hidden", name = "player", value = playerStr)
+            input (type' = "hidden", name = "position", value = posStr)
+            square
+        } :> HtmlElement
 
 /// Render the player legend
 let private renderLegend (assignment: PlayerAssignment option) (result: MoveResult) =
@@ -126,6 +152,8 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
     let status = statusText result
     let active = isInProgress result
     let playerStr = resolvePlayerStr assignment userId result
+    let role = callerRole assignment userId
+    let legal = legalForCaller result role
 
     Fragment() {
         style () {
@@ -166,7 +194,7 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
 
         div (class' = "board") {
             for position in allPositions do
-                renderSquare arenaId playerStr state active position
+                renderSquare surface legal arenaId playerStr state active position
         }
 
         div (class' = "status") { status }
