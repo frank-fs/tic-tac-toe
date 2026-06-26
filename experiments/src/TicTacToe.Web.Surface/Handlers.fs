@@ -11,6 +11,7 @@ open TicTacToe.Model
 open TicTacToe.Web.Surface.GameStore
 open TicTacToe.Web.Surface.Logger
 open TicTacToe.Web.Surface.Model
+open TicTacToe.Web.Surface.Surface
 open TicTacToe.Web.Surface.templates.shared
 open TicTacToe.Web.Surface.templates.game
 open TicTacToe.Web.Surface.templates.home
@@ -76,12 +77,13 @@ let logout (ctx: HttpContext) =
 let home (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
         let arenas = store.List()
         let allowCreate =
             match store.MaxGames with
             | Some m -> arenas.Length < m
             | None -> true
-        let element = homePage ctx allowCreate arenas |> layout.html ctx
+        let element = homePage surface ctx allowCreate arenas |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
     }
@@ -95,11 +97,11 @@ let private isXTurn = function
     | _ -> false
 
 let private renderArenaHtml (ctx: HttpContext) (arenaId: string) (result: MoveResult) (errorMsg: string option) =
-    let store = ctx.RequestServices.GetRequiredService<GameStore>()
+    let surface = ctx.RequestServices.GetRequiredService<Surface>()
     let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
     let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
     let assignment = assignmentManager.GetAssignment(arenaId)
-    let element = renderArenaPage arenaId result userId assignment errorMsg |> layout.html ctx
+    let element = renderArenaPage surface arenaId result userId assignment errorMsg |> layout.html ctx
     ctx.Response.ContentType <- "text/html; charset=utf-8"
     Render.toStreamAsync ctx.Response.Body element
 

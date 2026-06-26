@@ -8,7 +8,6 @@ open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
 open Frank.Builder
 open Frank.Auth
-open Frank.OpenApi
 open TicTacToe.Web.Surface
 open TicTacToe.Web.Surface.Surface
 open TicTacToe.Web.Surface.GameStore
@@ -147,8 +146,6 @@ let main args =
                 options.LoginPath <- "/login"))
 
         useAuthorization
-
-        useOpenApi
 
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
         plugBeforeRouting AntiforgeryApplicationBuilderExtensions.UseAntiforgery

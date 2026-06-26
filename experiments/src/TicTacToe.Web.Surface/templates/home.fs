@@ -3,6 +3,7 @@ module TicTacToe.Web.Surface.templates.home
 open Microsoft.AspNetCore.Http
 open Oxpecker.ViewEngine
 open TicTacToe.Model
+open TicTacToe.Web.Surface.Surface
 open TicTacToe.Web.Surface.templates.game
 
 #nowarn "3391"
@@ -14,7 +15,7 @@ let private arenaStatusText = function
     | Draw _ -> "Draw"
     | Error(_, msg) -> $"Error: {msg}"
 
-let homePage (ctx: HttpContext) (allowCreate: bool) (arenas: (string * MoveResult) list) =
+let homePage (surface: Surface) (ctx: HttpContext) (allowCreate: bool) (arenas: (string * MoveResult) list) =
     ctx.Items["Title"] <- "Tic Tac Toe — Games"
 
     Fragment() {

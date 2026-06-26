@@ -4,6 +4,7 @@ open Oxpecker.ViewEngine
 open Oxpecker.ViewEngine.Aria
 open TicTacToe.Model
 open TicTacToe.Web.Surface.Model
+open TicTacToe.Web.Surface.Surface
 
 #nowarn "3391"
 
@@ -120,7 +121,7 @@ let private renderControls (arenaId: string) =
 
 /// Render a complete arena page.
 /// errorMsg — optional inline error (wrong player, game over, etc.)
-let renderArenaPage (arenaId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (errorMsg: string option) =
+let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (errorMsg: string option) =
     let (State state) = result
     let status = statusText result
     let active = isInProgress result
