@@ -60,3 +60,16 @@ let ``A1+C1 plain cells carry role=gridcell`` () =
     let out = renderArenaPage (cell true true false false) "g" (freshXTurn()) "userO" seated None |> html
     Assert.Equal(0, (out.Split("name=\"position\"").Length - 1))
     Assert.Contains("role=\"gridcell\"", out)
+
+[<Fact>]
+let ``So0 emits no JSON-LD`` () =
+    let out = renderArenaPage (cell false false false false) "g" (freshXTurn()) "userX" seated None |> html
+    Assert.DoesNotContain("application/ld+json", out)
+
+[<Fact>]
+let ``So1 emits a schema.org Game JSON-LD block with mnk and strategy`` () =
+    let out = renderArenaPage (cell false false false true) "g" (freshXTurn()) "userX" seated None |> html
+    Assert.Contains("application/ld+json", out)
+    Assert.Contains("schema.org", out)
+    Assert.Contains("(3,3,3)", out)
+    Assert.Contains("draw", out)

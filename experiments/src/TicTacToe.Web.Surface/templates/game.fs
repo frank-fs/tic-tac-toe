@@ -155,6 +155,24 @@ let private renderControls (arenaId: string) =
         }
     }
 
+/// Domain ontology block, trimmed to what a cold-start LLM can actually use.
+let private renderOntology () =
+    script (type' = "application/ld+json") {
+        raw """{
+  "@context": "https://schema.org",
+  "@type": "Game",
+  "name": "Tic-tac-toe",
+  "description": "An m,n,k-game with parameters (3,3,3): 3x3 board, 3-in-a-row to win.",
+  "genre": "abstract strategy",
+  "isBasedOn": [
+    { "@type": "Game", "name": "Connect Four", "description": "m,n,k = (7,6,4)" },
+    { "@type": "Game", "name": "Gomoku", "description": "m,n,k = (15,15,5)" }
+  ],
+  "strategy": "Solved: with perfect play tic-tac-toe is a draw; optimal play never loses."
+}"""
+    }
+    :> HtmlElement
+
 /// Render a complete arena page.
 /// errorMsg — optional inline error (wrong player, game over, etc.)
 let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (errorMsg: string option) =
@@ -205,6 +223,8 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
             .user-identity { font-family: monospace; font-size: 0.85em; color: #666; }
             """
         }
+
+        if surface.So then renderOntology () else Fragment() { }
 
         div (class' = "arena-header") {
             h1 () { "Tic Tac Toe" }
