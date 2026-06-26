@@ -1,9 +1,9 @@
-module TicTacToe.Web.Simple.templates.home
+module TicTacToe.Web.Surface.templates.home
 
 open Microsoft.AspNetCore.Http
 open Oxpecker.ViewEngine
 open TicTacToe.Model
-open TicTacToe.Web.Simple.templates.game
+open TicTacToe.Web.Surface.templates.game
 
 #nowarn "3391"
 

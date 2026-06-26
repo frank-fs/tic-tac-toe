@@ -1,9 +1,9 @@
-module TicTacToe.Web.Simple.templates.game
+module TicTacToe.Web.Surface.templates.game
 
 open Oxpecker.ViewEngine
 open Oxpecker.ViewEngine.Aria
 open TicTacToe.Model
-open TicTacToe.Web.Simple.Model
+open TicTacToe.Web.Surface.Model
 
 #nowarn "3391"
 

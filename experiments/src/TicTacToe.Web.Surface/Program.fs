@@ -9,11 +9,11 @@ open Microsoft.Extensions.Logging
 open Frank.Builder
 open Frank.Auth
 open Frank.OpenApi
-open TicTacToe.Web.Simple
-open TicTacToe.Web.Simple.GameStore
-open TicTacToe.Web.Simple.Model
-open TicTacToe.Web.Simple.Logger
-open TicTacToe.Web.Simple.Extensions
+open TicTacToe.Web.Surface
+open TicTacToe.Web.Surface.GameStore
+open TicTacToe.Web.Surface.Model
+open TicTacToe.Web.Surface.Logger
+open TicTacToe.Web.Surface.Extensions
 
 let private initialGames () =
     match System.Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
@@ -38,7 +38,7 @@ let private requestLogPath () =
 
 let configureLogging (builder: ILoggingBuilder) =
     builder.AddFilter("Microsoft.AspNetCore", LogLevel.Warning) |> ignore
-    builder.AddFilter("TicTacToe.Web.Simple", LogLevel.Information) |> ignore
+    builder.AddFilter("TicTacToe.Web.Surface", LogLevel.Information) |> ignore
     builder
 
 let configureServices (services: IServiceCollection) =

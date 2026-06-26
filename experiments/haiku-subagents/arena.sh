@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Server lifecycle for the haiku-subagent harness (Proto + Simple arms).
+# Server lifecycle for the haiku-subagent harness (Proto + Surface arms).
 #
 # A shell script can manage the two dotnet web servers but NOT the players
 # (Claude haiku subagents, spawned by the driving agent) nor the ERPC arm
 # (a stdio MCP server launched by Claude's own config — drive that via the
 # mcp__tictactoe-rpc__* tools: list_games / new_game).
 #
-#   arena.sh up   <proto|simple>   # fresh server, wait ready, print GAME_ID/URL/LOG
-#   arena.sh down <proto|simple>   # kill by pidfile
-#   arena.sh status <proto|simple>
+#   arena.sh up   <proto|surface>   # fresh server, wait ready, print GAME_ID/URL/LOG
+#   arena.sh down <proto|surface>   # kill by pidfile
+#   arena.sh status <proto|surface>
 #
 # `up` always tears down a stale instance and truncates the log first, so a run
 # starts from a clean board (the servers are single-game: MAX_GAMES=1).
@@ -27,14 +27,14 @@ arm_config() {          # one job: set globals for the named arm
       ROUTE=games
       EXTRA_ENV=(TICTACTOE_DISABLE_JS=1)
       ;;
-    simple)
-      PROJECT="$REPO_ROOT/experiments/src/TicTacToe.Web.Simple"
+    surface)
+      PROJECT="$REPO_ROOT/experiments/src/TicTacToe.Web.Surface"
       PORT=5328
       ROUTE=arenas
       EXTRA_ENV=()
       ;;
     *)
-      echo "unknown arm: $1 (expected proto|simple)" >&2
+      echo "unknown arm: $1 (expected proto|surface)" >&2
       exit 2
       ;;
   esac
@@ -142,12 +142,12 @@ cmd_status() {
 
 main() {
   local cmd="${1:-}"; local arm="${2:-}"
-  [ -n "$arm" ] || { echo "usage: arena.sh <up|down|status> <proto|simple>" >&2; exit 2; }
+  [ -n "$arm" ] || { echo "usage: arena.sh <up|down|status> <proto|surface>" >&2; exit 2; }
   case "$cmd" in
     up)     cmd_up "$arm" ;;
     down)   cmd_down "$arm" ;;
     status) cmd_status "$arm" ;;
-    *)      echo "usage: arena.sh <up|down|status> <proto|simple>" >&2; exit 2 ;;
+    *)      echo "usage: arena.sh <up|down|status> <proto|surface>" >&2; exit 2 ;;
   esac
 }
 

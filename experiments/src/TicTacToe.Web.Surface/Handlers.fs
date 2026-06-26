@@ -1,4 +1,4 @@
-module TicTacToe.Web.Simple.Handlers
+module TicTacToe.Web.Surface.Handlers
 
 open System
 open System.Threading.Tasks
@@ -8,12 +8,12 @@ open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
 open Oxpecker.ViewEngine
 open TicTacToe.Model
-open TicTacToe.Web.Simple.GameStore
-open TicTacToe.Web.Simple.Logger
-open TicTacToe.Web.Simple.Model
-open TicTacToe.Web.Simple.templates.shared
-open TicTacToe.Web.Simple.templates.game
-open TicTacToe.Web.Simple.templates.home
+open TicTacToe.Web.Surface.GameStore
+open TicTacToe.Web.Surface.Logger
+open TicTacToe.Web.Surface.Model
+open TicTacToe.Web.Surface.templates.shared
+open TicTacToe.Web.Surface.templates.game
+open TicTacToe.Web.Surface.templates.home
 
 // ============================================================================
 // Naive-HTML floor — every response is HTML, never a structured JSON payload

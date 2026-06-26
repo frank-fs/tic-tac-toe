@@ -1,8 +1,8 @@
-namespace TicTacToe.Web.Simple.templates.shared
+namespace TicTacToe.Web.Surface.templates.shared
 
 open Microsoft.AspNetCore.Http
 open Oxpecker.ViewEngine
-open TicTacToe.Web.Simple
+open TicTacToe.Web.Surface
 
 #nowarn "3391"
 

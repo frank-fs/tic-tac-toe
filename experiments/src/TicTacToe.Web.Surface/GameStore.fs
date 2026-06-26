@@ -1,4 +1,4 @@
-module TicTacToe.Web.Simple.GameStore
+module TicTacToe.Web.Surface.GameStore
 
 open System
 open System.Collections.Generic

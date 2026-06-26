@@ -1,4 +1,4 @@
-module TicTacToe.Web.Simple.Extensions
+module TicTacToe.Web.Surface.Extensions
 
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting

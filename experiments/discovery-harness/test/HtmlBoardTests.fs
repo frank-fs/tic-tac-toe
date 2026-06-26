@@ -3,7 +3,7 @@ module TicTacToe.DiscoveryHarness.HtmlBoardTests
 open Xunit
 open TicTacToe.DiscoveryHarness
 
-// Real bytes captured from TicTacToe.Web.Simple (port 5328, TICTACTOE_INITIAL_GAMES=1).
+// Real bytes captured from TicTacToe.Web.Surface (port 5328, TICTACTOE_INITIAL_GAMES=1).
 // X posted to TopLeft; O posted to MiddleCenter; remaining 7 squares are empty.
 // Empty cells render as &#183; (HTML entity for middle dot U+00B7).
 // Disabled squares: class="square" disabled="disabled"; clickable: class="square square-clickable".

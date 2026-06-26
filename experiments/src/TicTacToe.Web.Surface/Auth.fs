@@ -1,4 +1,4 @@
-namespace TicTacToe.Web.Simple
+namespace TicTacToe.Web.Surface
 
 open System
 open System.Security.Claims

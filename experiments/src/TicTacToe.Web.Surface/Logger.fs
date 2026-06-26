@@ -1,4 +1,4 @@
-module TicTacToe.Web.Simple.Logger
+module TicTacToe.Web.Surface.Logger
 
 open System
 open System.IO

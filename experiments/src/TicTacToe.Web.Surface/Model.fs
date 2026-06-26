@@ -1,4 +1,4 @@
-module TicTacToe.Web.Simple.Model
+module TicTacToe.Web.Surface.Model
 
 open System
 
