@@ -31,7 +31,7 @@ arm_config() {          # one job: set globals for the named arm
       PROJECT="$REPO_ROOT/experiments/src/TicTacToe.Web.Surface"
       PORT=5328
       ROUTE=arenas
-      EXTRA_ENV=()
+      EXTRA_ENV=(${CELL:+TICTACTOE_CELL=$CELL})
       ;;
     *)
       echo "unknown arm: $1 (expected proto|surface)" >&2
