@@ -51,8 +51,14 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
 
+      # Install runs unconditionally. The cache key above is derived from a wildcard
+      # package version ("1.*"), so it never invalidates across Playwright bumps;
+      # gating install on a cache-hit therefore restored a stale browser set and
+      # skipped fetching the new headless-shell build, failing every launch with
+      # "Executable doesn't exist at .../chromium_headless_shell-NNNN". `playwright
+      # install chromium` is a fast no-op when browsers are present and downloads
+      # only what's missing, so correctness no longer depends on cache freshness.
       - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pwsh test/TicTacToe.Web.Tests/bin/Debug/net10.0/playwright.ps1 install chromium
 
       - name: Install Playwright system dependencies
