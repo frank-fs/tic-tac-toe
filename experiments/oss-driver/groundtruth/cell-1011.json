@@ -1,10 +1,10 @@
 {
-  "cell": "1010",
+  "cell": "1011",
   "factors": {
     "A": true,
     "C": false,
     "Sd": true,
-    "So": false
+    "So": true
   },
   "core": {
     "appIs": "tic-tac-toe \u2014 a two-player m,n,k (3,3,3) game served as a web arena",
@@ -28,7 +28,7 @@
     },
     "profileContract": true,
     "ariaStructure": false,
-    "ontologyTyping": false
+    "ontologyTyping": true
   },
   "expectedPositionTokenSource": {
     "acceptable": [
@@ -39,7 +39,8 @@
     "note": "A=1 gates the active form (seat+turn), so an unseated agent is pushed toward /profile; board labels remain a valid source."
   },
   "expectedArtifactDiscovery": [
-    "the /profile contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the arena"
+    "the /profile contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the arena",
+    "schema.org Game JSON-LD typing block identifying the app as a Game"
   ],
-  "notes": "Factors on: ASd. A=1: move forms only for the caller's currently-legal squares (seat+turn-gated). Sd=1: /profile contract + Link/Allow headers expose the move format (player + 9 positions)."
+  "notes": "Factors on: ASdSo. A=1: move forms only for the caller's currently-legal squares (seat+turn-gated). Sd=1: /profile contract + Link/Allow headers expose the move format (player + 9 positions). So=1: schema.org Game ontology typing."
 }

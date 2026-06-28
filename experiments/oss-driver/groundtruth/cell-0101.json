@@ -1,10 +1,10 @@
 {
-  "cell": "0000",
+  "cell": "0101",
   "factors": {
     "A": false,
-    "C": false,
+    "C": true,
     "Sd": false,
-    "So": false
+    "So": true
   },
   "core": {
     "appIs": "tic-tac-toe \u2014 a two-player m,n,k (3,3,3) game served as a web arena",
@@ -27,15 +27,18 @@
       "gating": "none"
     },
     "profileContract": false,
-    "ariaStructure": false,
-    "ontologyTyping": false
+    "ariaStructure": true,
+    "ontologyTyping": true
   },
   "expectedPositionTokenSource": {
     "acceptable": [
       "board"
     ],
-    "note": "No /profile; board only (a form on every square)."
+    "note": "No /profile; board only (a form on every square). C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
   },
-  "expectedArtifactDiscovery": [],
-  "notes": "Factors on: none (floor). A=0: a move form on every square, ungated."
+  "expectedArtifactDiscovery": [
+    "ARIA gridcell roles + nav landmark + live region; squares accessibly labeled '{position}, {state}' \u2014 the position vocabulary (TopLeft..BottomRight) exposed to assistive tech",
+    "schema.org Game JSON-LD typing block identifying the app as a Game"
+  ],
+  "notes": "Factors on: CSo. A=0: a move form on every square, ungated. C=1: accessible structure; position vocabulary announced via aria-labels. So=1: schema.org Game ontology typing."
 }

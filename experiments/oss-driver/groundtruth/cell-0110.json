@@ -1,8 +1,8 @@
 {
-  "cell": "1010",
+  "cell": "0110",
   "factors": {
-    "A": true,
-    "C": false,
+    "A": false,
+    "C": true,
     "Sd": true,
     "So": false
   },
@@ -24,10 +24,10 @@
   "artifactsPresent": {
     "bodyMoveForms": {
       "present": true,
-      "gating": "seat+turn"
+      "gating": "none"
     },
     "profileContract": true,
-    "ariaStructure": false,
+    "ariaStructure": true,
     "ontologyTyping": false
   },
   "expectedPositionTokenSource": {
@@ -35,11 +35,11 @@
       "board",
       "profile"
     ],
-    "likelyUnderA1": "profile",
-    "note": "A=1 gates the active form (seat+turn), so an unseated agent is pushed toward /profile; board labels remain a valid source."
+    "note": "A=0 puts a form on every square (board); Sd also exposes /profile. Either is valid. C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
   },
   "expectedArtifactDiscovery": [
+    "ARIA gridcell roles + nav landmark + live region; squares accessibly labeled '{position}, {state}' \u2014 the position vocabulary (TopLeft..BottomRight) exposed to assistive tech",
     "the /profile contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the arena"
   ],
-  "notes": "Factors on: ASd. A=1: move forms only for the caller's currently-legal squares (seat+turn-gated). Sd=1: /profile contract + Link/Allow headers expose the move format (player + 9 positions)."
+  "notes": "Factors on: CSd. A=0: a move form on every square, ungated. C=1: accessible structure; position vocabulary announced via aria-labels. Sd=1: /profile contract + Link/Allow headers expose the move format (player + 9 positions)."
 }

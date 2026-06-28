@@ -116,9 +116,23 @@ let private coldStartPromptPath =
     |> Option.ofObj
     |> Option.defaultValue "experiments/oss-driver/coldstart-prompt.md"
 
+// Integrity lock: the committed coldstart-prompt.md.sha256 pins the frozen prompt's bytes.
+// If the prompt is edited without deliberately regenerating the lock, cold-start runs FAIL
+// loudly — weakening can't slip through silently. Update the lock only as a reviewed commit.
+let private verifyPromptLock () =
+    let lockPath = coldStartPromptPath + ".sha256"
+    if IO.File.Exists lockPath then
+        let expected = (IO.File.ReadAllText lockPath).Trim().Split([| ' '; '\t' |]).[0]
+        use sha = System.Security.Cryptography.SHA256.Create()
+        let actual =
+            IO.File.ReadAllBytes coldStartPromptPath |> sha.ComputeHash |> Array.map (sprintf "%02x") |> String.concat ""
+        if actual <> expected then
+            failwithf "cold-start prompt hash mismatch (frozen discovery instrument changed):\n  expected %s\n  actual   %s\nIf intentional, regenerate %s in a reviewed commit; otherwise restore the prompt." expected actual lockPath
+
 let private coldStartPrompt (_cfg: Config) (gamePath: string) : string =
     if not (IO.File.Exists coldStartPromptPath) then
         failwithf "cold-start prompt not found: %s (cwd %s)" coldStartPromptPath (IO.Directory.GetCurrentDirectory())
+    verifyPromptLock ()
     (IO.File.ReadAllText coldStartPromptPath).Replace("{URL}", gamePath)
 
 let private window (messages: ResizeArray<string * string>) (n: int) : (string * string) list =
