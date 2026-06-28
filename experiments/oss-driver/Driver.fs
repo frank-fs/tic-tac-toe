@@ -55,16 +55,25 @@ let private terminal (status: int) (body: string) : string option =
         let low = body.ToLowerInvariant()
         if terminalTokens |> List.exists low.Contains then Some "over" else None
 
-let private gameReq (client: HttpClient) (baseUrl: string) (m: string) (path: string) (body: string option) : int * string =
+// A real HTTP client sees response headers; the agent must too, or Sd (which
+// publishes discovery via Link/Allow headers + /profile) is always a miss.
+// Surface ALL response headers, curl -i style; uniform (not a Link/Allow subset)
+// so the observation isn't hand-biased toward Sd.
+let private formatHeaders (resp: HttpResponseMessage) : string =
+    let lines (h: System.Net.Http.Headers.HttpHeaders) =
+        h |> Seq.map (fun kv -> sprintf "%s: %s" kv.Key (String.Join(", ", kv.Value)))
+    Seq.append (lines resp.Headers) (lines resp.Content.Headers) |> String.concat "\n"
+
+let private gameReq (client: HttpClient) (baseUrl: string) (m: string) (path: string) (body: string option) : int * string * string =
     let url = baseUrl.TrimEnd('/') + path
     use req = new HttpRequestMessage(HttpMethod(m), url)
     body |> Option.iter (fun b -> req.Content <- new StringContent(b, Encoding.UTF8, "application/x-www-form-urlencoded"))
     req.Headers.TryAddWithoutValidation("Accept", "application/json, text/html") |> ignore
     try
         use resp = client.Send req
-        int resp.StatusCode, resp.Content.ReadAsStringAsync().Result
+        int resp.StatusCode, formatHeaders resp, resp.Content.ReadAsStringAsync().Result
     with e ->
-        0, sprintf "<request error: %s>" e.Message
+        0, "", sprintf "<request error: %s>" e.Message
 
 /// Seed the session cookie (identity) and resolve the game path.
 let private seed (client: HttpClient) (cfg: Config) : string =
@@ -72,7 +81,7 @@ let private seed (client: HttpClient) (cfg: Config) : string =
     let gid =
         if cfg.Game <> "" then cfg.Game
         else
-            let _, home = gameReq client cfg.Base "GET" "/" None
+            let _, _, home = gameReq client cfg.Base "GET" "/" None
             let m = Regex.Match(home, sprintf @"%s/([0-9a-f-]{36})" cfg.Route)
             if m.Success then m.Groups.[1].Value else ""
     if gid = "" then failwith "could not discover game id"
@@ -146,11 +155,11 @@ let run (cfg: Config) : string =
             messages.Add("user", "I couldn't parse an action. Reply with exactly one line: GET <path> or POST <path> <body>.")
         | Some(m, path, body) ->
             if m = "POST" then moves <- moves + 1
-            let status, text = gameReq client cfg.Base m path body
+            let status, headers, text = gameReq client cfg.Base m path body
             if not (isNull (Environment.GetEnvironmentVariable "DRIVER_DEBUG")) then
                 eprintfn "[%s] %s %s %s -> %d" cfg.Role m path (defaultArg body "") status
             let obs = if text.Length <= 4000 then text else text.[..3999] + " …[truncated]"
-            messages.Add("user", sprintf "HTTP %d\n%s" status obs)
+            messages.Add("user", sprintf "HTTP %d\n%s\n\n%s" status headers obs)
             match terminal status text with
             | Some o -> outcome <- o; stop <- true
             | None ->
