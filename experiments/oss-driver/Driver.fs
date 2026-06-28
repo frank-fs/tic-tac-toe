@@ -112,11 +112,10 @@ let private coldStartPrompt (cfg: Config) (gamePath: string) : string =
          DISCOVER everything else from what the server returns: what the app is, how to read its state, and how to \
          format any action you take. None of that is given to you here.\n\n\
          Floor (true of any turn-based, multi-party app): act only when it is your turn; GET to re-read between turns; \
-         it's not a race, don't spam; a 404 after it began means it ended — stop.\n\
-         If the app has sides or seats to claim and the \"%s\" side is still open, take that side.\n\n\
+         it's not a race, don't spam; a 404 after it began means it ended — stop.\n\n\
          Once you understand the goal, pursue it well and drive the interaction to completion.\n\n\
          Begin by reading %s."
-        gamePath cfg.Role gamePath
+        gamePath gamePath
 
 let private window (messages: ResizeArray<string * string>) (n: int) : (string * string) list =
     let sys = messages.[0]
