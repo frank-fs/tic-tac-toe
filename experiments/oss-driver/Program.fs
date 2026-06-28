@@ -32,6 +32,7 @@ let main argv =
           Base = baseUrl
           Route = route
           Game = argVal argv "--game" ""
+          ColdStart = Array.contains "--coldstart" argv
           MaxActions = argVal argv "--max-actions" "40" |> int
           MaxMoves = argVal argv "--max-moves" "12" |> int
           Window = argVal argv "--window" "8" |> int

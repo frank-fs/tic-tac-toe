@@ -21,6 +21,7 @@ type Config =
       Base: string          // arena PROXY base, e.g. http://localhost:6228
       Route: string         // "games" | "arenas"
       Game: string          // id, or "" to discover
+      ColdStart: bool       // true = no role/app/format hints; model discovers the app from the surface
       MaxActions: int
       MaxMoves: int
       Window: int
@@ -93,6 +94,30 @@ let private systemPrompt (cfg: Config) (gamePath: string) : string =
          %s\n\nBegin by reading the current state."
         cfg.Role first gamePath gamePath gamePath cfg.Role cfg.Persona.Guidance
 
+// Cold-start prompt: the model is told ONLY the entry path, the one-line HTTP I/O contract,
+// and the protocol floor. NOT what the app is, NOT its role-as-player, NOT the move format —
+// those are exactly what it must discover from the served surface (the variable Sd supplies).
+// Identity is driver-owned transport (one cookie session, seeded), so the model never logs in.
+let private coldStartPrompt (cfg: Config) (gamePath: string) : string =
+    sprintf
+        "You have been given ONE thing: a live web app, whose entry point is %s (other paths share the same host). \
+         You know nothing else about it — not what it is, not how it works. Figure out what it is, then interact with \
+         it toward whatever its goal turns out to be.\n\n\
+         You act by issuing ONE HTTP request per reply — EXACTLY one line, nothing else:\n\
+         \  GET <path>\n\
+         or\n\
+         \  POST <path> <url-encoded-body>\n\
+         I run it and reply with the HTTP status and body. Your session identity (cookies) is already handled — never \
+         log in, just act.\n\n\
+         DISCOVER everything else from what the server returns: what the app is, how to read its state, and how to \
+         format any action you take. None of that is given to you here.\n\n\
+         Floor (true of any turn-based, multi-party app): act only when it is your turn; GET to re-read between turns; \
+         it's not a race, don't spam; a 404 after it began means it ended — stop.\n\
+         If the app has sides or seats to claim and the \"%s\" side is still open, take that side.\n\n\
+         Once you understand the goal, pursue it well and drive the interaction to completion.\n\n\
+         Begin by reading %s."
+        gamePath cfg.Role gamePath
+
 let private window (messages: ResizeArray<string * string>) (n: int) : (string * string) list =
     let sys = messages.[0]
     let rest = messages |> Seq.skip 1 |> Seq.toList
@@ -104,8 +129,8 @@ let run (cfg: Config) : string =
     use client = newClient ()
     let gamePath = seed client cfg
     let messages = ResizeArray<string * string>()
-    messages.Add("system", systemPrompt cfg gamePath)
-    messages.Add("user", "Begin: read the current game state, then act.")
+    messages.Add("system", (if cfg.ColdStart then coldStartPrompt else systemPrompt) cfg gamePath)
+    messages.Add("user", "Begin: read the current state, then act.")
     let mutable moves = 0
     let mutable outcome = "incomplete"
     let mutable step = 0
