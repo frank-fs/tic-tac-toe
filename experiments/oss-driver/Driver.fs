@@ -91,49 +91,56 @@ let private seed (client: HttpClient) (cfg: Config) : string =
     if gid = "" then failwith "could not discover game id"
     sprintf "/%s/%s" cfg.Route gid
 
-let private systemPrompt (cfg: Config) (gamePath: string) : string =
-    let first = if cfg.Role = "O" then "X moves first — you may have to wait for your first turn." else ""
-    sprintf
-        "You are the %s player in a live two-player tic-tac-toe game. Play to win, drive the game to completion. %s\n\n\
-         You interact by issuing ONE HTTP request per reply, against the game at %s. Reply with EXACTLY one line, nothing else:\n\
-         \  GET %s\n\
-         or\n\
-         \  POST %s <url-encoded-body>\n\n\
-         I run the request and reply with the response status + body. Learn how to read the board and how to format a move from what the server returns.\n\n\
-         Rules:\n\
-         - Only submit a move on YOUR turn (%s); between turns, GET to re-read the state.\n\
-         - Only play a square that is currently EMPTY.\n\
-         - It's not a race — re-read, don't spam. A 404 after the game started means it ended; stop.\n\n\
-         %s\n\nBegin by reading the current state."
-        cfg.Role first gamePath gamePath gamePath cfg.Role cfg.Persona.Guidance
-
-// Cold-start (discovery) prompt: loaded VERBATIM from the frozen coldstart-prompt.md —
-// the single source of truth, NOT inlined here, so a session cannot silently weaken it.
-// {URL} (the entry path) is the only substitution; the discovery instrument (MOMENT 1/2,
-// positionTokenSource) lives in the file. Fail loudly if the file is missing (R12).
+// Prompt files are the single source of truth — loaded verbatim, never inlined, so a session
+// cannot silently weaken them. Each has a committed .sha256 lock; verifyPromptLock fails the
+// run loudly if the file's bytes drift from the lock. Update a lock only as a reviewed commit.
 let private coldStartPromptPath =
     Environment.GetEnvironmentVariable "COLDSTART_PROMPT_PATH"
-    |> Option.ofObj
-    |> Option.defaultValue "experiments/oss-driver/coldstart-prompt.md"
+    |> Option.ofObj |> Option.defaultValue "experiments/oss-driver/coldstart-prompt.md"
 
-// Integrity lock: the committed coldstart-prompt.md.sha256 pins the frozen prompt's bytes.
-// If the prompt is edited without deliberately regenerating the lock, cold-start runs FAIL
-// loudly — weakening can't slip through silently. Update the lock only as a reviewed commit.
-let private verifyPromptLock () =
-    let lockPath = coldStartPromptPath + ".sha256"
+let private directedPromptPath =
+    Environment.GetEnvironmentVariable "DIRECTED_PROMPT_PATH"
+    |> Option.ofObj |> Option.defaultValue "experiments/oss-driver/directed-prompt.md"
+
+let private directedFactsPath =
+    Environment.GetEnvironmentVariable "DIRECTED_FACTS_PATH"
+    |> Option.ofObj |> Option.defaultValue "experiments/oss-driver/directed-facts.json"
+
+let private verifyPromptLock (promptPath: string) =
+    let lockPath = promptPath + ".sha256"
     if IO.File.Exists lockPath then
         let expected = (IO.File.ReadAllText lockPath).Trim().Split([| ' '; '\t' |]).[0]
         use sha = System.Security.Cryptography.SHA256.Create()
         let actual =
-            IO.File.ReadAllBytes coldStartPromptPath |> sha.ComputeHash |> Array.map (sprintf "%02x") |> String.concat ""
+            IO.File.ReadAllBytes promptPath |> sha.ComputeHash |> Array.map (sprintf "%02x") |> String.concat ""
         if actual <> expected then
-            failwithf "cold-start prompt hash mismatch (frozen discovery instrument changed):\n  expected %s\n  actual   %s\nIf intentional, regenerate %s in a reviewed commit; otherwise restore the prompt." expected actual lockPath
+            failwithf "prompt hash mismatch (frozen prompt changed):\n  file     %s\n  expected %s\n  actual   %s\nIf intentional, regenerate %s in a reviewed commit; otherwise restore the prompt." promptPath expected actual lockPath
 
+let private loadPrompt (path: string) : string =
+    if not (IO.File.Exists path) then
+        failwithf "prompt not found: %s (cwd %s)" path (IO.Directory.GetCurrentDirectory())
+    verifyPromptLock path
+    IO.File.ReadAllText path
+
+// Cold-start (discovery): verbatim frozen instrument (MOMENT 1/2, positionTokenSource);
+// {URL} is the only substitution. The model is told nothing about the app.
 let private coldStartPrompt (_cfg: Config) (gamePath: string) : string =
-    if not (IO.File.Exists coldStartPromptPath) then
-        failwithf "cold-start prompt not found: %s (cwd %s)" coldStartPromptPath (IO.Directory.GetCurrentDirectory())
-    verifyPromptLock ()
-    (IO.File.ReadAllText coldStartPromptPath).Replace("{URL}", gamePath)
+    (loadPrompt coldStartPromptPath).Replace("{URL}", gamePath)
+
+// Directed (play): the model is GIVEN the full correct facts (directed-facts.json) so play
+// skill is measured independent of discovery. The template carries no app specifics — they
+// are substituted from the facts, so tic-tac-toe appears only because the facts put it there.
+let private systemPrompt (cfg: Config) (gamePath: string) : string =
+    let facts = JsonNode.Parse(IO.File.ReadAllText directedFactsPath) :?> JsonObject
+    let f (key: string) = facts[key].GetValue<string>()
+    let first = if cfg.Role = "O" then "X moves first — you may have to wait for your first turn." else ""
+    (loadPrompt directedPromptPath)
+        .Replace("{URL}", gamePath)
+        .Replace("{ROLE}", cfg.Role)
+        .Replace("{FIRST}", first)
+        .Replace("{APPIS}", f "appIs")
+        .Replace("{GOAL}", f "goal")
+        .Replace("{HOWTOACT}", f "howToAct")
 
 let private window (messages: ResizeArray<string * string>) (n: int) : (string * string) list =
     let sys = messages.[0]

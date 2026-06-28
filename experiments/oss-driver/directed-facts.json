@@ -1,0 +1,12 @@
+{
+  "_doc": "Ground-truth facts handed to the agent in the DIRECTED (play) phase — the 'perfect discovery result'. Tests play skill given full, correct information, independent of discovery. Also the canonical full truth (ceiling) the per-cell discovery GTs are views of.",
+  "appIs": "a live two-player tic-tac-toe game (3x3) served as a web arena",
+  "goal": "Place three of your marks in a row — horizontal, vertical, or diagonal — to win; a full board with no line is a draw.",
+  "isMultiplayer": true,
+  "howToJoin": "Submit your first move to claim your seat; X moves first, then O.",
+  "howToAct": "Submit a move by POSTing to the arena path a url-encoded body: player=<your role, X or O>&position=<square>. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.",
+  "roles": {
+    "X": { "myRole": "X", "canIMove": true },
+    "O": { "myRole": "O", "canIMove": true }
+  }
+}
