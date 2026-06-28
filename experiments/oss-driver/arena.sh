@@ -111,8 +111,13 @@ cmd_up() {
   # Logging reverse-proxy: agents hit $PROXY_URL; it forwards to $URL and records
   # every request's HTTP status (302 session-loss / 400 format / 403 rule / 303 ok)
   # that the server's own logs and the game-event log do not capture.
-  ( uv run --no-project "$REPO_ROOT/experiments/haiku-subagents/proxy.py" \
+  ( dotnet run --project "$REPO_ROOT/experiments/oss-driver" --no-build -- proxy \
       "$PROXY_PORT" "$PORT" "$HTTPLOG" >/dev/null 2>&1 & echo $! >"$PROXY_PIDFILE" )
+  # the F# proxy is a dotnet process — give it a moment to bind (bounded: 40 * 0.25s = 10s)
+  local pi=0
+  while [ "$pi" -lt 40 ] && ! curl -s -o /dev/null "$PROXY_URL/login" 2>/dev/null; do
+    pi=$((pi + 1)); sleep 0.25
+  done
   local gid; gid="$(discover_game_id)"
   echo "ARM=$1"
   echo "GAME_ID=${gid#*/}"

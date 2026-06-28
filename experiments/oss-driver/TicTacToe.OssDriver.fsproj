@@ -11,6 +11,9 @@
     <Compile Include="Personas.fs" />
     <Compile Include="LlmClient.fs" />
     <Compile Include="Driver.fs" />
+    <Compile Include="Friction.fs" />
+    <Compile Include="Grader.fs" />
+    <Compile Include="Proxy.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

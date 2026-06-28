@@ -14,8 +14,7 @@ let private argVal (argv: string[]) (name: string) (dflt: string) =
     | Some i when i + 1 < argv.Length -> argv.[i + 1]
     | _ -> dflt
 
-[<EntryPoint>]
-let main argv =
+let private drive (argv: string[]) : int =
     let backend = Backend.autoDetect ()
     let role = argVal argv "--role" ""
     let baseUrl = argVal argv "--base" ""
@@ -41,3 +40,16 @@ let main argv =
     let result = Driver.run cfg
     printfn "%s" result
     0
+
+// Subcommands fold the whole measurement path into the one driver (one language, one path):
+//   proxy    — logging reverse proxy (was proxy.py)
+//   friction — classify request friction (was friction.py)
+//   grade    — score a discovery run vs a per-cell ground truth (was grade.py)
+// Anything else (or a leading --flag) is the default: drive a model as one seat.
+[<EntryPoint>]
+let main argv =
+    match Array.tryHead argv with
+    | Some "proxy" -> Proxy.run argv.[1..]
+    | Some "friction" -> Friction.run argv.[1..]
+    | Some "grade" -> Grader.run argv.[1..]
+    | _ -> drive argv
