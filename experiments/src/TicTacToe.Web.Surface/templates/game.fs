@@ -87,7 +87,7 @@ let private applyCell (surface: Surface) (posStr: string) (isTaken: bool) (label
 
 /// A1 non-affordance cell: plain, non-interactive.
 let private renderPlainCell (surface: Surface) (posStr: string) (isTaken: bool) (label: string) =
-    let b = button(class' = "square", type' = "button", ariaLabel = "").attr("disabled", "disabled") { label }
+    let b = button(class' = "square", type' = "button").attr("disabled", "disabled") { label }
     applyCell surface posStr isTaken label b :> HtmlElement
 
 /// Render a single square.
@@ -102,7 +102,7 @@ let private renderSquare (surface: Surface) (legal: Set<SquarePosition>) (arenaI
         | _ -> false, "·"
     if surface.A then
         if Set.contains position legal then
-            let btn = applyCell surface posStr isTaken label (button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label })
+            let btn = applyCell surface posStr isTaken label (button (class' = "square square-clickable", type' = "submit") { label })
             form (method = "post", action = $"/arenas/{arenaId}") {
                 input (type' = "hidden", name = "player", value = playerStr)
                 input (type' = "hidden", name = "position", value = posStr)
@@ -114,9 +114,9 @@ let private renderSquare (surface: Surface) (legal: Set<SquarePosition>) (arenaI
         let clickable = isActive && not isTaken
         let rawSquare =
             if clickable then
-                button (class' = "square square-clickable", type' = "submit", ariaLabel = posStr) { label }
+                button (class' = "square square-clickable", type' = "submit") { label }
             else
-                button(class' = "square", type' = "submit", ariaLabel = posStr).attr("disabled", "disabled") { label }
+                button(class' = "square", type' = "submit").attr("disabled", "disabled") { label }
         let square = applyCell surface posStr isTaken label rawSquare
         form (method = "post", action = $"/arenas/{arenaId}") {
             input (type' = "hidden", name = "player", value = playerStr)

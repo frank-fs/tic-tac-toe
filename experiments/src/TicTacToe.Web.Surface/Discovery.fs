@@ -7,7 +7,7 @@ let alpsProfile = """{
     "doc": { "value": "Tic-tac-toe arena. m,n,k-game (3,3,3)." },
     "descriptor": [
       { "id": "take-seat", "type": "unsafe", "doc": { "value": "Claim the X or O seat by submitting a move; first mover on each side is seated." } },
-      { "id": "make-move", "type": "unsafe", "rt": "#arena", "doc": { "value": "POST player + position to /arenas/{id}; rejected if out of turn or square taken." } },
+      { "id": "make-move", "type": "unsafe", "rt": "#arena", "doc": { "value": "POST player + position to /arenas/{id}. player must be X or O. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight. Rejected if out of turn or square taken." } },
       { "id": "restart", "type": "idempotent", "doc": { "value": "POST /arenas/{id}/restart to reset the board and clear seats." } },
       { "id": "delete", "type": "idempotent", "doc": { "value": "DELETE /arenas/{id} (or POST /arenas/{id}/delete) to remove the arena." } },
       { "id": "arena", "type": "semantic", "doc": { "value": "An arena resource: the board state plus whose turn it is." } }
