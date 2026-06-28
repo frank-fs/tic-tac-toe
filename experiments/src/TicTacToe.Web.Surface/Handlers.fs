@@ -179,6 +179,13 @@ let makeMove (ctx: HttpContext) =
         | _, None ->
             ctx.Response.StatusCode <- 401
             logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 401, None, None, None)
+        | Some currentResult, Some _ when not ctx.Request.HasFormContentType ->
+            // Non-form body (JSON, query-string, empty) — reading ctx.Request.Form would throw
+            // (HTTP 500). A malformed request is a client error: 400, not 500.
+            ctx.Response.StatusCode <- 400
+            do! renderArenaHtml ctx arenaId currentResult (Some "Invalid move format.")
+            logger.LogRequest(rid, sid, Some arenaId, "unassigned", "POST", path, 400, Some "InvalidMove", Some currentResult, None)
+            logger.LogEvent("move_rejected", arenaId, role = "unassigned", reason = "InvalidMove")
         | Some currentResult, Some uid ->
             let playerRaw =
                 match ctx.Request.Form.TryGetValue("player") with
