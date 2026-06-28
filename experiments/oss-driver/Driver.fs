@@ -49,8 +49,12 @@ let private terminalTokens =
     [ "\"status\":\"xwins\""; "\"status\":\"owins\""; "\"status\":\"draw\""
       "data-game-status=\"won\""; "data-game-status=\"draw\""; "it's a draw"; " wins"; "x won"; "o won" ]
 
-let private terminal (status: int) (body: string) : string option =
-    if status = 404 then Some "game_not_found"
+// A 404 is terminal ONLY on the game resource itself (the game vanished). During cold-start
+// the agent probes unknown paths (/status, /profile, ...); a 404 there is exploration
+// feedback, NOT game-over — treating it as terminal aborts discovery prematurely.
+let private terminal (gamePath: string) (path: string) (status: int) (body: string) : string option =
+    if status = 404 then
+        if path.TrimEnd('/') = gamePath.TrimEnd('/') then Some "game_not_found" else None
     else
         let low = body.ToLowerInvariant()
         if terminalTokens |> List.exists low.Contains then Some "over" else None
@@ -103,28 +107,19 @@ let private systemPrompt (cfg: Config) (gamePath: string) : string =
          %s\n\nBegin by reading the current state."
         cfg.Role first gamePath gamePath gamePath cfg.Role cfg.Persona.Guidance
 
-// Cold-start prompt: the model is told ONLY the entry path, the one-line HTTP I/O contract,
-// and the protocol floor. NOT what the app is, NOT its role-as-player, NOT the move format —
-// those are exactly what it must discover from the served surface (the variable Sd supplies).
-// Identity is driver-owned transport (one cookie session, seeded), so the model never logs in.
-let private coldStartPrompt (cfg: Config) (gamePath: string) : string =
-    sprintf
-        "You have been given ONE thing: a live web app, whose entry point is %s (other paths share the same host). \
-         You know nothing else about it — not what it is, not how it works. Figure out what it is, then interact with \
-         it toward whatever its goal turns out to be.\n\n\
-         You act by issuing ONE HTTP request per reply — EXACTLY one line, nothing else:\n\
-         \  GET <path>\n\
-         or\n\
-         \  POST <path> <url-encoded-body>\n\
-         I run it and reply with the HTTP status and body. Your session identity (cookies) is already handled — never \
-         log in, just act.\n\n\
-         DISCOVER everything else from what the server returns: what the app is, how to read its state, and how to \
-         format any action you take. None of that is given to you here.\n\n\
-         Floor (true of any turn-based, multi-party app): act only when it is your turn; GET to re-read between turns; \
-         it's not a race, don't spam; a 404 after it began means it ended — stop.\n\n\
-         Once you understand the goal, pursue it well and drive the interaction to completion.\n\n\
-         Begin by reading %s."
-        gamePath gamePath
+// Cold-start (discovery) prompt: loaded VERBATIM from the frozen coldstart-prompt.md —
+// the single source of truth, NOT inlined here, so a session cannot silently weaken it.
+// {URL} (the entry path) is the only substitution; the discovery instrument (MOMENT 1/2,
+// positionTokenSource) lives in the file. Fail loudly if the file is missing (R12).
+let private coldStartPromptPath =
+    Environment.GetEnvironmentVariable "COLDSTART_PROMPT_PATH"
+    |> Option.ofObj
+    |> Option.defaultValue "experiments/oss-driver/coldstart-prompt.md"
+
+let private coldStartPrompt (_cfg: Config) (gamePath: string) : string =
+    if not (IO.File.Exists coldStartPromptPath) then
+        failwithf "cold-start prompt not found: %s (cwd %s)" coldStartPromptPath (IO.Directory.GetCurrentDirectory())
+    (IO.File.ReadAllText coldStartPromptPath).Replace("{URL}", gamePath)
 
 let private window (messages: ResizeArray<string * string>) (n: int) : (string * string) list =
     let sys = messages.[0]
@@ -138,7 +133,7 @@ let run (cfg: Config) : string =
     let gamePath = seed client cfg
     let messages = ResizeArray<string * string>()
     messages.Add("system", (if cfg.ColdStart then coldStartPrompt else systemPrompt) cfg gamePath)
-    messages.Add("user", "Begin: read the current state, then act.")
+    messages.Add("user", if cfg.ColdStart then "Begin." else "Begin: read the current state, then act.")
     let mutable moves = 0
     let mutable outcome = "incomplete"
     let mutable step = 0
@@ -154,13 +149,16 @@ let run (cfg: Config) : string =
                 eprintfn "[%s] UNPARSEABLE: %s" cfg.Role (reply.Replace("\n", " ").[.. min 200 (reply.Length - 1)])
             messages.Add("user", "I couldn't parse an action. Reply with exactly one line: GET <path> or POST <path> <body>.")
         | Some(m, path, body) ->
-            if m = "POST" then moves <- moves + 1
             let status, headers, text = gameReq client cfg.Base m path body
+            // Count only ACCEPTED moves toward the move cap; rejected POSTs (4xx, e.g. format
+            // fumbling) are bounded by MaxActions, not the move cap — else a fumbling agent
+            // burns its move budget on rejects and stops before completing the task.
+            if m = "POST" && status < 400 then moves <- moves + 1
             if not (isNull (Environment.GetEnvironmentVariable "DRIVER_DEBUG")) then
                 eprintfn "[%s] %s %s %s -> %d" cfg.Role m path (defaultArg body "") status
             let obs = if text.Length <= 4000 then text else text.[..3999] + " …[truncated]"
             messages.Add("user", sprintf "HTTP %d\n%s\n\n%s" status headers obs)
-            match terminal status text with
+            match terminal gamePath path status text with
             | Some o -> outcome <- o; stop <- true
             | None ->
                 if moves >= cfg.MaxMoves then
@@ -169,6 +167,18 @@ let run (cfg: Config) : string =
                 elif m = "GET" then
                     Threading.Thread.Sleep(int (cfg.PollSeconds * 1000.0))
         step <- step + 1
+
+    // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant
+    // replies, not actions) when TRANSCRIPT_PATH is set — that IS the discovery data to grade.
+    match Environment.GetEnvironmentVariable "TRANSCRIPT_PATH" with
+    | null | "" -> ()
+    | path ->
+        use w = new IO.StreamWriter(path)
+        for (role, content) in messages do
+            let o = JsonObject()
+            o["role"] <- JsonValue.Create role
+            o["content"] <- JsonValue.Create content
+            w.WriteLine(o.ToJsonString())
 
     let res = JsonObject()
     res["role"] <- JsonValue.Create cfg.Role

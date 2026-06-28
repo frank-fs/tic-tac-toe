@@ -1,0 +1,30 @@
+{
+  "cell": "1010",
+  "factors": { "A": true, "C": false, "Sd": true, "So": false },
+
+  "core": {
+    "appIs": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+    "goal": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+    "isMultiplayer": true,
+    "howToJoin": "take a seat by submitting the first move for a side; the first mover on each side is seated (X moves first, then O); later arrivals are observers"
+  },
+
+  "rolesExpected": {
+    "X": { "myRole": "X", "canIMove": true, "myAffordances": ["make a move on X's turn to an empty square"] }
+  },
+
+  "artifactsPresent": {
+    "bodyMoveForms": { "present": true, "gating": "seat+turn" },
+    "profileContract": true,
+    "ariaStructure": false,
+    "ontologyTyping": false
+  },
+
+  "expectedPositionTokenSource": { "acceptable": ["board", "profile"], "likelyUnderA1": "profile", "note": "A=1 gates the active form, so an unseated agent is pushed toward /profile (haiku reported profile); board labels remain a valid source too." },
+
+  "expectedArtifactDiscovery": [
+    "the /profile contract exists (advertised via the Link: rel=profile response header) and describes the make-move affordance"
+  ],
+
+  "notes": "A=1 gates the body move forms (seat+turn), so an unseated arrival sees no form at the bootstrap moment — same blind spot as 1000. But Sd exposes the /profile contract, which supplies the move format without a visible form. So the seat-taking move source is profile (matches haiku 1010: positionTokenSource=profile, bootstrap success). Steady-state, once seated, forms appear (board); profile remains available. The contrast 1000 vs 1010 isolates Sd's bootstrap-enabling effect under A=1."
+}

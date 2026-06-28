@@ -1,0 +1,27 @@
+{
+  "cell": "1000",
+  "factors": { "A": true, "C": false, "Sd": false, "So": false },
+
+  "core": {
+    "appIs": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+    "goal": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+    "isMultiplayer": true,
+    "howToJoin": "take a seat by submitting the first move for a side; the first mover on each side is seated (X moves first, then O); later arrivals are observers"
+  },
+
+  "rolesExpected": {
+    "X": { "myRole": "X", "canIMove": true, "myAffordances": ["make a move on X's turn to an empty square"] }
+  },
+
+  "artifactsPresent": {
+    "bodyMoveForms": { "present": true, "gating": "seat+turn" },
+    "profileContract": false,
+    "ariaStructure": false,
+    "ontologyTyping": false
+  },
+
+  "expectedPositionTokenSource": { "acceptable": ["board"], "note": "Sd off => no /profile; the only source is the board." },
+  "expectedArtifactDiscovery": [],
+
+  "notes": "A=1 renders move forms only for the caller's currently-legal squares (seat+turn-gated) — they appear and disappear as play proceeds. Availability is intermittent, but the SOURCE is still the board: the position labels (TopLeft..BottomRight) are on the rendered board (square aria-labels) regardless of whether an active form is shown. So positionTokenSource=board is correct, not guess. The A=1 wrinkle is execution, not sourcing: an unseated arrival has no active form to submit, so taking the first seat is harder (haiku landed 0 accepted moves here) — but that is a play/execution barrier, separate from where the position tokens come from."
+}
