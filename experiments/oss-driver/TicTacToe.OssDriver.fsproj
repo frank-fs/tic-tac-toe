@@ -15,6 +15,7 @@
     <Compile Include="Grader.fs" />
     <Compile Include="Proxy.fs" />
     <Compile Include="McpClient.fs" />
+    <Compile Include="ErpcDriver.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

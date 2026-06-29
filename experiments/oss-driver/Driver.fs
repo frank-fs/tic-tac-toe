@@ -106,7 +106,7 @@ let private directedFactsPath =
     Environment.GetEnvironmentVariable "DIRECTED_FACTS_PATH"
     |> Option.ofObj |> Option.defaultValue "experiments/oss-driver/directed-facts.json"
 
-let private verifyPromptLock (promptPath: string) =
+let verifyPromptLock (promptPath: string) =
     let lockPath = promptPath + ".sha256"
     if IO.File.Exists lockPath then
         let expected = (IO.File.ReadAllText lockPath).Trim().Split([| ' '; '\t' |]).[0]
@@ -116,7 +116,7 @@ let private verifyPromptLock (promptPath: string) =
         if actual <> expected then
             failwithf "prompt hash mismatch (frozen prompt changed):\n  file     %s\n  expected %s\n  actual   %s\nIf intentional, regenerate %s in a reviewed commit; otherwise restore the prompt." promptPath expected actual lockPath
 
-let private loadPrompt (path: string) : string =
+let loadPrompt (path: string) : string =
     if not (IO.File.Exists path) then
         failwithf "prompt not found: %s (cwd %s)" path (IO.Directory.GetCurrentDirectory())
     verifyPromptLock path

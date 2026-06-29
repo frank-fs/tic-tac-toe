@@ -89,3 +89,18 @@ let chat (backend: Backend) (model: string) (messages: (string * string) list) :
         contentNode.GetValue<string>()
     else
         ""
+
+/// Tool-calling completion (for the ERPC arm). messages and tools are raw OpenAI-shaped
+/// JsonArrays; returns the assistant message object (detached) — caller inspects content
+/// vs tool_calls and appends it + tool results. OpenRouter passes `tools` to the model's
+/// native tool-use.
+let chatTools (backend: Backend) (model: string) (messages: JsonArray) (tools: JsonArray) : JsonObject =
+    let req = JsonObject()
+    req["model"] <- JsonValue.Create model
+    req["temperature"] <- JsonValue.Create 0.3
+    req["max_tokens"] <- JsonValue.Create 1024
+    req["messages"] <- messages.DeepClone()
+    if tools.Count > 0 then req["tools"] <- tools.DeepClone()
+    let respBody = post backend (req.ToJsonString())
+    let resp = JsonNode.Parse respBody :?> JsonObject
+    (resp["choices"].[0].["message"]).DeepClone() :?> JsonObject
