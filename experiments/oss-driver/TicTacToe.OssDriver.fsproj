@@ -14,10 +14,12 @@
     <Compile Include="Friction.fs" />
     <Compile Include="Grader.fs" />
     <Compile Include="Proxy.fs" />
+    <Compile Include="McpClient.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="10.0.102" />
+    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
   </ItemGroup>
 </Project>
