@@ -301,6 +301,7 @@ let profile (ctx: HttpContext) =
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
+            setDiscoveryHeaders ctx "/profile" (Some "GET, OPTIONS")
             ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.alpsProfile
     }
@@ -312,6 +313,7 @@ let wellKnownHome (ctx: HttpContext) =
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
+            setDiscoveryHeaders ctx "/.well-known/home" (Some "GET, OPTIONS")
             ctx.Response.ContentType <- "application/json-home; charset=utf-8"
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.jsonHome
     }
