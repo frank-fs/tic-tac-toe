@@ -54,13 +54,19 @@ let private wire (path: string option) : Wire =
                     let root = doc.RootElement
                     let str (n: string) = match root.TryGetProperty n with | true, v -> v.GetString() | _ -> null
                     let i (n: string) = match root.TryGetProperty n with | true, v -> (try v.GetInt32() with _ -> 0) | _ -> 0
-                    let m, status = str "method", i "status"
-                    let path = str "path" |> Option.ofObj |> Option.defaultValue ""
-                    if path.Contains "/profile" then profile <- profile + 1
-                    if status = 302 then auth <- auth + 1
-                    elif m = "GET" then reads <- reads + 1
-                    elif m = "POST" && (status = 200 || status = 303) then ok <- ok + 1
-                    elif m = "POST" && status >= 400 then rej <- rej + 1
+                    match str "event_type" with
+                    | null ->                                   // HTTP proxy line
+                        let m, status = str "method", i "status"
+                        let path = str "path" |> Option.ofObj |> Option.defaultValue ""
+                        if path.Contains "/profile" then profile <- profile + 1
+                        if status = 302 then auth <- auth + 1
+                        elif m = "GET" then reads <- reads + 1
+                        elif m = "POST" && (status = 200 || status = 303) then ok <- ok + 1
+                        elif m = "POST" && status >= 400 then rej <- rej + 1
+                    | "state_read" -> reads <- reads + 1        // ERPC event-log line
+                    | "move_accepted" -> ok <- ok + 1
+                    | "move_rejected" -> rej <- rej + 1
+                    | _ -> ()
                 with _ -> ()
         { reads = reads; ok = ok; rej = rej; auth = auth; profile = profile }
 
@@ -129,10 +135,14 @@ let run (argv: string[]) : int =
         postNode.["canIMove"] <- vnode (vd ((gbool post "canIMove") = Some true) ((gbool post "canIMove").IsSome)) (sprintf "reported: %A (turn-dependent)" (gbool post "canIMove"))
         postNode.["myAffordances"] <- vnode (vd (kw affTxt ["move"; "square"; "play"]) (affTxt <> "")) (sprintf "reported: %s" affTxt)
 
+        // ERPC has no HTTP /profile — "profile" there means the tool schema (the contract),
+        // so the /profile-fetch checks don't apply.
+        let isErpc = match gt.["arm"] with | null -> false | v -> (try v.GetValue<string>() = "erpc" with _ -> false)
         let flags = JsonArray()
-        if src = "profile" && w.profile = 0 then flags.Add(JsonValue.Create "claimed positionTokenSource=profile but never fetched /profile (possible hallucination)")
+        if not isErpc && src = "profile" && w.profile = 0 then flags.Add(JsonValue.Create "claimed positionTokenSource=profile but never fetched /profile (possible hallucination)")
         if src <> "none" && not (acceptable.Contains src) then flags.Add(JsonValue.Create(sprintf "positionTokenSource=%s not in acceptable %A" src (Set.toList acceptable)))
         let sdExpected =
+            (not isErpc) &&
             match gt.["expectedArtifactDiscovery"] with
             | :? JsonArray as a -> a |> Seq.exists (fun n -> n.GetValue<string>().Contains "/profile")
             | _ -> false

@@ -13,14 +13,15 @@ open ModelContextProtocol.Protocol
 
 let private noArgs : IReadOnlyDictionary<string, obj> = readOnlyDict ([]: (string * obj) list)
 
-type Erpc(serverDll: string, workdir: string) =
+type Erpc(serverDll: string, workdir: string, env: IReadOnlyDictionary<string, string>) =
+    let opts =
+        StdioClientTransportOptions(
+            Name = "erpc", Command = "dotnet", Arguments = [| serverDll |], WorkingDirectory = workdir)
     let transport =
-        new StdioClientTransport(
-            StdioClientTransportOptions(
-                Name = "erpc",
-                Command = "dotnet",
-                Arguments = [| serverDll |],
-                WorkingDirectory = workdir))
+        let envDict = Dictionary<string, string>()
+        for kv in env do envDict.[kv.Key] <- kv.Value
+        opts.EnvironmentVariables <- envDict
+        new StdioClientTransport(opts)
     let client = McpClient.CreateAsync(transport).GetAwaiter().GetResult()
 
     member _.Tools : IList<McpClientTool> = client.ListToolsAsync().GetAwaiter().GetResult()
@@ -35,8 +36,10 @@ type Erpc(serverDll: string, workdir: string) =
         member _.Dispose() = (try (client :> IAsyncDisposable).DisposeAsync().AsTask().Wait() with _ -> ())
 
 /// No-LLM smoke: prove the client can list + call tools (authenticate -> new_game -> make_move).
+let private noEnv : IReadOnlyDictionary<string, string> = readOnlyDict ([]: (string * string) list)
+
 let smoke (serverDll: string) (workdir: string) : int =
-    use e = new Erpc(serverDll, workdir)
+    use e = new Erpc(serverDll, workdir, noEnv)
     eprintfn "=== tools ==="
     for t in e.Tools do eprintfn "  %s — %s" t.Name t.Description
     let prop (s: string) (k: string) = JsonDocument.Parse(s).RootElement.GetProperty(k).GetString()

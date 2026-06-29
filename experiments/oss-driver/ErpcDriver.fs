@@ -57,7 +57,9 @@ let private directedPrompt (cfg: Driver.Config) : string =
 
 let run (cfg: Driver.Config) : string =
     let dll = Environment.GetEnvironmentVariable "ERPC_SERVER_DLL" |> Option.ofObj |> Option.defaultValue defaultDll
-    use erpc = new McpClient.Erpc(dll, IO.Directory.GetCurrentDirectory())
+    let logPath = Environment.GetEnvironmentVariable "ERPC_LOG_PATH" |> Option.ofObj |> Option.defaultValue "/tmp/erpc-game.jsonl"
+    IO.File.WriteAllText(logPath, "")  // fresh wire log per run (the server appends event_type lines here)
+    use erpc = new McpClient.Erpc(dll, IO.Directory.GetCurrentDirectory(), readOnlyDict [ "TICTACTOE_REQUEST_LOG_PATH", logPath ])
     let defs = toolDefs erpc.Tools
     let sys = if cfg.ColdStart then Driver.loadPrompt erpcColdPath else directedPrompt cfg
     let messages = JsonArray()
