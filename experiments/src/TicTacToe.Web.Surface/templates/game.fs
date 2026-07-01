@@ -62,12 +62,21 @@ let private isInProgress = function
 // Rendering
 // ============================================================================
 
-/// The caller's seat in this arena, if any.
-let private callerRole (assignment: PlayerAssignment option) (userId: string) =
+/// The caller's effective seat for rendering: an existing seat, or — if the caller is
+/// unseated and the current turn's seat is still open — the seat they would CLAIM by moving.
+/// Mirrors the Proto reference (src/TicTacToe.Web resolveViewer): an unseated visitor on
+/// X's turn sees the claimable board as X, seats X by submitting; likewise O. Both seats
+/// filled → spectator (None). This is the seat-by-first-move bootstrap the A=1 gate needs.
+let private callerRole (assignment: PlayerAssignment option) (userId: string) (result: MoveResult) =
     match assignment with
     | Some { PlayerXId = Some x } when x = userId -> Some X
     | Some { PlayerOId = Some o } when o = userId -> Some O
-    | _ -> None
+    | Some { PlayerXId = Some _; PlayerOId = Some _ } -> None
+    | _ ->
+        match result with
+        | XTurn _ -> Some X
+        | OTurn _ -> Some O
+        | _ -> None
 
 /// Squares the caller may legally move into right now (empty unless it is the
 /// caller's turn). Reads the legal-move list the Engine already computed.
@@ -180,7 +189,7 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
     let status = statusText result
     let active = isInProgress result
     let playerStr = resolvePlayerStr assignment userId result
-    let role = callerRole assignment userId
+    let role = callerRole assignment userId result
     let legal = legalForCaller result role
     let board =
         let d = div (class' = "board") {
