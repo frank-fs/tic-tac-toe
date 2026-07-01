@@ -13,6 +13,7 @@
     <Compile Include="Driver.fs" />
     <Compile Include="Friction.fs" />
     <Compile Include="Grader.fs" />
+    <Compile Include="Coder.fs" />
     <Compile Include="Proxy.fs" />
     <Compile Include="McpClient.fs" />
     <Compile Include="ErpcDriver.fs" />

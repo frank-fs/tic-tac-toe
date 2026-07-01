@@ -54,5 +54,6 @@ let main argv =
     | Some "proxy" -> Proxy.run argv.[1..]
     | Some "friction" -> Friction.run argv.[1..]
     | Some "grade" -> Grader.run argv.[1..]
+    | Some "code" -> Coder.run argv.[1..]
     | Some "erpc-smoke" when argv.Length > 1 -> McpClient.smoke argv.[1] (System.IO.Directory.GetCurrentDirectory())
     | _ -> drive argv
