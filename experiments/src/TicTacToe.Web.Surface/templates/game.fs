@@ -248,7 +248,10 @@ let renderArenaPage (surface: Surface) (arenaId: string) (result: MoveResult) (u
         board
         statusDiv
         renderLegend assignment result
-        renderControls arenaId
+        // Post-game affordance gate: restart/delete only while the game is in progress.
+        // A terminal arena offers no controls, so an agent cannot delete-then-create a
+        // replacement game and contaminate a run with a second game's moves.
+        if active then renderControls arenaId else Fragment() { }
         backLink
     }
 

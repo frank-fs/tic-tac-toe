@@ -260,6 +260,13 @@ let makeMove (ctx: HttpContext) =
                     logger.LogEvent("move_rejected", arenaId, role = playerRole, reason = reason.ToString())
     }
 
+/// A finished arena (Won/Draw) is terminal: its post-game affordances are gated so an
+/// agent cannot delete/restart it and spin up a replacement game that contaminates a run.
+let private isTerminalResult (result: MoveResult) =
+    match result with
+    | Won _ | Draw _ -> true
+    | _ -> false
+
 /// DELETE /arenas/{id} (via POST /arenas/{id}/delete form workaround)
 let deleteArena (ctx: HttpContext) =
     task {
@@ -267,10 +274,13 @@ let deleteArena (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
 
-        store.Delete(arenaId)
-        assignmentManager.RemoveGame(arenaId)
-
-        ctx.Response.Redirect("/")
+        match store.Get(arenaId) with
+        | Some result when isTerminalResult result ->
+            ctx.Response.StatusCode <- 409
+        | _ ->
+            store.Delete(arenaId)
+            assignmentManager.RemoveGame(arenaId)
+            ctx.Response.Redirect("/")
     }
 
 /// POST /arenas/{id}/restart — reset arena state
@@ -280,14 +290,17 @@ let restartArena (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
 
-        // Clear player assignments so new players can join
-        assignmentManager.RemoveGame(arenaId)
-
-        match store.Reset(arenaId) with
-        | None ->
-            ctx.Response.StatusCode <- 404
-        | Some _ ->
-            ctx.Response.Redirect($"/arenas/{arenaId}")
+        match store.Get(arenaId) with
+        | Some result when isTerminalResult result ->
+            ctx.Response.StatusCode <- 409
+        | _ ->
+            // Clear player assignments so new players can join
+            assignmentManager.RemoveGame(arenaId)
+            match store.Reset(arenaId) with
+            | None ->
+                ctx.Response.StatusCode <- 404
+            | Some _ ->
+                ctx.Response.Redirect($"/arenas/{arenaId}")
     }
 
 // ============================================================================
