@@ -67,9 +67,13 @@ let ``So0 emits no JSON-LD`` () =
     Assert.DoesNotContain("application/ld+json", out)
 
 [<Fact>]
-let ``So1 emits a schema.org Game JSON-LD block with mnk and strategy`` () =
+let ``So1 emits a schema.org Game JSON-LD block linking to the strategy article`` () =
     let out = renderArenaPage (cell false false false true) "g" (freshXTurn()) "userX" seated None |> html
     Assert.Contains("application/ld+json", out)
     Assert.Contains("schema.org", out)
     Assert.Contains("(3,3,3)", out)
-    Assert.Contains("draw", out)
+    // The ontology links to a strategy resource the agent must choose to fetch; it must NOT
+    // leak the solved outcome inline (that would short-circuit the beginner->expert reasoning
+    // under test and confound the draw measure).
+    Assert.Contains("/strategy", out)
+    Assert.DoesNotContain("Solved:", out)

@@ -121,6 +121,13 @@ let wellKnownHomeResource =
         get Handlers.wellKnownHome
     }
 
+let strategyResource =
+    resource "/strategy" {
+        name "Strategy"
+        requireAuth
+        get Handlers.strategy
+    }
+
 let private optionsAllow (path: string) =
     match path with
     | "/" -> Some "GET, OPTIONS"
@@ -200,6 +207,7 @@ let main args =
         resource arenaDelete
         resource profileResource
         resource wellKnownHomeResource
+        resource strategyResource
     }
 
     0

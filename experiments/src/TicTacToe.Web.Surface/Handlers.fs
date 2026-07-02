@@ -330,3 +330,27 @@ let wellKnownHome (ctx: HttpContext) =
             ctx.Response.ContentType <- "application/json-home; charset=utf-8"
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.jsonHome
     }
+
+/// GET /strategy — the domain-strategy article the So ontology links to (So only).
+/// Reachable only by an agent that read the ontology block and chose to follow it:
+/// tests reaching-for-knowledge, not spoon-feeding. Absent from non-So surfaces (404).
+let strategy (ctx: HttpContext) =
+    task {
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.So then
+            ctx.Response.StatusCode <- 404
+        else
+            let element =
+                article () {
+                    h1 () { "Tic-tac-toe strategy" }
+                    p () { "With perfect play by both sides, tic-tac-toe is a draw: a careful player never has to lose." }
+                    ol () {
+                        li () { "If you can place your mark to complete a line of three this turn, do it — that wins." }
+                        li () { "Otherwise, if your opponent already has two of their marks in a line with the third cell empty, play that cell to block them." }
+                        li () { "With no immediate win or threat, prefer the center, then a corner." }
+                        li () { "Beware a fork — a position giving your opponent two separate threats at once cannot be blocked; prevent it before it forms." }
+                    }
+                }
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! Render.toStreamAsync ctx.Response.Body element
+    }

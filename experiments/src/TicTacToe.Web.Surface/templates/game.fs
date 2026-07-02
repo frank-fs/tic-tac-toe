@@ -177,7 +177,7 @@ let private renderOntology () =
     { "@type": "Game", "name": "Connect Four", "description": "m,n,k = (7,6,4)" },
     { "@type": "Game", "name": "Gomoku", "description": "m,n,k = (15,15,5)" }
   ],
-  "strategy": "Solved: with perfect play tic-tac-toe is a draw; optimal play never loses."
+  "subjectOf": { "@type": "Article", "name": "Tic-tac-toe strategy", "url": "/strategy" }
 }"""
     }
     :> HtmlElement
