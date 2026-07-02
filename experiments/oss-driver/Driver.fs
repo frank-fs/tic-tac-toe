@@ -155,12 +155,15 @@ let private window (messages: ResizeArray<string * string>) (n: int) : (string *
     let tail = if List.length rest > n then rest |> List.skip (List.length rest - n) else rest
     sys :: tail
 
-// Poll backoff for the wait loop. A seat awaiting the opponent re-reads via a conditional GET;
-// while the server answers 304 (unchanged) it waits longer each time — LINEAR, not exponential:
-// floor, then +delta per consecutive unchanged poll, capped. Reset to floor on any state change.
-let private pollFloor = 10.0
-let private pollDelta = 10.0
-let private pollCap = 120.0
+// Poll backoff for the DRIVER-SIDE wait loop. When a GET comes back 304 (unchanged) there is
+// nothing for the model to decide, so the driver polls internally — cheap conditional GETs, no
+// LLM turn — until the state changes, the game ends, or the total wait cap. Because these polls
+// cost no tokens, the floor can be short; the delay grows LINEARLY (floor, +delta per unchanged
+// poll, capped) purely to avoid hammering. maxWait bounds a stalled game (R10).
+let private pollFloor = 3.0
+let private pollDelta = 3.0
+let private pollCap = 30.0
+let private maxWaitSeconds = 120.0
 
 /// Play one seat to completion (or cap). Returns a JSON result string.
 let run (cfg: Config) : string =
@@ -175,7 +178,7 @@ let run (cfg: Config) : string =
     let mutable stop = false
     let mutable usage = LlmClient.zeroUsage
     let etags = System.Collections.Generic.Dictionary<string, string>()
-    let mutable pollDelay = pollFloor
+    let etagFor p = match etags.TryGetValue p with | true, e -> Some e | _ -> None
     while not stop && step < cfg.MaxActions do
         let reply =
             try
@@ -190,14 +193,26 @@ let run (cfg: Config) : string =
                 eprintfn "[%s] UNPARSEABLE: %s" cfg.Role (reply.Replace("\n", " ").[.. min 200 (reply.Length - 1)])
             messages.Add("user", "I couldn't parse an action. Reply with exactly one line: GET <path> or POST <path> <body>.")
         | Some(m, path, body) ->
-            let inm = match m, etags.TryGetValue path with
-                      | "GET", (true, e) -> Some e
-                      | _ -> None
-            let status, headers, rawText, etag = gameReq client cfg.Base m path body inm
-            etag |> Option.iter (fun e -> etags.[path] <- e)
-            let text =
-                if status = 304 then "(304 Not Modified — the page is unchanged since your last read.)"
-                else rawText
+            let mutable status = 0
+            let mutable headers = ""
+            let mutable rawText = ""
+            let apply (s, h, t, (e: string option)) =
+                status <- s; headers <- h; rawText <- t
+                e |> Option.iter (fun x -> etags.[path] <- x)
+            apply (gameReq client cfg.Base m path body (if m = "GET" then etagFor path else None))
+            // Driver-side wait: a GET that comes back 304 means nothing changed — nothing for the
+            // model to decide. Poll internally with backoff (cheap conditional GETs, NO LLM turn)
+            // until the state changes, the game ends, or the wait cap; the model only ever sees a
+            // changed page. Collapses the whole waiting-poll loop out of token cost.
+            if m = "GET" && status = 304 then
+                let mutable waited = 0.0
+                let mutable delay = pollFloor
+                while status = 304 && waited < maxWaitSeconds do
+                    Threading.Thread.Sleep(int (delay * 1000.0))
+                    waited <- waited + delay
+                    delay <- min pollCap (delay + pollDelta)
+                    apply (gameReq client cfg.Base "GET" path None (etagFor path))
+            let text = if status = 304 then "(no change after waiting — still not your turn)" else rawText
             // Count only ACCEPTED moves toward the move cap; rejected POSTs (4xx, e.g. format
             // fumbling) are bounded by MaxActions, not the move cap — else a fumbling agent
             // burns its move budget on rejects and stops before completing the task.
@@ -212,14 +227,6 @@ let run (cfg: Config) : string =
                 if moves >= cfg.MaxMoves then
                     outcome <- "move_cap"
                     stop <- true
-                elif m = "GET" && status = 304 then
-                    Threading.Thread.Sleep(int (pollDelay * 1000.0))   // unchanged — wait, then grow
-                    pollDelay <- min pollCap (pollDelay + pollDelta)
-                elif m = "GET" then
-                    pollDelay <- pollFloor                              // changed/first read — reset
-                    Threading.Thread.Sleep(int (cfg.PollSeconds * 1000.0))
-                else
-                    pollDelay <- pollFloor                              // own action changed state
         step <- step + 1
 
     // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant
