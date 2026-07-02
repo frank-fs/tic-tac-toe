@@ -68,24 +68,31 @@ let private formatHeaders (resp: HttpResponseMessage) : string =
         h |> Seq.map (fun kv -> sprintf "%s: %s" kv.Key (String.Join(", ", kv.Value)))
     Seq.append (lines resp.Headers) (lines resp.Content.Headers) |> String.concat "\n"
 
-let private gameReq (client: HttpClient) (baseUrl: string) (m: string) (path: string) (body: string option) : int * string * string =
+// Returns (status, headers, body, etag). A conditional GET (If-None-Match) that the server
+// answers 304 has an empty body — the caller injects an "unchanged" marker instead of re-reading
+// the full HTML (token saving + the wait-loop's cheap change-signal).
+let private gameReq (client: HttpClient) (baseUrl: string) (m: string) (path: string) (body: string option) (ifNoneMatch: string option) : int * string * string * string option =
     let url = baseUrl.TrimEnd('/') + path
     use req = new HttpRequestMessage(HttpMethod(m), url)
     body |> Option.iter (fun b -> req.Content <- new StringContent(b, Encoding.UTF8, "application/x-www-form-urlencoded"))
     req.Headers.TryAddWithoutValidation("Accept", "application/json, text/html") |> ignore
+    ifNoneMatch |> Option.iter (fun e -> req.Headers.TryAddWithoutValidation("If-None-Match", e) |> ignore)
     try
         use resp = client.Send req
-        int resp.StatusCode, formatHeaders resp, resp.Content.ReadAsStringAsync().Result
+        let status = int resp.StatusCode
+        let etag = match resp.Headers.ETag with null -> None | e -> Some(e.ToString())
+        let text = if status = 304 then "" else resp.Content.ReadAsStringAsync().Result
+        status, formatHeaders resp, text, etag
     with e ->
-        0, "", sprintf "<request error: %s>" e.Message
+        0, "", sprintf "<request error: %s>" e.Message, None
 
 /// Seed the session cookie (identity) and resolve the game path.
 let private seed (client: HttpClient) (cfg: Config) : string =
-    gameReq client cfg.Base "GET" "/login" None |> ignore
+    gameReq client cfg.Base "GET" "/login" None None |> ignore
     let gid =
         if cfg.Game <> "" then cfg.Game
         else
-            let _, _, home = gameReq client cfg.Base "GET" "/" None
+            let _, _, home, _ = gameReq client cfg.Base "GET" "/" None None
             let m = Regex.Match(home, sprintf @"%s/([0-9a-f-]{36})" cfg.Route)
             if m.Success then m.Groups.[1].Value else ""
     if gid = "" then failwith "could not discover game id"
@@ -148,6 +155,13 @@ let private window (messages: ResizeArray<string * string>) (n: int) : (string *
     let tail = if List.length rest > n then rest |> List.skip (List.length rest - n) else rest
     sys :: tail
 
+// Poll backoff for the wait loop. A seat awaiting the opponent re-reads via a conditional GET;
+// while the server answers 304 (unchanged) it waits longer each time — LINEAR, not exponential:
+// floor, then +delta per consecutive unchanged poll, capped. Reset to floor on any state change.
+let private pollFloor = 10.0
+let private pollDelta = 10.0
+let private pollCap = 120.0
+
 /// Play one seat to completion (or cap). Returns a JSON result string.
 let run (cfg: Config) : string =
     use client = newClient ()
@@ -160,6 +174,8 @@ let run (cfg: Config) : string =
     let mutable step = 0
     let mutable stop = false
     let mutable usage = LlmClient.zeroUsage
+    let etags = System.Collections.Generic.Dictionary<string, string>()
+    let mutable pollDelay = pollFloor
     while not stop && step < cfg.MaxActions do
         let reply =
             try
@@ -174,7 +190,14 @@ let run (cfg: Config) : string =
                 eprintfn "[%s] UNPARSEABLE: %s" cfg.Role (reply.Replace("\n", " ").[.. min 200 (reply.Length - 1)])
             messages.Add("user", "I couldn't parse an action. Reply with exactly one line: GET <path> or POST <path> <body>.")
         | Some(m, path, body) ->
-            let status, headers, text = gameReq client cfg.Base m path body
+            let inm = match m, etags.TryGetValue path with
+                      | "GET", (true, e) -> Some e
+                      | _ -> None
+            let status, headers, rawText, etag = gameReq client cfg.Base m path body inm
+            etag |> Option.iter (fun e -> etags.[path] <- e)
+            let text =
+                if status = 304 then "(304 Not Modified — the page is unchanged since your last read.)"
+                else rawText
             // Count only ACCEPTED moves toward the move cap; rejected POSTs (4xx, e.g. format
             // fumbling) are bounded by MaxActions, not the move cap — else a fumbling agent
             // burns its move budget on rejects and stops before completing the task.
@@ -189,8 +212,14 @@ let run (cfg: Config) : string =
                 if moves >= cfg.MaxMoves then
                     outcome <- "move_cap"
                     stop <- true
+                elif m = "GET" && status = 304 then
+                    Threading.Thread.Sleep(int (pollDelay * 1000.0))   // unchanged — wait, then grow
+                    pollDelay <- min pollCap (pollDelay + pollDelta)
                 elif m = "GET" then
+                    pollDelay <- pollFloor                              // changed/first read — reset
                     Threading.Thread.Sleep(int (cfg.PollSeconds * 1000.0))
+                else
+                    pollDelay <- pollFloor                              // own action changed state
         step <- step + 1
 
     // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant

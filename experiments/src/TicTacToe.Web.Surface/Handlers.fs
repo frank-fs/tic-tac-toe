@@ -113,14 +113,33 @@ let private isXTurn = function
     | XTurn _ -> true
     | _ -> false
 
+let private etagOf (s: string) =
+    use sha = System.Security.Cryptography.SHA256.Create()
+    let h = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes s)
+    sprintf "\"%s\"" (h.[..7] |> Array.map (sprintf "%02x") |> String.concat "")
+
 let private renderArenaHtml (ctx: HttpContext) (arenaId: string) (result: MoveResult) (errorMsg: string option) =
-    let surface = ctx.RequestServices.GetRequiredService<Surface>()
-    let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
-    let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-    let assignment = assignmentManager.GetAssignment(arenaId)
-    let element = renderArenaPage surface arenaId result userId assignment errorMsg |> layout.html ctx
-    ctx.Response.ContentType <- "text/html; charset=utf-8"
-    Render.toStreamAsync ctx.Response.Body element
+    task {
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+        let assignment = assignmentManager.GetAssignment(arenaId)
+        let element = renderArenaPage surface arenaId result userId assignment errorMsg |> layout.html ctx
+        use sw = new System.IO.StringWriter()
+        do! Render.toTextWriterAsync sw element
+        let html = sw.ToString()
+        // ETag over the exact rendered bytes — view-complete (board, turn, viewer role, surface).
+        // Baseline HTTP hygiene on ALL cells (never per-factor, else it confounds cross-cell
+        // friction): lets a polling agent skip re-reading unchanged HTML via a 304, the cheap
+        // change-signal for the wait loop.
+        let etag = etagOf html
+        ctx.Response.Headers.ETag <- Microsoft.Extensions.Primitives.StringValues etag
+        if ctx.Request.Method = "GET" && ctx.Request.Headers.IfNoneMatch.ToString() = etag then
+            ctx.Response.StatusCode <- 304
+        else
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync html
+    }
 
 // ============================================================================
 // Arena CRUD
