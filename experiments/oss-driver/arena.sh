@@ -40,7 +40,10 @@ arm_config() {          # one job: set globals for the named arm
   esac
   URL="http://localhost:$PORT"
   PROXY_PORT=$((PORT + 1000))             # agents hit the proxy; it logs HTTP status
-  PROXY_URL="http://localhost:$PROXY_PORT"
+  # IPv4 loopback, NOT localhost: the proxy's IPv4 bind is what the .NET seat connects to.
+  # Polling localhost (resolves to [::1]) reports ready before 127.0.0.1 is listening, so the
+  # seat starts into a connection-refused gap. Gate on the seat's actual path.
+  PROXY_URL="http://127.0.0.1:$PROXY_PORT"
   LOG="/tmp/arena-$1.jsonl"
   HTTPLOG="/tmp/arena-$1.http.jsonl"       # one JSONL line per request: method/path/status
   SERVERLOG="/tmp/arena-$1.server.log"

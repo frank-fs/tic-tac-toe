@@ -78,9 +78,14 @@ let run (argv: string[]) : int =
             (try resp.OutputStream.Close() with _ -> ())
 
         let listener = new HttpListener()
+        // Bind IPv4 loopback explicitly: an HttpListener "localhost" prefix binds IPv6-only
+        // ([::1]) on macOS/.NET, so a client resolving localhost->127.0.0.1 gets connection
+        // refused. Register both so either Host header (localhost / 127.0.0.1) matches and the
+        // IPv4 loopback actually listens.
+        listener.Prefixes.Add(sprintf "http://127.0.0.1:%d/" listenPort)
         listener.Prefixes.Add(sprintf "http://localhost:%d/" listenPort)
         listener.Start()
-        eprintfn "proxy: localhost:%d -> localhost:%d (log %s)" listenPort targetPort logPath
+        eprintfn "proxy: 127.0.0.1/localhost:%d -> localhost:%d (log %s)" listenPort targetPort logPath
         while true do
             let ctx = listener.GetContext()
             ThreadPool.QueueUserWorkItem(fun _ -> handle ctx) |> ignore
