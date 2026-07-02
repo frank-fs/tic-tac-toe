@@ -47,6 +47,8 @@ let private drive (argv: string[]) : int =
 //   proxy    — logging reverse proxy (was proxy.py)
 //   friction — classify request friction (was friction.py)
 //   grade    — score a discovery run vs a per-cell ground truth (was grade.py)
+//   code     — behavior-code a seat transcript (browser-user vs API-client conduct)
+//   quality  — minimax play-quality of a game: draw=success, per-role missed-block/win
 // Anything else (or a leading --flag) is the default: drive a model as one seat.
 [<EntryPoint>]
 let main argv =
@@ -55,5 +57,6 @@ let main argv =
     | Some "friction" -> Friction.run argv.[1..]
     | Some "grade" -> Grader.run argv.[1..]
     | Some "code" -> Coder.run argv.[1..]
+    | Some "quality" -> Quality.run argv.[1..]
     | Some "erpc-smoke" when argv.Length > 1 -> McpClient.smoke argv.[1] (System.IO.Directory.GetCurrentDirectory())
     | _ -> drive argv
