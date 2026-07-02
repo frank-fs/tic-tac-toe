@@ -159,9 +159,13 @@ let run (cfg: Config) : string =
     let mutable outcome = "incomplete"
     let mutable step = 0
     let mutable stop = false
+    let mutable usage = LlmClient.zeroUsage
     while not stop && step < cfg.MaxActions do
         let reply =
-            try LlmClient.chat cfg.Backend cfg.Model (window messages cfg.Window)
+            try
+                let text, u = LlmClient.chatWithUsage cfg.Backend cfg.Model (window messages cfg.Window)
+                usage <- LlmClient.addUsage usage u
+                text
             with e -> sprintf "<chat error: %s>" e.Message
         messages.Add("assistant", reply)
         match parseAction reply with
@@ -209,4 +213,8 @@ let run (cfg: Config) : string =
     res["actions"] <- JsonValue.Create step
     res["moves_submitted"] <- JsonValue.Create moves
     res["outcome"] <- JsonValue.Create outcome
+    res["promptTokens"] <- JsonValue.Create usage.Prompt
+    res["completionTokens"] <- JsonValue.Create usage.Completion
+    res["totalTokens"] <- JsonValue.Create usage.Total
+    res["costUsd"] <- JsonValue.Create usage.Cost
     res.ToJsonString()

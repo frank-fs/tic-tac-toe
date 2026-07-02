@@ -16,6 +16,27 @@ let private http = new HttpClient(Timeout = TimeSpan.FromSeconds 120.0)
 [<Literal>]
 let private maxAttempts = 3
 
+/// Token accounting for one or more completions. Cost is OpenRouter's reported `usage.cost`
+/// (USD) when available, else 0.0 (compute offline from tokens × price).
+type Usage = { Prompt: int; Completion: int; Total: int; Cost: float }
+let zeroUsage = { Prompt = 0; Completion = 0; Total = 0; Cost = 0.0 }
+let addUsage (a: Usage) (b: Usage) =
+    { Prompt = a.Prompt + b.Prompt; Completion = a.Completion + b.Completion
+      Total = a.Total + b.Total; Cost = a.Cost + b.Cost }
+
+let private parseUsage (resp: JsonObject) : Usage =
+    let mutable un = Unchecked.defaultof<JsonNode>
+    if resp.TryGetPropertyValue("usage", &un) && un <> null && (un :? JsonObject) then
+        let u = un :?> JsonObject
+        let gi (k: string) =
+            let mutable v = Unchecked.defaultof<JsonNode>
+            if u.TryGetPropertyValue(k, &v) && v <> null then (try v.GetValue<int>() with _ -> 0) else 0
+        let gf (k: string) =
+            let mutable v = Unchecked.defaultof<JsonNode>
+            if u.TryGetPropertyValue(k, &v) && v <> null then (try v.GetValue<float>() with _ -> 0.0) else 0.0
+        { Prompt = gi "prompt_tokens"; Completion = gi "completion_tokens"; Total = gi "total_tokens"; Cost = gf "cost" }
+    else zeroUsage
+
 let private baseUrl backend =
     match backend with
     | Anthropic ->
@@ -68,8 +89,9 @@ let private post (backend: Backend) (json: string) : string =
         else failwithf "LLM API %d (attempt %d): %s" (int resp.StatusCode) n body
     attempt 1
 
-/// One completion. messages = (role, content) in order; returns the assistant text.
-let chat (backend: Backend) (model: string) (messages: (string * string) list) : string =
+/// One completion with token accounting. messages = (role, content) in order; returns the
+/// assistant text and the response's Usage (token counts + OpenRouter cost when reported).
+let chatWithUsage (backend: Backend) (model: string) (messages: (string * string) list) : string * Usage =
     let msgs = JsonArray()
     for (role, content) in messages do
         let o = JsonObject()
@@ -81,14 +103,23 @@ let chat (backend: Backend) (model: string) (messages: (string * string) list) :
     req["temperature"] <- JsonValue.Create 0.3
     req["max_tokens"] <- JsonValue.Create 1024
     req["messages"] <- msgs
+    // OpenRouter returns per-call USD in usage.cost only when asked; harmless elsewhere so
+    // guard by host to avoid a stricter OpenAI-compat endpoint 400ing on the unknown field.
+    if (baseUrl backend).Contains "openrouter" then
+        let u = JsonObject() in u["include"] <- JsonValue.Create true
+        req["usage"] <- u
     let respBody = post backend (req.ToJsonString())
     let resp = JsonNode.Parse respBody :?> JsonObject
     let message = resp["choices"].[0].["message"] :?> JsonObject
     let mutable contentNode = Unchecked.defaultof<JsonNode>
-    if message.TryGetPropertyValue("content", &contentNode) && contentNode <> null then
-        contentNode.GetValue<string>()
-    else
-        ""
+    let content =
+        if message.TryGetPropertyValue("content", &contentNode) && contentNode <> null
+        then contentNode.GetValue<string>() else ""
+    content, parseUsage resp
+
+/// One completion. messages = (role, content) in order; returns the assistant text.
+let chat (backend: Backend) (model: string) (messages: (string * string) list) : string =
+    chatWithUsage backend model messages |> fst
 
 /// Tool-calling completion (for the ERPC arm). messages and tools are raw OpenAI-shaped
 /// JsonArrays; returns the assistant message object (detached) — caller inspects content
