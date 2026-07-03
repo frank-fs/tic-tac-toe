@@ -2,42 +2,57 @@
 
 _2026-07-01, branch sp3-redux. Model held constant: `anthropic/claude-haiku-4.5` (OpenRouter)._
 
-## Factor-isolation sweep — n=5, haiku, 50 games, 0 anomalies (2026-07-03)
+## Factor-isolation sweep — n=5, haiku, 60 games incl. 0000 control, 0 anomalies (2026-07-03)
 
-Cells 1000/0100/0010/0001/1111 (4 single-factor + all-on) × plain/browser × 5. Hardened harness
-(game-lock, bounded waits, bulletproof teardown, single-instance guard, artifact aggregation).
+Cells 0000 (control) + 1000/0100/0010/0001/1111 (4 single-factor + all-on) × plain/browser × 5.
+Hardened harness (game-lock, bounded waits, bulletproof teardown, single-instance guard, artifact
+aggregation). Completion = a terminal outcome (draw or decisive); draws stay rare at this tier, so
+completion — not draw-rate — is the discriminating measure. **The 0000 control is load-bearing: it
+inverts the naive reading.**
 
-**Completion rate (draw+decisive of 5):**
+| cell | factor | plain | Δ vs control | browser |
+|------|--------|-------|-------------|---------|
+| **0000** | **control (none)** | **80%** | — | 20% |
+| 1000 | A affordances | 80% | 0 | 60% |
+| 0100 | C accessibility | 60% | **−20** | 20% |
+| 0010 | Sd discovery | 60% | **−20** | 20% |
+| 0001 | So ontology | 40% | **−40** | 0% |
+| 1111 | all four | 100% | **+20** | 40% |
 
-| cell | factor | plain | browser |
-|------|--------|-------|---------|
-| 1000 | A affordances | 80% | 60% |
-| 0100 | C accessibility | 60% | 20% |
-| 0010 | Sd discovery | 60% | 20% |
-| 0001 | So ontology | 40% | 0% |
-| 1111 | all four | 100% | 40% |
+**Signal 1 — super-additive interaction, NOT main effects (this is the hypothesis's headline).**
+Against the 80% bare baseline: **isolated semantic factors HURT** (C −20, Sd −20, So −40 — a lone
+discovery/ontology layer is a distractor: the agent reads it and thrashes instead of playing).
+**A alone is neutral** (haiku already handles a plain HTML form). **Only the full stack (1111)
+beats control** (+20). The layers help *together*, not individually — exactly the pre-registered
+prediction ("all layers together, by large margins; not a main effect"). Without 0000 the earlier
+"affordances dominate, more is better" read looked true and was WRONG.
 
-**Two signals (n=5, underpowered but directional):**
-1. **Browser prompt HURTS** — lower completion in ALL 5 cells (often 2-3×). haiku doesn't have the
-   interface-confusion the prompt targets, so it only adds friction → thrash/no-completion. NOT
-   justified on a competent model. Its value (if any) needs a model that actually mishandles
-   HTTP/HTML — hence the Qwen ladder (below).
-2. **Factor effect (plain control): affordances dominate, full stack best.**
-   1111(all)=100% > 1000(A)=80% > 0100/0010(C/Sd)=60% > 0001(So)=40%. A is load-bearing; ontology
-   alone (So) weakest (knowledge without affordances to act on); all-together best — directionally
-   supports legibility→agent-ability.
+**Signal 2 — the browser-conduct prompt is REJECTED (decision, 2026-07-03).** Browser completion is
+lower than plain in ALL 6 haiku cells (0000: 80→20). Confirmed down the Qwen ladder (pilot, n=1,
+0 anomalies): browser NEVER beats plain at any tier —
 
-**Caveats:** draws rare (~8/50 — haiku rarely optimal on any surface, so completion not draw-rate
-is the discriminating measure at this tier); single model; browser 0001/0100 lost token data
-(n=1 for cost, completion still full n=5).
+| tier | 0000 plain | 0000 browser | 1000 plain | 1000 browser |
+|------|:--:|:--:|:--:|:--:|
+| 122b | ✓ | ✗ | ✓ | ✓ |
+| 35b-a3b | ✓ (draw) | ✗ | ✓ | ✓ |
+| 9b | ✓ | ✓ | ✓ | ✓ |
+| flash | ✓ | ✗ | ✓ | ✓ (draw) |
+
+Plain 8/8 complete; browser 5/8, every failure on the bare 0000. The premise ("a weak model needs
+interface-conduct guidance") did NOT hold — even flash completes with plain. The browser prompt's
+"keep polling / waiting is fine / don't invent" makes agents FREEZE on the bare surface instead of
+figuring out the naive board (1000's forms carry browser through; 0000 has none). **Decision: drop
+the browser prompt (coldstart + directed). The cold-start instrument is the plain prompt.**
+
+**Caveats:** n=5 haiku / n=1 Qwen (directional); completion not draw-rate; some browser cells lost
+token data (completion still valid from the server log).
 
 ## Model ladder (next)
 
-haiku (competent) done → browser prompt only hurts. Descend the Qwen3.5 lineage to find where the
-interface-conduct prompt starts to help a model that struggles: anchor `qwen/qwen3.5-122b-a10b`
-(haiku-class, saw /profile refusal + HTTP/HTML mishandling) → mid `qwen3.5-35b-a3b`/`27b` → low
-`9b` → floor `flash`. Run browser-vs-plain at each tier; the prompt is justified only if it lifts
-completion/clean where the model is otherwise flailing.
+Browser dropped → the ladder runs **plain-only**. Descend Qwen3.5 with the full cell set incl. the
+0000 control: `qwen/qwen3.5-122b-a10b` → `qwen3.5-35b-a3b` → `qwen3.5-9b` → `qwen3.5-flash-02-23`.
+Question: does the super-additive pattern (singles ≤ baseline, full > baseline) hold, strengthen,
+or shift as the model weakens?
 
 ---
 
