@@ -160,8 +160,18 @@ Clean ladder, 10 conditions (5 cells × plain/browser), 1 run each. Seated-playe
 
 ## Reproduce
 
-Runners in the session scratchpad (`run-ladder-clean.sh`, `code-ladder.sh`). Per condition:
-`CELL=<c> arena.sh up surface`; 3 drivers with `--coldstart --game <id> --route arenas`,
-`COLDSTART_PROMPT_PATH` = plain or `coldstart-browser-prompt.md`, `TRANSCRIPT_PATH` set;
-then per seat `code --transcript <seat>.transcript.jsonl --role X|O` (conduct) and, once,
-`quality --log <request-log.jsonl>` (per-player play-quality from the server game events).
+Committed harness (hardened: game-lock, bounded waits, bulletproof teardown, single-instance
+guard, artifact-only aggregation):
+
+```bash
+# one tier, full cell set incl. 0000 control, plain prompt, n=5
+MODEL=qwen/qwen3.5-122b-a10b SWEEP_OUT=/tmp/qwen-122b \
+  bash experiments/oss-driver/sweep.sh
+bash experiments/oss-driver/aggregate.sh /tmp/qwen-122b   # -> clean.jsonl + completion% per cell
+```
+
+`sweep.sh` runs `CELLS x RUNS` of 3-seat cold-start games (server seats first two, 3rd observes),
+one server per game, and writes raw `q-`/`s-`/`c-` artifacts per game; `aggregate.sh` rolls them
+up. Env: `MODEL`, `CELLS` (default all 6), `RUNS` (default 1-5), `SWEEP_OUT`. Per game it records
+`quality` (per-player play-quality from the server event log) and `code` (FOLLOW/INVENT conduct).
+Model ladder: rerun with `MODEL=` down the Qwen tiers.
