@@ -8,7 +8,7 @@ or
   POST /path key=value&key2=value2
 I run the request and reply with its HTTP status and body. Your session identity is already established and sent automatically on every request — never log in, never manage cookies; just act.
 
-Pacing: this is not a race. After you act, wait, then re-read. Do not poll constantly. Cap your total requests at ~25. If the server stops responding, the app has almost certainly finished — stop and report; do NOT call it a crash. Never reset, delete, or create anything.
+Pacing: this is not a race. After you act, wait, then re-read. Do not poll constantly. Never reset, delete, or create anything.
 
 You MUST emit two JSON reports, exactly these shapes, on their own lines:
 
