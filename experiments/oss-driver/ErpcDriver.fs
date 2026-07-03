@@ -71,7 +71,7 @@ let run (cfg: Driver.Config) : string =
     let mutable step, moves = 0, 0
     let mutable outcome = "incomplete"
     let mutable stop = false
-    while not stop && step < cfg.MaxActions do
+    while not stop && step < cfg.MaxTurns do
         let assistant =
             try LlmClient.chatTools cfg.Backend cfg.Model messages defs
             with e ->
@@ -118,6 +118,8 @@ let run (cfg: Driver.Config) : string =
     res.["model"] <- JsonValue.Create cfg.Model
     res.["arm"] <- JsonValue.Create "erpc"
     res.["actions"] <- JsonValue.Create step
+    res.["attempts"] <- JsonValue.Create moves
+    res.["turns"] <- JsonValue.Create step
     res.["moves_submitted"] <- JsonValue.Create moves
     res.["outcome"] <- JsonValue.Create outcome
     res.ToJsonString()

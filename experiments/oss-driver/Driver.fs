@@ -22,7 +22,8 @@ type Config =
       Route: string         // "games" | "arenas"
       Game: string          // id, or "" to discover
       ColdStart: bool       // true = no role/app/format hints; model discovers the app from the surface
-      MaxActions: int
+      MaxAttempts: int      // mutation-attempt budget: POSTs (accepted+rejected). Bounds thrash.
+      MaxTurns: int         // total-iteration backstop incl. GETs (R10). Agent never sees either.
       MaxMoves: int
       Window: int
       PollSeconds: float }
@@ -174,13 +175,14 @@ let run (cfg: Config) : string =
     messages.Add("system", (if cfg.ColdStart then coldStartPrompt else systemPrompt) cfg gamePath)
     messages.Add("user", if cfg.ColdStart then "Begin." else "Begin: read the current state, then act.")
     let mutable moves = 0
+    let mutable attempts = 0
     let mutable outcome = "incomplete"
     let mutable step = 0
     let mutable stop = false
     let mutable usage = LlmClient.zeroUsage
     let etags = System.Collections.Generic.Dictionary<string, string>()
     let etagFor p = match etags.TryGetValue p with | true, e -> Some e | _ -> None
-    while not stop && step < cfg.MaxActions do
+    while not stop && attempts < cfg.MaxAttempts && step < cfg.MaxTurns do
         let reply =
             try
                 let text, u = LlmClient.chatWithUsage cfg.Backend cfg.Model (window messages cfg.Window)
@@ -215,9 +217,10 @@ let run (cfg: Config) : string =
                     apply (gameReq client cfg.Base "GET" path None (etagFor path))
             let text = if status = 304 then "(no change after waiting — still not your turn)" else rawText
             // Count only ACCEPTED moves toward the move cap; rejected POSTs (4xx, e.g. format
-            // fumbling) are bounded by MaxActions, not the move cap — else a fumbling agent
+            // fumbling) are bounded by MaxAttempts, not the move cap — else a fumbling agent
             // burns its move budget on rejects and stops before completing the task.
             if m = "POST" && status < 400 then moves <- moves + 1
+            if m = "POST" then attempts <- attempts + 1
             if not (isNull (Environment.GetEnvironmentVariable "DRIVER_DEBUG")) then
                 eprintfn "[%s] %s %s %s -> %d" cfg.Role m path (defaultArg body "") status
             let obs = if text.Length <= 4000 then text else text.[..3999] + " …[truncated]"
@@ -229,6 +232,10 @@ let run (cfg: Config) : string =
                     outcome <- "move_cap"
                     stop <- true
         step <- step + 1
+
+    // Both bounds are agent-invisible observation windows; hitting one without a terminal
+    // outcome is a truncated observation, NOT a play failure (R10 backstop tripped).
+    if not stop && outcome = "incomplete" then outcome <- "window_truncated"
 
     // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant
     // replies, not actions) when TRANSCRIPT_PATH is set — that IS the discovery data to grade.
@@ -248,6 +255,8 @@ let run (cfg: Config) : string =
     res["model"] <- JsonValue.Create cfg.Model
     res["game"] <- JsonValue.Create gamePath
     res["actions"] <- JsonValue.Create step
+    res["attempts"] <- JsonValue.Create attempts
+    res["turns"] <- JsonValue.Create step
     res["moves_submitted"] <- JsonValue.Create moves
     res["outcome"] <- JsonValue.Create outcome
     res["promptTokens"] <- JsonValue.Create usage.Prompt
