@@ -42,6 +42,11 @@ let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: st
     | Some a -> ctx.Response.Headers.Append("Allow", a)
     | None -> ()
 
+/// So: advertise the domain-knowledge article as a followable link (the channel agents
+/// actually use — inline JSON-LD was observed ignored). Independent of Sd's /profile.
+let private setStrategyHeader (ctx: HttpContext) =
+    ctx.Response.Headers.Append("Link", "</strategy>; rel=\"subjectOf\"")
+
 // ============================================================================
 // Auth
 // ============================================================================
@@ -176,6 +181,7 @@ let getArena (ctx: HttpContext) =
         | Some result ->
             let surface = ctx.RequestServices.GetRequiredService<Surface>()
             if surface.Sd then setDiscoveryHeaders ctx $"/arenas/{arenaId}" (Some (arenaAllow result))
+            if surface.So then setStrategyHeader ctx
             do! renderArenaHtml ctx arenaId result None
     }
 
@@ -346,6 +352,7 @@ let profile (ctx: HttpContext) =
             ctx.Response.StatusCode <- 404
         else
             setDiscoveryHeaders ctx "/profile" (Some "GET, OPTIONS")
+            if surface.So then setStrategyHeader ctx
             ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.alpsProfile
     }
