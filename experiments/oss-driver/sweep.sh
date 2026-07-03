@@ -23,6 +23,12 @@ MAX_ACTIONS="${MAX_ACTIONS:-50}"        # per-seat action cap. 25 was budget-bin
                                         # (all misses were cap-hits, 0 genuine stalls). Raised to 50.
 D="${SWEEP_OUT:-/tmp/ttt-sweep}"; mkdir -p "$D"
 echo "$MAX_ACTIONS" > "$D/.maxactions"  # record the cap so aggregate.sh's cap-hit threshold matches
+PROMPT="${PROMPT:-plain}"                # plain (cold-start instrument) | browser (re-test arm)
+if [ "$PROMPT" = "browser" ]; then
+  export COLDSTART_PROMPT_PATH="$REPO/experiments/oss-driver/coldstart-browser-prompt.md"
+  export DIRECTED_PROMPT_PATH="$REPO/experiments/oss-driver/directed-browser-prompt.md"
+fi
+echo "$PROMPT" > "$D/.prompt"
 cd "$REPO"
 
 PIDF="$D/.sweep.pid"
