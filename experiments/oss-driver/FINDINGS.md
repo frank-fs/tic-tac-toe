@@ -2,6 +2,45 @@
 
 _2026-07-01, branch sp3-redux. Model held constant: `anthropic/claude-haiku-4.5` (OpenRouter)._
 
+## Factor-isolation sweep — n=5, haiku, 50 games, 0 anomalies (2026-07-03)
+
+Cells 1000/0100/0010/0001/1111 (4 single-factor + all-on) × plain/browser × 5. Hardened harness
+(game-lock, bounded waits, bulletproof teardown, single-instance guard, artifact aggregation).
+
+**Completion rate (draw+decisive of 5):**
+
+| cell | factor | plain | browser |
+|------|--------|-------|---------|
+| 1000 | A affordances | 80% | 60% |
+| 0100 | C accessibility | 60% | 20% |
+| 0010 | Sd discovery | 60% | 20% |
+| 0001 | So ontology | 40% | 0% |
+| 1111 | all four | 100% | 40% |
+
+**Two signals (n=5, underpowered but directional):**
+1. **Browser prompt HURTS** — lower completion in ALL 5 cells (often 2-3×). haiku doesn't have the
+   interface-confusion the prompt targets, so it only adds friction → thrash/no-completion. NOT
+   justified on a competent model. Its value (if any) needs a model that actually mishandles
+   HTTP/HTML — hence the Qwen ladder (below).
+2. **Factor effect (plain control): affordances dominate, full stack best.**
+   1111(all)=100% > 1000(A)=80% > 0100/0010(C/Sd)=60% > 0001(So)=40%. A is load-bearing; ontology
+   alone (So) weakest (knowledge without affordances to act on); all-together best — directionally
+   supports legibility→agent-ability.
+
+**Caveats:** draws rare (~8/50 — haiku rarely optimal on any surface, so completion not draw-rate
+is the discriminating measure at this tier); single model; browser 0001/0100 lost token data
+(n=1 for cost, completion still full n=5).
+
+## Model ladder (next)
+
+haiku (competent) done → browser prompt only hurts. Descend the Qwen3.5 lineage to find where the
+interface-conduct prompt starts to help a model that struggles: anchor `qwen/qwen3.5-122b-a10b`
+(haiku-class, saw /profile refusal + HTTP/HTML mishandling) → mid `qwen3.5-35b-a3b`/`27b` → low
+`9b` → floor `flash`. Run browser-vs-plain at each tier; the prompt is justified only if it lifts
+completion/clean where the model is otherwise flailing.
+
+---
+
 ## Apparatus (validated this session)
 
 - **3-agent staggered runs.** Server seats by **claim-on-first-successful-move**; the 3rd
