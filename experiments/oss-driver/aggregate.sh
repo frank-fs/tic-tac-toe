@@ -19,10 +19,6 @@
 # are reported but NOT counted as agent error.
 set -uo pipefail
 D="${1:-/tmp/ttt-sweep}"
-# cap-hit threshold: env override > the cap sweep.sh recorded for this run > legacy default 25.
-MAXACT="${MAXACT:-$( [ -f "$D/.maxactions" ] && cat "$D/.maxactions" || echo 25 )}"
-                                        # a seated driver at this cap + incomplete = budget-exhausted
-                                        # (harness limit), not a genuine stall. Annotated, NOT dropped.
 OUT="$D/clean.jsonl"; : > "$OUT"
 
 cnt() { jq -rc "$1" "$2" 2>/dev/null | grep -c . ; }   # count matching JSONL lines (0 if none/absent)
@@ -36,11 +32,10 @@ for q in "$D"/q-*.json; do
   overs=$(cnt 'select(.event_type=="game_over")' "$log")
   dataAnom=$(jq -r '.dataAnomaly // false' "$q" 2>/dev/null)
 
-  seatBad=0; capHit=false
+  seatBad=0
   for s in X1 O2; do
     f="$D/s-$tag-$s.out"
     if [ ! -s "$f" ] || ! jq -e . "$f" >/dev/null 2>&1 || [ -n "$(jq -r '.error // empty' "$f" 2>/dev/null)" ]; then seatBad=1; continue; fi
-    a=$(jq -r '.actions // 0' "$f" 2>/dev/null); [ "$a" -ge "$MAXACT" ] 2>/dev/null && capHit=true
   done
 
   reason=""
@@ -65,10 +60,10 @@ for q in "$D"/q-*.json; do
   done
 
   jq -c --arg cell "$cell" --argjson run "$run" --arg reason "${reason% }" \
-        --argjson anomaly "$anomaly" --argjson seats "$seats" --argjson overs "$overs" --argjson capHit "$capHit" \
+        --argjson anomaly "$anomaly" --argjson seats "$seats" --argjson overs "$overs" \
         --argjson cost "$cost" --argjson toks "$toks" \
         --argjson im "$invalidMove" --argjson ot "$outOfTurn" --argjson pt "$positionTaken" --argjson st "$structural" '
-    {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outcome,moveCount,seats:$seats,gameOvers:$overs,capHit:$capHit,
+    {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outcome,moveCount,seats:$seats,gameOvers:$overs,
      xClean:.byRole.X.clean,oClean:.byRole.O.clean,
      gameCost:$cost,gameTokens:$toks,
      invalidMove:$im,outOfTurn:$ot,positionTaken:$pt,invalidTotal:($im+$ot+$pt),structural:$st}' "$q" >> "$OUT" 2>/dev/null || true
@@ -91,7 +86,21 @@ jq -rc 'select(.anomaly|not) | [.cell,.outcome,.gameCost,.gameTokens,.invalidMov
 END{ for(c in n) printf "  %-5s %2d  %4d%%  %9.5f  %8.0f  |  %5.1f  (%.1f/%.1f/%.1f)  %5.1f\n",
        c, n[c], comp[c]*100/n[c], cost[c]/n[c], tok[c]/n[c], it[c]/n[c], im[c]/n[c], ot[c]/n[c], pt[c]/n[c], st[c]/n[c] }' | sort
 
-echo "=== incomplete breakdown (why not terminal): capped(budget, actions>=$MAXACT) vs stalled(genuine) ==="
-jq -rc 'select(.anomaly|not) | [.cell,.outcome,.capHit] | @tsv' "$OUT" | awk -F'\t' '
-{ c=$1; if($2!="draw"&&$2!="x_wins"&&$2!="o_wins"){ inc[c]++; if($3=="true")cap[c]++; else stall[c]++ } ; seen[c]=1 }
-END{ for(c in seen) printf "  %-5s incomplete=%d  capped=%d  stalled=%d\n", c, inc[c]+0, cap[c]+0, stall[c]+0 }' | sort
+echo "=== incomplete breakdown (window_truncated vs stalled) ==="
+jq -rc 'select(.anomaly|not) | [.cell,.outcome] | @tsv' "$OUT" | awk -F'\t' '
+{ c=$1; seen[c]=1
+  if($2=="draw"||$2=="x_wins"||$2=="o_wins") ;
+  else if($2=="window_truncated") tr[c]++
+  else st[c]++ }
+END{ for(c in seen) printf "  %-5s truncated(window)=%d  stalled=%d\n", c, tr[c]+0, st[c]+0 }' | sort
+
+echo "=== info-seeking per cell (mean agent GETs across clean-game seats) ==="
+for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
+  strat=0; prof=0; n=0
+  for t in "$D"/t-$cell-r*.jsonl; do
+    [ -f "$t" ] || continue; n=$((n+1))
+    strat=$((strat + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /strategy")))
+    prof=$((prof + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /profile")))
+  done
+  [ "$n" -gt 0 ] && printf "  %-5s /strategy=%.2f  /profile=%.2f  (seats=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
+done

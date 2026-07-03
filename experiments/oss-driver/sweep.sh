@@ -18,11 +18,10 @@ PROXY_BASE=http://127.0.0.1:6328
 MODEL="${MODEL:-anthropic/claude-haiku-4.5}"
 CELLS="${CELLS:-0000 1000 0100 0010 0001 1111}"
 RUNS="${RUNS:-1 2 3 4 5}"
-MAX_ACTIONS="${MAX_ACTIONS:-50}"        # per-seat action cap. 25 was budget-binding: GET-observes +
-                                        # /strategy fetches + invalid retries starved terminal play
-                                        # (all misses were cap-hits, 0 genuine stalls). Raised to 50.
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"      # POST-attempt budget (mutations). Generous: play never nears it.
+MAX_TURNS="${MAX_TURNS:-80}"            # total-turn backstop incl. free GETs (R10). Agent-invisible.
 D="${SWEEP_OUT:-/tmp/ttt-sweep}"; mkdir -p "$D"
-echo "$MAX_ACTIONS" > "$D/.maxactions"  # record the cap so aggregate.sh's cap-hit threshold matches
+printf 'attempts=%s turns=%s\n' "$MAX_ATTEMPTS" "$MAX_TURNS" > "$D/.bounds"
 PROMPT="${PROMPT:-plain}"                # plain (cold-start instrument) | browser (re-test arm)
 if [ "$PROMPT" = "browser" ]; then
   export COLDSTART_PROMPT_PATH="$REPO/experiments/oss-driver/coldstart-browser-prompt.md"
@@ -62,7 +61,7 @@ run_game() {
     env TRANSCRIPT_PATH="$D/t-$tag-$role$n.jsonl" \
       dotnet run --project experiments/oss-driver --no-build -- \
         --role "$role" --arm http --base "$PROXY_BASE" --route arenas --game "$gid" \
-        --coldstart --model "$MODEL" --max-actions "$MAX_ACTIONS" \
+        --coldstart --model "$MODEL" --max-attempts "$MAX_ATTEMPTS" --max-turns "$MAX_TURNS" \
         > "$D/s-$tag-$role$n.out" 2>"$D/s-$tag-$role$n.err" &
     pids+=($!); sleep 4
   done
