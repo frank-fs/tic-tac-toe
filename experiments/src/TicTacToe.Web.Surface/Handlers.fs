@@ -286,6 +286,12 @@ let private isTerminalResult (result: MoveResult) =
     | Won _ | Draw _ -> true
     | _ -> false
 
+/// When TICTACTOE_LOCK_GAME=1 the experiment game is immutable to agents: delete/restart always
+/// 409, even mid-play. Prevents agent-triggered resets that clear the board and replay it,
+/// corrupting a run — Sd/So cells discover /restart via the profile; others invent it.
+let private gameLocked () =
+    System.Environment.GetEnvironmentVariable "TICTACTOE_LOCK_GAME" = "1"
+
 /// DELETE /arenas/{id} (via POST /arenas/{id}/delete form workaround)
 let deleteArena (ctx: HttpContext) =
     task {
@@ -293,13 +299,16 @@ let deleteArena (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
 
-        match store.Get(arenaId) with
-        | Some result when isTerminalResult result ->
+        if gameLocked () then
             ctx.Response.StatusCode <- 409
-        | _ ->
-            store.Delete(arenaId)
-            assignmentManager.RemoveGame(arenaId)
-            ctx.Response.Redirect("/")
+        else
+            match store.Get(arenaId) with
+            | Some result when isTerminalResult result ->
+                ctx.Response.StatusCode <- 409
+            | _ ->
+                store.Delete(arenaId)
+                assignmentManager.RemoveGame(arenaId)
+                ctx.Response.Redirect("/")
     }
 
 /// POST /arenas/{id}/restart — reset arena state
@@ -309,17 +318,20 @@ let restartArena (ctx: HttpContext) =
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
 
-        match store.Get(arenaId) with
-        | Some result when isTerminalResult result ->
+        if gameLocked () then
             ctx.Response.StatusCode <- 409
-        | _ ->
-            // Clear player assignments so new players can join
-            assignmentManager.RemoveGame(arenaId)
-            match store.Reset(arenaId) with
-            | None ->
-                ctx.Response.StatusCode <- 404
-            | Some _ ->
-                ctx.Response.Redirect($"/arenas/{arenaId}")
+        else
+            match store.Get(arenaId) with
+            | Some result when isTerminalResult result ->
+                ctx.Response.StatusCode <- 409
+            | _ ->
+                // Clear player assignments so new players can join
+                assignmentManager.RemoveGame(arenaId)
+                match store.Reset(arenaId) with
+                | None ->
+                    ctx.Response.StatusCode <- 404
+                | Some _ ->
+                    ctx.Response.Redirect($"/arenas/{arenaId}")
     }
 
 // ============================================================================

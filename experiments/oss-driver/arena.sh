@@ -31,7 +31,9 @@ arm_config() {          # one job: set globals for the named arm
       PROJECT="$REPO_ROOT/experiments/src/TicTacToe.Web.Surface"
       PORT=5328
       ROUTE=arenas
-      EXTRA_ENV=(${CELL:+TICTACTOE_CELL=$CELL})
+      # LOCK_GAME: the experiment game is immutable to agents (delete/restart -> 409), so an
+      # agent that discovers or invents /restart cannot reset+replay the board and corrupt the run.
+      EXTRA_ENV=(${CELL:+TICTACTOE_CELL=$CELL} TICTACTOE_LOCK_GAME=1)
       ;;
     *)
       echo "unknown arm: $1 (expected proto|surface)" >&2
