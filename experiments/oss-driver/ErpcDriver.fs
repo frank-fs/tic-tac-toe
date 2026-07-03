@@ -103,6 +103,8 @@ let run (cfg: Driver.Config) : string =
             messages.Add(msg "user" "Continue: call a tool to act, or emit your MOMENT report as plain text.")
         step <- step + 1
 
+    if not stop && outcome = "incomplete" then outcome <- "window_truncated"
+
     match Environment.GetEnvironmentVariable "TRANSCRIPT_PATH" with
     | null | "" -> ()
     | path ->

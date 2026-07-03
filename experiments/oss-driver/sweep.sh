@@ -18,7 +18,11 @@ PROXY_BASE=http://127.0.0.1:6328
 MODEL="${MODEL:-anthropic/claude-haiku-4.5}"
 CELLS="${CELLS:-0000 1000 0100 0010 0001 1111}"
 RUNS="${RUNS:-1 2 3 4 5}"
+MAX_ACTIONS="${MAX_ACTIONS:-50}"        # per-seat action cap. 25 was budget-binding: GET-observes +
+                                        # /strategy fetches + invalid retries starved terminal play
+                                        # (all misses were cap-hits, 0 genuine stalls). Raised to 50.
 D="${SWEEP_OUT:-/tmp/ttt-sweep}"; mkdir -p "$D"
+echo "$MAX_ACTIONS" > "$D/.maxactions"  # record the cap so aggregate.sh's cap-hit threshold matches
 cd "$REPO"
 
 PIDF="$D/.sweep.pid"
@@ -52,7 +56,7 @@ run_game() {
     env TRANSCRIPT_PATH="$D/t-$tag-$role$n.jsonl" \
       dotnet run --project experiments/oss-driver --no-build -- \
         --role "$role" --arm http --base "$PROXY_BASE" --route arenas --game "$gid" \
-        --coldstart --model "$MODEL" --max-actions 25 \
+        --coldstart --model "$MODEL" --max-actions "$MAX_ACTIONS" \
         > "$D/s-$tag-$role$n.out" 2>"$D/s-$tag-$role$n.err" &
     pids+=($!); sleep 4
   done

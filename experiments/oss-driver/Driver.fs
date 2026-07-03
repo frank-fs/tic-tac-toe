@@ -165,7 +165,7 @@ let private pollFloor = 3.0
 let private pollDelta = 3.0
 let private pollCap = 30.0
 let private maxWaitSeconds = 10.0   // a turn is quick; if nothing changes in 10s, hand back to the
-                                    // model (bounds a stalled game: MaxActions * maxWait < kill wall)
+                                    // model (bounds a stalled game: MaxTurns * maxWait < kill wall)
 
 /// Play one seat to completion (or cap). Returns a JSON result string.
 let run (cfg: Config) : string =

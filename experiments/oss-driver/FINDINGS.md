@@ -54,6 +54,50 @@ Browser dropped → the ladder runs **plain-only**. Descend Qwen3.5 with the ful
 Question: does the super-additive pattern (singles ≤ baseline, full > baseline) hold, strengthen,
 or shift as the model weakens?
 
+### Rung 1 — qwen3.5-122b-a10b, plain, n=5, 30 games, 0 anomalies (2026-07-03)
+
+| cell | factor | 122b plain | Δ vs control | haiku plain | haiku Δ |
+|------|--------|:--:|:--:|:--:|:--:|
+| **0000** | **control** | **80%** | — | 80% | — |
+| 1000 | A affordances | 100% | **+20** | 80% | 0 |
+| 0100 | C accessibility | 80% | 0 | 60% | −20 |
+| 0010 | Sd discovery | 80% | 0 | 60% | −20 |
+| 0001 | So ontology | 40% | **−40** | 40% | −40 |
+| 1111 | all four | 100% | +20 | 100% | +20 |
+
+**The super-additive-interaction headline does NOT reproduce at 122b.** Both hypotheses break:
+*singles ≤ baseline* FAILS (A alone → 100%, +20, a positive main effect) and *only-1111 > baseline*
+FAILS (1000 and 1111 both hit the 100% ceiling). At this surface the haiku-tier pattern resolves
+into **an A main-effect (+20) plus a persistent So-alone penalty (−40)**, with C/Sd going neutral.
+
+What held across both tiers: **So-alone = −40 identically** (ontology-alone is a model-independent
+distractor — the choose-to-fetch `/strategy` link draws read-and-thrash instead of play) and
+**1111 = 100%** (full stack ceilings out). What moved: the semantic/affordance singles rise
+(C, Sd −20→0; A 0→+20) — isolated layers stop hurting except So. Framing per experiment discipline:
+this is an **interface × model interaction**, not a capability claim about either model.
+
+### Rung 2 — qwen3.5-35b-a3b, plain, n=5, 30 games, 0 anomalies (2026-07-03)
+
+| cell | factor | haiku | 122b | 35b | 35b Δ ctrl |
+|------|--------|:--:|:--:|:--:|:--:|
+| **0000** | **control** | 80 | 80 | **80** | — |
+| 1000 | A affordances | 80 | 100 | 80 | 0 |
+| 0100 | C accessibility | 60 | 80 | 80 | 0 |
+| 0010 | Sd discovery | 60 | 80 | 60 | **−20** |
+| 0001 | So ontology | 40 | 40 | 20 | **−60** |
+| 1111 | all four | 100 | 100 | 80 | 0 |
+
+**At 35b the surface goes inert.** *singles ≤ baseline* HOLDS (nothing exceeds 80; A's 122b lift is
+gone); *only-1111 > baseline* FAILS — 1111 drops to 80 = control. Every factor is neutral-or-harmful
+and the full stack no longer rescues.
+
+**Ladder trend (surface weakening haiku → 122b → 35b):** the union's advantage **decays**
+(1111: 100 → 100 → 80) and the ontology-alone penalty **deepens** (So: −40 → −40 → −60,
+monotonic). Sd reverts to −20; A's +20 is a 122b-only blip (0 → +20 → 0, non-monotonic). Directional
+read: as the model weakens the discovery/ontology surface stops paying rent and the semantic layers
+drag — value decays toward "just let it play bare." Neither a clean hold nor a clean inversion of the
+haiku super-additive pattern: **decay.**
+
 ---
 
 ## Apparatus (validated this session)
