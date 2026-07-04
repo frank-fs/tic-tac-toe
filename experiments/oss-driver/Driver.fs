@@ -187,6 +187,44 @@ let run (cfg: Config) : string =
     let mutable usage = LlmClient.zeroUsage
     let etags = System.Collections.Generic.Dictionary<string, string>()
     let etagFor p = match etags.TryGetValue p with | true, e -> Some e | _ -> None
+
+    let buildResultJson () =
+        let res = JsonObject()
+        res["role"] <- JsonValue.Create cfg.Role
+        res["persona"] <- JsonValue.Create cfg.Persona.Name
+        res["model"] <- JsonValue.Create cfg.Model
+        res["game"] <- JsonValue.Create gamePath
+        res["actions"] <- JsonValue.Create step
+        res["attempts"] <- JsonValue.Create attempts
+        res["turns"] <- JsonValue.Create step
+        res["moves_submitted"] <- JsonValue.Create moves
+        res["outcome"] <- JsonValue.Create outcome
+        res["promptTokens"] <- JsonValue.Create usage.Prompt
+        res["completionTokens"] <- JsonValue.Create usage.Completion
+        res["totalTokens"] <- JsonValue.Create usage.Total
+        res["costUsd"] <- JsonValue.Create usage.Cost
+        res.ToJsonString()
+
+    // Persist the result to RESULT_PATH even if SIGTERM'd before returning: long games get killed at
+    // the sweep teardown wall AFTER play, which loses cost/token telemetry (the outcome survives in
+    // the server log, the usage does not). A SIGTERM PosixSignalRegistration handler runs on a
+    // runtime-managed thread, so it fires even while the main thread is blocked in a sync HTTP/Sleep
+    // call (ProcessExit alone does not, which is why it failed). Temp-then-move so an interrupted
+    // write never leaves a partial file.
+    let mutable persisted = false
+    let writeResultFile () =
+        match Environment.GetEnvironmentVariable "RESULT_PATH" with
+        | null | "" -> ()
+        | path when not persisted ->
+            let tmp = path + ".tmp"
+            IO.File.WriteAllText(tmp, buildResultJson ())
+            IO.File.Move(tmp, path, true)
+        | _ -> ()
+    let _sigterm =
+        System.Runtime.InteropServices.PosixSignalRegistration.Create(
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, fun _ -> writeResultFile ())
+    AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> writeResultFile ())
+
     while not stop && attempts < cfg.MaxAttempts && step < cfg.MaxTurns do
         let reply =
             try
@@ -254,18 +292,6 @@ let run (cfg: Config) : string =
             o["content"] <- JsonValue.Create content
             w.WriteLine(o.ToJsonString())
 
-    let res = JsonObject()
-    res["role"] <- JsonValue.Create cfg.Role
-    res["persona"] <- JsonValue.Create cfg.Persona.Name
-    res["model"] <- JsonValue.Create cfg.Model
-    res["game"] <- JsonValue.Create gamePath
-    res["actions"] <- JsonValue.Create step
-    res["attempts"] <- JsonValue.Create attempts
-    res["turns"] <- JsonValue.Create step
-    res["moves_submitted"] <- JsonValue.Create moves
-    res["outcome"] <- JsonValue.Create outcome
-    res["promptTokens"] <- JsonValue.Create usage.Prompt
-    res["completionTokens"] <- JsonValue.Create usage.Completion
-    res["totalTokens"] <- JsonValue.Create usage.Total
-    res["costUsd"] <- JsonValue.Create usage.Cost
-    res.ToJsonString()
+    writeResultFile ()
+    persisted <- true
+    buildResultJson ()

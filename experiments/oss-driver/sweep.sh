@@ -14,6 +14,8 @@
 set -uo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARENA="$REPO/experiments/oss-driver/arena.sh"
+BIN="$REPO/experiments/oss-driver/bin/Debug/net10.0/TicTacToe.OssDriver"   # exec directly (signal delivery)
+[ -x "$BIN" ] || { echo "building driver (BIN missing)…"; dotnet build "$REPO/experiments/oss-driver" -v q --nologo || exit 1; }
 PROXY_BASE=http://127.0.0.1:6328
 MODEL="${MODEL:-anthropic/claude-haiku-4.5}"
 CELLS="${CELLS:-0000 1000 0100 0010 0001 1111}"
@@ -58,11 +60,15 @@ run_game() {
   local pids=()
   for spec in X:1 O:2 O:3; do          # 3 staggered seats; server seats first two, 3rd observes
     local role=${spec%%:*} n=${spec##*:}
-    env TRANSCRIPT_PATH="$D/t-$tag-$role$n.jsonl" \
-      dotnet run --project experiments/oss-driver --no-build -- \
+    # Exec the built binary directly (NOT `dotnet run`): the teardown kill must hit the app itself so
+    # its SIGTERM handler fires — `dotnet run` swallows the signal at the launcher. RESULT_PATH: the
+    # driver writes its result JSON to the .out directly (flushed, and re-flushed on SIGTERM) so
+    # cost/tokens survive a teardown kill of a long game; stdout goes to a throwaway .log.
+    env TRANSCRIPT_PATH="$D/t-$tag-$role$n.jsonl" RESULT_PATH="$D/s-$tag-$role$n.out" \
+      "$BIN" \
         --role "$role" --arm http --base "$PROXY_BASE" --route arenas --game "$gid" \
         --coldstart --model "$MODEL" --max-attempts "$MAX_ATTEMPTS" --max-turns "$MAX_TURNS" \
-        > "$D/s-$tag-$role$n.out" 2>"$D/s-$tag-$role$n.err" &
+        > "$D/s-$tag-$role$n.log" 2>"$D/s-$tag-$role$n.err" &
     pids+=($!); sleep 4
   done
   local w=0                            # bounded wait for self-termination (up to 400s)
