@@ -6,12 +6,14 @@
 #
 # ANOMALY = an unfair game (harness hiccup), detected from artifacts; flagged, DROPPED from the
 # denominator (policy: drop + renormalize), and LISTED so we can see if the harness needs work.
-# A game is anomalous if ANY:
+# A game is anomalous if ANY (VALIDITY IS JUDGED FROM THE SERVER LOG, never the driver .out):
 #   A  <2 distinct seats got move_accepted     -> never seated 2 players
 #   B  game_over count > 1                     -> replay contamination
 #   C  dataAnomaly == true (q json)            -> log corruption (move on occupied cell)
-#   D  a SEATED driver (X1/O2) .out missing/invalid/errored -> mid-game crash
 # (O3 is the designated observer; its crash does not invalidate a 2-player game.)
+# A seated driver's .out being empty/errored is a REPORTING GAP, not an anomaly: the driver was
+# often killed at teardown AFTER a clean game (long draws poll past the wait wall). Such games are
+# KEPT and graded from the server log; only their cost/token totals are unknown (flagged outMissing).
 #
 # PRIMARY metrics (per cell, clean games): mean cost, mean tokens, mean invalid-interaction attempts
 #   invalidMove(400) + outOfTurn(403) + positionTaken(422)  -- agent failed to form a legal move.
@@ -32,17 +34,18 @@ for q in "$D"/q-*.json; do
   overs=$(cnt 'select(.event_type=="game_over")' "$log")
   dataAnom=$(jq -r '.dataAnomaly // false' "$q" 2>/dev/null)
 
-  seatBad=0
+  # outMissing = a seated driver's result JSON is absent/errored. INFORMATIONAL ONLY (reporting gap,
+  # not a validity judgement) — the game is still graded from the server log below.
+  outMissing=false
   for s in X1 O2; do
     f="$D/s-$tag-$s.out"
-    if [ ! -s "$f" ] || ! jq -e . "$f" >/dev/null 2>&1 || [ -n "$(jq -r '.error // empty' "$f" 2>/dev/null)" ]; then seatBad=1; continue; fi
+    if [ ! -s "$f" ] || ! jq -e . "$f" >/dev/null 2>&1 || [ -n "$(jq -r '.error // empty' "$f" 2>/dev/null)" ]; then outMissing=true; fi
   done
 
   reason=""
   [ "$seats" -lt 2 ] && reason="${reason}seats<2 "
   [ "$overs" -gt 1 ] && reason="${reason}game_over>1 "
   [ "$dataAnom" = "true" ] && reason="${reason}logCorrupt "
-  [ "$seatBad" -eq 1 ] && reason="${reason}seatCrash "
   anomaly=false; [ -n "$reason" ] && anomaly=true
 
   invalidMove=$(cnt 'select(.status_code==400)' "$log")
@@ -69,11 +72,11 @@ for q in "$D"/q-*.json; do
   done
 
   jq -c --arg cell "$cell" --argjson run "$run" --arg reason "${reason% }" \
-        --argjson anomaly "$anomaly" --argjson seats "$seats" --argjson overs "$overs" \
+        --argjson anomaly "$anomaly" --argjson outMissing "$outMissing" --argjson seats "$seats" --argjson overs "$overs" \
         --argjson cost "$cost" --argjson toks "$toks" \
         --argjson im "$invalidMove" --argjson ot "$outOfTurn" --argjson pt "$positionTaken" --argjson st "$structural" \
         --argjson seatTrunc "$seatTrunc" '
-    {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outcome,moveCount,seats:$seats,gameOvers:$overs,
+    {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outMissing:$outMissing,outcome,moveCount,seats:$seats,gameOvers:$overs,
      xClean:.byRole.X.clean,oClean:.byRole.O.clean,
      gameCost:$cost,gameTokens:$toks,
      invalidMove:$im,outOfTurn:$ot,positionTaken:$pt,invalidTotal:($im+$ot+$pt),structural:$st,
@@ -87,6 +90,11 @@ echo "records: $total   anomalies(dropped): $anom   clean: $((total-anom))   (di
 echo "=== DROPPED anomalies (cell run reason) ==="
 jq -r 'select(.anomaly) | "  \(.cell) r\(.run)  \(.reason)"' "$OUT" 2>/dev/null | sort
 [ "$anom" -eq 0 ] && echo "  (none)"
+
+gaps=$(jq -rc 'select((.anomaly|not) and .outMissing)' "$OUT" | grep -c . || true)
+echo "=== reporting gaps (KEPT + graded; cost/tokens understated — seated driver .out missing) ==="
+jq -r 'select((.anomaly|not) and .outMissing) | "  \(.cell) r\(.run)  outcome=\(.outcome)"' "$OUT" 2>/dev/null | sort
+[ "$gaps" -eq 0 ] && echo "  (none)"
 
 echo "=== per-cell over CLEAN games (n = clean count) ==="
 echo "  cell   n  compl%  cost$/game  tok/game  |  invalid: total  (move/outturn/postaken)  struct"
