@@ -32,7 +32,9 @@ res=$(curl -s -b $j1 -X POST "$A/restart" -d '' -o /dev/null -w '%{http_code}')
 "$ARENA" down surface >/dev/null 2>&1
 
 fail=0
-ctl=$(grep -oE 'delete-game-btn|/restart|square-clickable' /tmp/pf-term.html | wc -l | tr -d ' ')
+# strip <style>/<script> first — CSS class definitions (.delete-game-btn {...}) are not live controls
+ctl=$(perl -0777 -pe 's#<style.*?</style>##gs; s#<script.*?</script>##gs' /tmp/pf-term.html \
+       | grep -oE 'delete-game-btn|/restart|square-clickable' | wc -l | tr -d ' ')
 [ "$ctl" = 0 ] && echo "PASS terminal renders no controls" || { echo "FAIL terminal still has $ctl control(s)"; fail=1; }
 [ "$del" = 409 ] && echo "PASS POST /delete -> 409" || { echo "FAIL POST /delete -> $del (want 409)"; fail=1; }
 [ "$res" = 409 ] && echo "PASS POST /restart -> 409" || { echo "FAIL POST /restart -> $res (want 409)"; fail=1; }
