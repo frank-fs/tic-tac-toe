@@ -59,14 +59,25 @@ for q in "$D"/q-*.json; do
     fi
   done
 
+  seatTrunc=0
+  for s in X1 O2; do
+    f="$D/s-$tag-$s.out"
+    if [ -s "$f" ] && jq -e . "$f" >/dev/null 2>&1; then
+      out=$(jq -r '.outcome // ""' "$f")
+      [ "$out" = "window_truncated" ] && seatTrunc=$((seatTrunc+1))
+    fi
+  done
+
   jq -c --arg cell "$cell" --argjson run "$run" --arg reason "${reason% }" \
         --argjson anomaly "$anomaly" --argjson seats "$seats" --argjson overs "$overs" \
         --argjson cost "$cost" --argjson toks "$toks" \
-        --argjson im "$invalidMove" --argjson ot "$outOfTurn" --argjson pt "$positionTaken" --argjson st "$structural" '
+        --argjson im "$invalidMove" --argjson ot "$outOfTurn" --argjson pt "$positionTaken" --argjson st "$structural" \
+        --argjson seatTrunc "$seatTrunc" '
     {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outcome,moveCount,seats:$seats,gameOvers:$overs,
      xClean:.byRole.X.clean,oClean:.byRole.O.clean,
      gameCost:$cost,gameTokens:$toks,
-     invalidMove:$im,outOfTurn:$ot,positionTaken:$pt,invalidTotal:($im+$ot+$pt),structural:$st}' "$q" >> "$OUT" 2>/dev/null || true
+     invalidMove:$im,outOfTurn:$ot,positionTaken:$pt,invalidTotal:($im+$ot+$pt),structural:$st,
+     seatTrunc:$seatTrunc}' "$q" >> "$OUT" 2>/dev/null || true
 done
 
 total=$(wc -l < "$OUT" | tr -d ' ')
@@ -86,13 +97,14 @@ jq -rc 'select(.anomaly|not) | [.cell,.outcome,.gameCost,.gameTokens,.invalidMov
 END{ for(c in n) printf "  %-5s %2d  %4d%%  %9.5f  %8.0f  |  %5.1f  (%.1f/%.1f/%.1f)  %5.1f\n",
        c, n[c], comp[c]*100/n[c], cost[c]/n[c], tok[c]/n[c], it[c]/n[c], im[c]/n[c], ot[c]/n[c], pt[c]/n[c], st[c]/n[c] }' | sort
 
-echo "=== incomplete breakdown (window_truncated vs stalled) ==="
-jq -rc 'select(.anomaly|not) | [.cell,.outcome] | @tsv' "$OUT" | awk -F'\t' '
-{ c=$1; seen[c]=1
-  if($2=="draw"||$2=="x_wins"||$2=="o_wins") ;
-  else if($2=="window_truncated") tr[c]++
-  else st[c]++ }
-END{ for(c in seen) printf "  %-5s truncated(window)=%d  stalled=%d\n", c, tr[c]+0, st[c]+0 }' | sort
+echo "=== incomplete breakdown (seat-level window_truncated vs stalled) ==="
+jq -rc 'select(.anomaly|not) | [.cell,.outcome,.seatTrunc] | @tsv' "$OUT" | awk -F'\t' '
+{ c=$1; seen[c]=1; n[c]++
+  st=$3+0; tot[c]+=st
+  if(st>0) any[c]++
+  if($2!="draw"&&$2!="x_wins"&&$2!="o_wins"&&$2!="window_truncated") stall[c]++ }
+END{ for(c in seen) printf "  %-5s seat-truncations=%d  (of %d seated-seats)  games-with-any=%d  stalled=%d\n",
+       c, tot[c]+0, n[c]*2, any[c]+0, stall[c]+0 }' | sort
 
 echo "=== info-seeking per cell (mean agent GETs across clean-game seats) ==="
 for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
