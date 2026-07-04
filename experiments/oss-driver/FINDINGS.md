@@ -98,6 +98,82 @@ read: as the model weakens the discovery/ontology surface stops paying rent and 
 drag — value decays toward "just let it play bare." Neither a clean hold nor a clean inversion of the
 haiku super-additive pattern: **decay.**
 
+> ⚠️ **SUPERSEDED — Rungs 1 & 2 above are CONFOUNDED (see the 2026-07-04 correction below).** The
+> completion differences that drove the "super-additive / singles-hurt / So-alone-distractor" reading
+> were artifacts of three stacked measurement bugs, not surface effects. Corrected → completion
+> saturates at 100% across the whole factorial. Kept for the audit trail; do not cite as results.
+
+## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
+
+Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
+banked "super-additive interaction" headline does not survive. It was measurement artifact.**
+
+**The three confounds (all removed):**
+1. **~25 request budget, doubly imposed.** The 25-action harness cap AND a hardcoded
+   "Cap your total requests at ~25 / if the server stops responding the app is finished, stop"
+   clause in BOTH the plain and browser cold-start prompts. Completion was budget-gated, not
+   ability-gated — every incomplete was a seat cut off mid-play, not a stall. Fixed: agent-blind
+   observation windows (reads free — GETs don't spend the mutation budget; two generous invisible
+   bounds `MaxAttempts=30`/`MaxTurns=80`), and the self-cap/silence-as-done clauses stripped from
+   both prompts (re-locked).
+2. **So ontology was inert clutter.** Inline JSON-LD re-injected every turn; agents never followed
+   its `/strategy` link (0 fetches observed). Fixed: So advertises `/strategy` via a `Link` header
+   (the channel agents DO follow — like Sd's `/profile`); inline JSON-LD dropped.
+3. **Terminal false-positive on the strategy article.** Once (2) made agents actually fetch
+   `/strategy`, its prose ("…that wins.") tripped the driver's loose `" wins"` game-over token on a
+   NON-game path → the seat quit with ~0 moves → the game logged incomplete. Dose-response proved it
+   (122b fetched /strategy 1.0/seat → 0001 "completed" 0%; 35b 0.53/seat → 60%). Fixed: terminal
+   token detection scoped to the game resource path only.
+
+**Corrected plain completion — 100% in EVERY cell, BOTH tiers** (n=4–5/cell, seat-truncations=0,
+seats terminate in ~5–8 turns, far under the 80-turn backstop):
+
+| cell | factor | 122b | 35b | banked (confounded) |
+|------|--------|:--:|:--:|:--:|
+| 0000 | control | 100 | 100 | 80 / 80 |
+| 1000 | A | 100 | 100 | 100 / 80 |
+| 0100 | C | 100 | 100 | 80 / 80 |
+| 0010 | Sd | 100 | 100 | 80 / 60 |
+| 0001 | So | 100 | 100 | 40 / 20 |
+| 1111 | all | 100 | 100 | 100 / 80 |
+
+**Completion is no longer discriminating** — it saturates. The signal moves to the axes flagged as
+primary: **invalid-interaction attempts, cost/tokens, and info-seeking** (mean/seat):
+
+| cell | 122b invalid | 35b invalid | 122b $ | 35b $ | /strategy | /profile |
+|------|:--:|:--:|:--:|:--:|:--:|:--:|
+| 0000 | 3.6 | 8.0 | .046 | .038 | 0 | ~0.15 |
+| 1000 (A) | **1.0** | 6.0 | .060 | .030 | 0 | 0 |
+| 0100 (C) | 5.5 | 8.4 | .081 | .039 | 0 | ~0.3 |
+| 0010 (Sd) | 5.0 | **12.4** | .065 | .066 | 0 | 1.1–1.8 |
+| 0001 (So) | 8.0 | 8.6 | .079 | .043 | **0.8–1.25** | ~0.3 |
+| 1111 (all) | **2.2** | **2.8** | .076 | **.029** | ~0.33 | 1.5 |
+
+**What survives, reframed as EFFICIENCY not completion:**
+- **Affordances (A/1000) and the full stack (1111) yield the cleanest, cheapest interaction** —
+  fewest invalid attempts (1000: 1.0 at 122b; 1111: 2.2/2.8 both tiers; 1111 cheapest at 35b, .029).
+  Forms structure the interaction so the agent mis-submits less.
+- **Isolated semantic layers (Sd, So) cost more** — most invalid attempts + tokens (Sd 12.4 at 35b,
+  most expensive; So 8.0–8.6) — agents explore/read/mis-submit more. They now COMPLETE, but less
+  efficiently. So the old "semantic-only hurts" is real only as an *efficiency* penalty, not a
+  completion failure.
+- **35b thrashes ~2× 122b** across cells (weaker model, more invalid attempts) — but completes.
+
+**D2 validated:** the `Link`-header So gets fetched (0 → 0.8–1.25 `/strategy`/seat in 0001);
+`/profile` fetched 1.1–1.8/seat in Sd cells. Agents act on advertised links, ignore inline JSON-LD.
+
+**Browser arm — inconclusive on conduct, but a mechanism finding.** Under agent-blind (self-cap
+removed), the "keep polling / waiting is fine" browser prompt makes agents never self-terminate →
+they run to the 400s per-game wall → killed mid-write → dropped as `seatCrash` (122b browser: 13/30
+dropped; sweep took 2h18m vs plain's 65m). **The browser prompt's prior "completion" depended on the
+very self-cap that made it agent-aware.** A fair browser re-test needs a termination fix first
+(e.g. the driver detecting a stable/terminal board), not the wall-kill. Deferred.
+
+**Bottom line:** with a fair, agent-blind, reads-free apparatus, all four affordance/semantic layers
+let a mid/low-tier open model complete cold-start tic-tac-toe (100%). The discovery layers earn their
+place on **interaction efficiency and honest info-seeking**, not on a completion gap — the completion
+gap was our instrument, not the surface. n small (4–5/cell); efficiency deltas are directional.
+
 ---
 
 ## Apparatus (validated this session)
