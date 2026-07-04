@@ -103,6 +103,35 @@ haiku super-additive pattern: **decay.**
 > were artifacts of three stacked measurement bugs, not surface effects. Corrected → completion
 > saturates at 100% across the whole factorial. Kept for the audit trail; do not cite as results.
 
+### Rungs 3 & 4 — qwen3.5-9b + flash ladder pilot (2026-07-03) — SUPERSEDED, never re-run
+
+A Jul-3 pilot descended the full ladder (`ladder-pilot.sh`): cells `0000`+`1000` × plain/browser,
+**n=1**, across 122b / 35b / **9b (dense)** / **flash**. Recovered from a prior session's scratchpad
+and archived at `experiments/results/archive/ladder-pilot-2026-07-03/` (gitignored, kept locally).
+Outcome per arm (`over`=terminal, `inc`=loop ended non-terminal), 6 seats/arm:
+
+| rung | plain | browser |
+|------|-------|---------|
+| qwen3.5-122b-a10b | 6 over / 0 inc | 3 over / **3 inc** |
+| qwen3.5-35b-a3b   | 2 over / 4 inc | 3 over / 3 inc |
+| qwen3.5-9b (dense)| 6 over / 0 inc | **6 over / 0 inc** |
+| qwen3.5-flash     | 3 over / 3 inc | 3 over / 3 inc |
+
+**Apparent browser-termination issue:** 122b browser 3/6 incomplete vs plain 6/6 — but **9b
+terminates 6/6 on both arms**, so non-termination is NOT monotone in capability. Directional at best.
+
+**Why SUPERSEDED (do not cite):** the pilot ran `sweep2.sh` (a scratchpad-local variant, NOT the
+committed `sweep.sh`) on HEAD `58d207c`, predating every re-baseline fix:
+1. **Reads NOT free** — old single `--max-actions 25` cap (GETs spent budget); `inc` is likely
+   window-truncation, not true non-termination. Reads-free split landed `90449fd..bec94fd` (Jul 4).
+2. **Old un-cleaned browser prompt** — still carried `"Cap your total requests at ~25"` (self-cap)
+   and silence-as-done; both stripped in `6a45579` (Jul 3 18:44).
+3. Terminal-detect false-positive (`b04270c`, Jul 4) does NOT hit these cells (`0000`/`1000`, no So),
+   but any future So rung needs the fixed binary.
+
+**9b and flash have NEVER run under the committed reads-free harness** — that is the real ladder-floor
+gap (see Next).
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
@@ -276,9 +305,18 @@ Clean ladder, 10 conditions (5 cells × plain/browser), 1 run each. Seated-playe
 - **Ontology (So) test** (Frank-free, via the new `/strategy` link): does So raise per-player
   `clean` / lower `missedBlock` for a fixed small model — i.e. does grounding + a fetchable
   strategy resource let it play closer to optimal *without being told the answer*?
+- **Ladder floor — re-run 9b + flash under the committed reads-free harness** (the Jul-3 pilot was
+  confounded; see Rungs 3 & 4). `for M in qwen/qwen3.5-9b qwen/qwen3.5-flash-02-23; do
+  MODEL=$M CELLS="0000 1000" RUNS="1 2 3 4 5" SWEEP_OUT=/tmp/qwen-${M##*/} bash …/sweep.sh; done`.
 - Coder refinements available: INVENT_PATH vs INVENT_PARAM breakdown, `--llm-judge` for WAIT.
 
 ## Reproduce
+
+> 🛑 **Use ONLY the committed `experiments/oss-driver/sweep.sh` + `aggregate.sh`.** Do NOT copy a
+> harness into a scratchpad or pass `--max-actions` (retired). The current regime is reads-free
+> (`--max-attempts`/`--max-turns`, GETs don't spend budget), cleaned agent-blind prompts (hash-locked),
+> and scoped terminal detection. Any run on a forked `sweep2.sh` or the old `25` cap is confounded and
+> must be discarded — that is exactly what invalidated the Jul-3 ladder pilot (Rungs 3 & 4).
 
 Committed harness (hardened: game-lock, bounded waits, bulletproof teardown, single-instance
 guard, artifact-only aggregation):
