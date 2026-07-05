@@ -82,6 +82,13 @@ run_game() {
   for spec in X:1 O:2 O:3; do
     local role=${spec%%:*} n=${spec##*:}
     dotnet run --project experiments/oss-driver --no-build -- code --transcript "$D/t-$tag-$role$n.jsonl" --role "$role" > "$D/c-$tag-$role$n.json" 2>/dev/null || echo '{}' > "$D/c-$tag-$role$n.json"
+    # Recognize (discovery axis): grade the 2-moment report vs the cell ground truth. The 3rd seat is
+    # the unseatable observer (server seats only X:1/O:2), so its expected role is `observer` — the
+    # sharpest role-discrimination test (did it recognize it can only watch?).
+    local grole=$role; [ "$n" = 3 ] && grole=observer
+    dotnet run --project experiments/oss-driver --no-build -- grade \
+      --transcript "$D/t-$tag-$role$n.jsonl" --gt "experiments/oss-driver/groundtruth/cell-$cell.json" \
+      --role "$grole" --out "$D/g-$tag-$role$n.json" >/dev/null 2>&1 || echo '{}' > "$D/g-$tag-$role$n.json"
   done
   bash "$ARENA" down surface >/dev/null 2>&1; ensure_clean
   echo "[$(date +%H:%M:%S)] DONE  $tag"

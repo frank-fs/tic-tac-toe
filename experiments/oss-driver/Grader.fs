@@ -120,6 +120,10 @@ let run (argv: string[]) : int =
         let multiGt = (try core.["isMultiplayer"].GetValue<bool>() with _ -> true)
         let roleTxt = gstr post "myRole" |> Option.ofObj |> Option.defaultValue ""
         let hedged = kw roleTxt [" or "; "not yet"; "unseat"; "unknown"]
+        // The 3rd seat is graded with --role observer. An observer's CORRECT post-report inverts the
+        // seated-player answers: it can never move (canIMove=false) and its only affordance is to
+        // watch — so canIMove/myAffordances are graded role-aware, not on the seated-player assumption.
+        let isObserver = role.ToLowerInvariant().Contains "observer"
         let affTxt = match post.["myAffordances"] with | null -> "" | v -> v.ToJsonString()
         let src = normSrc (gstr post "positionTokenSource")
         let bootstrapped = w.ok > 0
@@ -132,8 +136,10 @@ let run (argv: string[]) : int =
 
         let postNode = JsonObject()
         postNode.["myRole"] <- vnode (vd (roleTxt.ToLower().Contains(role.ToLower()) && not hedged) (roleTxt.ToLower().Contains(role.ToLower()))) (sprintf "reported: %A (expected %s)" roleTxt role)
-        postNode.["canIMove"] <- vnode (vd ((gbool post "canIMove") = Some true) ((gbool post "canIMove").IsSome)) (sprintf "reported: %A (turn-dependent)" (gbool post "canIMove"))
-        postNode.["myAffordances"] <- vnode (vd (kw affTxt ["move"; "square"; "play"]) (affTxt <> "")) (sprintf "reported: %s" affTxt)
+        let canMoveWant = if isObserver then Some false else Some true
+        postNode.["canIMove"] <- vnode (vd ((gbool post "canIMove") = canMoveWant) ((gbool post "canIMove").IsSome)) (sprintf "reported: %A (role %s%s)" (gbool post "canIMove") role (if isObserver then "; want false" else "; turn-dependent"))
+        let affWant = if isObserver then ["watch"; "observ"; "view"; "spectat"] else ["move"; "square"; "play"]
+        postNode.["myAffordances"] <- vnode (vd (kw affTxt affWant) (affTxt <> "")) (sprintf "reported: %s" affTxt)
 
         // ERPC has no HTTP /profile — "profile" there means the tool schema (the contract),
         // so the /profile-fetch checks don't apply.

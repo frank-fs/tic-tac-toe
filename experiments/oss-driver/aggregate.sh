@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Roll up a sweep's RAW per-game artifacts (q-/s-/log-* from sweep.sh) into clean.jsonl, one record
+# Roll up a sweep's RAW per-game artifacts (q-/s-/log-/g-* from sweep.sh) into clean.jsonl, one record
 # per game, classify HARNESS ANOMALIES, and print per-cell stats over the CLEAN games only.
 # Source of truth = the artifacts, never an inline file.
 #   bash experiments/oss-driver/aggregate.sh /tmp/qwen-122b
@@ -123,4 +123,22 @@ for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
     prof=$((prof + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /profile")))
   done
   [ "$n" -gt 0 ] && printf "  %-5s /strategy=%.2f  /profile=%.2f  (seats=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
+done
+
+# RECOGNIZE (discovery axis) — the DV that carries P1/P3/P4/P6. Per cell, mean correct verdicts from
+# the g-*.json grades (pre = {appIs,goal,isMultiplayer,howToJoin}/4 discovery; post =
+# {myRole,canIMove,myAffordances}/3 role-discrimination). Seats globbed per cell to match the
+# info-seeking loop above (floor runs have 0 anomalies; anomalous games are rare and not filtered here).
+echo "=== recognize per cell (mean correct verdicts across clean-game seats) ==="
+for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
+  preC=0; postC=0; present=0; nseat=0
+  for g in "$D"/g-$cell-r*.json; do
+    [ -f "$g" ] && jq -e . "$g" >/dev/null 2>&1 || continue
+    nseat=$((nseat+1))
+    preC=$((preC + $(jq '[.pre.appIs.verdict,.pre.goal.verdict,.pre.isMultiplayer.verdict,.pre.howToJoin.verdict]|map(select(.=="correct"))|length' "$g" 2>/dev/null || echo 0)))
+    postC=$((postC + $(jq '[.post.myRole.verdict,.post.canIMove.verdict,.post.myAffordances.verdict]|map(select(.=="correct"))|length' "$g" 2>/dev/null || echo 0)))
+    present=$((present + $(jq 'if (.reportsPresent.pre and .reportsPresent.post) then 1 else 0 end' "$g" 2>/dev/null || echo 0)))
+  done
+  [ "$nseat" -gt 0 ] && printf "  %-5s pre-correct=%.2f/4  post-correct=%.2f/3  reports=%d/%d  (seats=%d)\n" \
+    "$cell" "$(echo "$preC/$nseat"|bc -l)" "$(echo "$postC/$nseat"|bc -l)" "$present" "$nseat" "$nseat"
 done
