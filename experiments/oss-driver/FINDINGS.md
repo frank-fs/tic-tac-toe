@@ -132,6 +132,42 @@ committed `sweep.sh`) on HEAD `58d207c`, predating every re-baseline fix:
 **9b and flash have NEVER run under the committed reads-free harness** — that is the real ladder-floor
 gap (see Next).
 
+### Ladder FLOOR — 9b + flash, full 6-cell, n=5, committed harness (2026-07-04) — AUTHORITATIVE
+
+Both floor rungs run under the final committed harness (reads-free bounds, validity from the server
+log, cost persisted through teardown kills). 30/30 games clean each; artifacts archived at
+`experiments/results/archive/floor-runs-2026-07-04/`.
+
+**Play-quality axis is dead at the floor.** Both-players-clean = **0/5 in every cell, both models**
+— 9b and flash blunder (missed wins/blocks) regardless of surface. Surface does not make a weak
+model *play better*. (The 9b n=1 smoke showed a `1111` clean draw; it did NOT reproduce at n=5 —
+pure variance. n≥5 was necessary.)
+
+**The signal is efficiency (invalid-attempts / cost / termination)** — exactly where the reads-free
+re-baseline predicted it would move. flash, mean per game over 5 clean games:
+
+| cell | factor | cost/game | tokens/game | invalid attempts | non-term | compl% |
+|------|--------|:--:|:--:|:--:|:--:|:--:|
+| **1000** | **A** | **$0.007** | **83k** | **3.2** | 0 | 100% |
+| 0010 | Sd | $0.024 | 306k | 7.6 | 0 | 80% |
+| 0100 | C | $0.029 | 387k | 17.8 | 0 | 100% |
+| 1111 | all | $0.031 | 378k | 18.8 | 2 | 100% |
+| 0000 | control | $0.034 | 443k | 28.0 | 2 | 100% |
+| 0001 | So | $0.041 | 537k | 30.6 | 1+stall | 80% |
+
+- **A (rendered move form) is ~5× cheaper and ~9× fewer invalid attempts than bare control**, and it
+  REPRODUCES: `1000` had the lowest invalid-attempt count on **both** floor models (9b 7.6, flash 3.2).
+  The affordance collapses the format-guessing thrash for a weak model.
+- **So (ontology) is the *costliest* cell** — most expensive, most invalid, plus a stall. The
+  choose-to-fetch `/strategy` link draws read-and-thrash over play (a distractor at the floor).
+- **Bare control is expensive and non-terminates** (443k tokens, 28 invalid, 2 window-truncations).
+  "Control is best" was an artifact of ranking by raw invalid COUNTS unnormalised for the unseatable
+  observer + driver self-report; on both efficiency-normalised and quality axes it is NOT best.
+
+**Floor summary:** surface doesn't lift *play skill* at the capability floor, but **A makes weak
+models fail less and cost far less, while So makes them worse on every efficiency measure.** Framed
+per discipline: an interface × (weak-)model interaction on the efficiency axis, not a capability claim.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
@@ -305,9 +341,10 @@ Clean ladder, 10 conditions (5 cells × plain/browser), 1 run each. Seated-playe
 - **Ontology (So) test** (Frank-free, via the new `/strategy` link): does So raise per-player
   `clean` / lower `missedBlock` for a fixed small model — i.e. does grounding + a fetchable
   strategy resource let it play closer to optimal *without being told the answer*?
-- **Ladder floor — re-run 9b + flash under the committed reads-free harness** (the Jul-3 pilot was
-  confounded; see Rungs 3 & 4). `for M in qwen/qwen3.5-9b qwen/qwen3.5-flash-02-23; do
-  MODEL=$M CELLS="0000 1000" RUNS="1 2 3 4 5" SWEEP_OUT=/tmp/qwen-${M##*/} bash …/sweep.sh; done`.
+- **Ladder floor DONE** (9b + flash, full 6-cell n=5, committed harness — see "Ladder FLOOR" above).
+  Remaining descent: the **mid rungs 27b / 35b / 122b** need committed-harness 6-cell n=5 runs
+  (prior 122b/35b data predates the cost-fix + terminal-detect fix) to see whether the
+  A-cheaper / So-costlier efficiency effect strengthens or fades up the capability ladder.
 - Coder refinements available: INVENT_PATH vs INVENT_PARAM breakdown, `--llm-judge` for WAIT.
 
 ## Reproduce
