@@ -39,13 +39,13 @@ let private loadReports (path: string) : JsonObject option * JsonObject option =
         | _ -> ()
     pre, post
 
-type private Wire = { reads: int; ok: int; rej: int; auth: int; profile: int }
+type private Wire = { reads: int; ok: int; rej: int; auth: int; profile: int; typeDoc: int }
 
 let private wire (path: string option) : Wire =
     match path with
-    | None -> { reads = 0; ok = 0; rej = 0; auth = 0; profile = 0 }
+    | None -> { reads = 0; ok = 0; rej = 0; auth = 0; profile = 0; typeDoc = 0 }
     | Some p ->
-        let mutable reads, ok, rej, auth, profile = 0, 0, 0, 0, 0
+        let mutable reads, ok, rej, auth, profile, typeDoc = 0, 0, 0, 0, 0, 0
         for raw in File.ReadLines p do
             let line = raw.Trim()
             if line <> "" then
@@ -59,6 +59,7 @@ let private wire (path: string option) : Wire =
                         let m, status = str "method", i "status"
                         let path = str "path" |> Option.ofObj |> Option.defaultValue ""
                         if path.Contains "/profile" then profile <- profile + 1
+                        if path.Contains "/type" then typeDoc <- typeDoc + 1
                         if status = 302 then auth <- auth + 1
                         elif m = "GET" then reads <- reads + 1
                         elif m = "POST" && (status = 200 || status = 303) then ok <- ok + 1
@@ -68,7 +69,7 @@ let private wire (path: string option) : Wire =
                     | "move_rejected" -> rej <- rej + 1
                     | _ -> ()
                 with _ -> ()
-        { reads = reads; ok = ok; rej = rej; auth = auth; profile = profile }
+        { reads = reads; ok = ok; rej = rej; auth = auth; profile = profile; typeDoc = typeDoc }
 
 let private kw (text: string) (words: string list) =
     let t = (if isNull text then "" else text).ToLowerInvariant()
@@ -153,6 +154,14 @@ let run (argv: string[]) : int =
             | :? JsonArray as a -> a |> Seq.exists (fun n -> n.GetValue<string>().Contains "/profile")
             | _ -> false
         if sdExpected && w.profile = 0 then flags.Add(JsonValue.Create "Sd cell: /profile was never fetched")
+        let soExpected =
+            (not isErpc) &&
+            match gt.["artifactsPresent"] with
+            | :? JsonObject as ap ->
+                (match ap.["ontologyTyping"] with | null -> false | v -> (try v.GetValue<bool>() with _ -> false))
+            | _ -> false
+        if soExpected && w.typeDoc = 0 then
+            flags.Add(JsonValue.Create "So cell: /type (schema.org typing) was never fetched")
 
         let friction = JsonObject()
         friction.["reads"] <- JsonValue.Create w.reads
@@ -174,6 +183,7 @@ let run (argv: string[]) : int =
         rec'.["formatErrors"] <- JsonValue.Create w.rej
         rec'.["friction"] <- friction
         rec'.["profileGets"] <- JsonValue.Create w.profile
+        rec'.["typeGets"] <- JsonValue.Create w.typeDoc
         rec'.["flags"] <- flags
         rec'.["reportsPresent"] <- reportsPresent
 
