@@ -42,10 +42,16 @@ let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: st
     | Some a -> ctx.Response.Headers.Append("Allow", a)
     | None -> ()
 
-/// So: advertise the domain-knowledge article as a followable link (the channel agents
-/// actually use — inline JSON-LD was observed ignored). Independent of Sd's /profile.
-let private setStrategyHeader (ctx: HttpContext) =
-    ctx.Response.Headers.Append("Link", "</strategy>; rel=\"subjectOf\"")
+/// So: the arena URI names the Game (the thing); its RDF description is a distinct document
+/// (httpRange-14). Advertise it via a describedby Link on the HTML representation. Independent
+/// of Sd's /profile self Link — both coexist as separate Link headers when Sd+So.
+let private setDescribedByHeader (ctx: HttpContext) (arenaId: string) =
+    ctx.Response.Headers.Append("Link", $"</arenas/{arenaId}/type>; rel=\"describedby\"")
+
+/// So content negotiation: an agent asking for RDF (application/ld+json) gets 303-redirected
+/// from the thing (the arena) to its describing document (/arenas/{id}/type).
+let private acceptsLdJson (ctx: HttpContext) =
+    ctx.Request.Headers.Accept.ToString().Contains("application/ld+json")
 
 // ============================================================================
 // Auth
@@ -173,15 +179,20 @@ let createArena (ctx: HttpContext) =
 let getArena (ctx: HttpContext) =
     task {
         let store = ctx.RequestServices.GetRequiredService<GameStore>()
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
         let arenaId = ctx.Request.RouteValues.["id"] |> string
 
         match store.Get(arenaId) with
         | None ->
             ctx.Response.StatusCode <- 404
+        | Some _ when surface.So && acceptsLdJson ctx ->
+            // httpRange-14: RDF request on the thing → 303 See Other to its document.
+            ctx.Response.StatusCode <- 303
+            ctx.Response.Headers.Location <-
+                Microsoft.Extensions.Primitives.StringValues $"/arenas/{arenaId}/type"
         | Some result ->
-            let surface = ctx.RequestServices.GetRequiredService<Surface>()
             if surface.Sd then setDiscoveryHeaders ctx $"/arenas/{arenaId}" (Some (arenaAllow result))
-            if surface.So then setStrategyHeader ctx
+            if surface.So then setDescribedByHeader ctx arenaId
             do! renderArenaHtml ctx arenaId result None
     }
 
@@ -352,7 +363,6 @@ let profile (ctx: HttpContext) =
             ctx.Response.StatusCode <- 404
         else
             setDiscoveryHeaders ctx "/profile" (Some "GET, OPTIONS")
-            if surface.So then setStrategyHeader ctx
             ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.alpsProfile
     }
@@ -369,26 +379,39 @@ let wellKnownHome (ctx: HttpContext) =
             do! ctx.Response.WriteAsync TicTacToe.Web.Surface.Discovery.jsonHome
     }
 
-/// GET /strategy — the domain-strategy article the So ontology links to (So only).
-/// Reachable only by an agent that read the ontology block and chose to follow it:
-/// tests reaching-for-knowledge, not spoon-feeding. Absent from non-So surfaces (404).
-let strategy (ctx: HttpContext) =
+/// GET /arenas/{id}/type — the arena's RDF description as schema.org/Game JSON-LD (So only).
+/// The document that the arena URI (the Game/thing) dereferences to under content negotiation.
+/// Absent from non-So surfaces (404). Absolute @id/#players URIs are built from the request
+/// scheme+host so every named thing is a dereferenceable HTTP URI; zero blank nodes; sameAs
+/// links to Wikidata + DBpedia data URIs.
+let arenaType (ctx: HttpContext) =
     task {
         let surface = ctx.RequestServices.GetRequiredService<Surface>()
-        if not surface.So then
+        let store = ctx.RequestServices.GetRequiredService<GameStore>()
+        let arenaId = ctx.Request.RouteValues.["id"] |> string
+        match surface.So, store.Get(arenaId) with
+        | false, _ | _, None ->
             ctx.Response.StatusCode <- 404
-        else
-            let element =
-                article () {
-                    h1 () { "Tic-tac-toe strategy" }
-                    p () { "With perfect play by both sides, tic-tac-toe is a draw: a careful player never has to lose." }
-                    ol () {
-                        li () { "If you can place your mark to complete a line of three this turn, do it — that wins." }
-                        li () { "Otherwise, if your opponent already has two of their marks in a line with the third cell empty, play that cell to block them." }
-                        li () { "With no immediate win or threat, prefer the center, then a corner." }
-                        li () { "Beware a fork — a position giving your opponent two separate threats at once cannot be blocked; prevent it before it forms." }
-                    }
-                }
-            ctx.Response.ContentType <- "text/html; charset=utf-8"
-            do! Render.toStreamAsync ctx.Response.Body element
+        | true, Some _ ->
+            let arenaUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}/arenas/{arenaId}"
+            let jsonLd =
+                String.concat "\n" [
+                    "{"
+                    "  \"@context\": \"https://schema.org\","
+                    $"  \"@id\": \"{arenaUri}\","
+                    "  \"@type\": \"Game\","
+                    "  \"name\": \"Tic-tac-toe\","
+                    "  \"description\": \"A two-player m,n,k (3,3,3) game: place three of your marks in a row to win.\","
+                    "  \"numberOfPlayers\": {"
+                    $"    \"@id\": \"{arenaUri}#players\","
+                    "    \"@type\": \"QuantitativeValue\","
+                    "    \"value\": 2"
+                    "  },"
+                    "  \"sameAs\": ["
+                    "    \"http://www.wikidata.org/entity/Q210339\","
+                    "    \"http://dbpedia.org/resource/Tic-tac-toe\""
+                    "  ]"
+                    "}" ]
+            ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
+            do! ctx.Response.WriteAsync jsonLd
     }

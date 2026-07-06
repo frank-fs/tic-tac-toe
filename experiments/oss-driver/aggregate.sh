@@ -119,10 +119,10 @@ for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
   strat=0; prof=0; n=0
   for t in "$D"/t-$cell-r*.jsonl; do
     [ -f "$t" ] || continue; n=$((n+1))
-    strat=$((strat + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /strategy")))
+    strat=$((strat + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -icE "GET /arenas/[^ ]*/type")))
     prof=$((prof + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /profile")))
   done
-  [ "$n" -gt 0 ] && printf "  %-5s /strategy=%.2f  /profile=%.2f  (seats=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
+  [ "$n" -gt 0 ] && printf "  %-5s /type=%.2f  /profile=%.2f  (seats=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
 done
 
 # RECOGNIZE (discovery axis) — the DV that carries P1/P3/P4/P6. Per cell, mean correct verdicts from

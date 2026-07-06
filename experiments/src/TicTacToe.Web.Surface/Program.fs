@@ -121,11 +121,11 @@ let wellKnownHomeResource =
         get Handlers.wellKnownHome
     }
 
-let strategyResource =
-    resource "/strategy" {
-        name "Strategy"
+let arenaType =
+    resource "/arenas/{id}/type" {
+        name "ArenaType"
         requireAuth
-        get Handlers.strategy
+        get Handlers.arenaType
     }
 
 let private optionsAllow (path: string) =
@@ -203,11 +203,11 @@ let main args =
         resource home
         resource arenas
         resource arenaById
+        resource arenaType
         resource arenaRestart
         resource arenaDelete
         resource profileResource
         resource wellKnownHomeResource
-        resource strategyResource
     }
 
     0

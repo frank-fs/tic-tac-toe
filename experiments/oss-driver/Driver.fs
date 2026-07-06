@@ -53,9 +53,9 @@ let private terminalTokens =
 // A 404 is terminal ONLY on the game resource itself (the game vanished). During cold-start
 // the agent probes unknown paths (/status, /profile, ...); a 404 there is exploration
 // feedback, NOT game-over — treating it as terminal aborts discovery prematurely.
-// Token-body terminal detection is likewise scoped to the game path: /strategy and similar
-// domain-knowledge docs may contain phrases like "…that wins." and must not falsely trigger
-// game-over, causing the seat to quit mid-discovery.
+// Token-body terminal detection is likewise scoped to the game path: /arenas/{id}/type and
+// similar domain-knowledge docs may contain phrases like "…in a row to win." and must not
+// falsely trigger game-over, causing the seat to quit mid-discovery.
 let private terminal (gamePath: string) (path: string) (status: int) (body: string) : string option =
     let onGame = path.TrimEnd('/') = gamePath.TrimEnd('/')
     if status = 404 then
