@@ -153,13 +153,19 @@ re-baseline predicted it would move. flash, mean per game over 5 clean games:
 | 0100 | C | $0.029 | 387k | 17.8 | 0 | 100% |
 | 1111 | all | $0.031 | 378k | 18.8 | 2 | 100% |
 | 0000 | control | $0.034 | 443k | 28.0 | 2 | 100% |
-| 0001 | So | $0.041 | 537k | 30.6 | 1+stall | 80% |
+| 0001 | So ⚠️ | $0.041 | 537k | 30.6 | 1+stall | 80% |
 
 - **A (rendered move form) is ~5× cheaper and ~9× fewer invalid attempts than bare control**, and it
   REPRODUCES: `1000` had the lowest invalid-attempt count on **both** floor models (9b 7.6, flash 3.2).
   The affordance collapses the format-guessing thrash for a weak model.
-- **So (ontology) is the *costliest* cell** — most expensive, most invalid, plus a stall. The
+- **So (ontology) is the *costliest* cell ⚠️** — most expensive, most invalid, plus a stall. The
   choose-to-fetch `/strategy` link draws read-and-thrash over play (a distractor at the floor).
+
+  > ⚠️ **SUPERSEDED FOR THE So FACTOR (this table's `0001` row only).** These So numbers were produced
+  > by the invalid `rel=subjectOf` → `/strategy` **strategy-article fake** (a rejected mechanism). So
+  > was since rebuilt into real baseline Linked Data (`rel=describedby` → schema.org/Game typing).
+  > For the So factor, use the **2026-07-06 Linked-Data ladder sweep below**, not this row. The A / C /
+  > Sd / control rows are unaffected and remain authoritative.
 - **Bare control is expensive and non-terminates** (443k tokens, 28 invalid, 2 window-truncations).
   "Control is best" was an artifact of ranking by raw invalid COUNTS unnormalised for the unseatable
   observer + driver self-report; on both efficiency-normalised and quality axes it is NOT best.
@@ -167,6 +173,88 @@ re-baseline predicted it would move. flash, mean per game over 5 clean games:
 **Floor summary:** surface doesn't lift *play skill* at the capability floor, but **A makes weak
 models fail less and cost far less, while So makes them worse on every efficiency measure.** Framed
 per discipline: an interface × (weak-)model interaction on the efficiency axis, not a capability claim.
+
+## So (ontology) REBUILT — Linked-Data ladder sweep, flash + 9b + 122b, n=5 (2026-07-06)
+
+So was rebuilt from the rejected "strategy article" fake into **real baseline Linked Data**. The So
+arena now advertises `Link: </arenas/{id}/type>; rel="describedby"`, content-negotiates (303) to a
+schema.org/Game JSON-LD typing document with a dereferenceable `@id`, `numberOfPlayers` as a
+`QuantitativeValue`, and `sameAs` to Wikidata Q210339 + DBpedia. It **types the app**
+(identity/classification), NOT app-hosted strategy. The Grader gained `typeGets` (count of the
+`/arenas/{id}/type` fetch) and a **"So cell: /type (schema.org typing) was never fetched"** flag,
+symmetric to Sd's `/profile` measurement. Commits: `fd858e1` (Surface So) + `0c87b76` (Grader).
+
+Sweep 2026-07-06, plain prompt, committed harness, **n=5**, So-on cells only (`0001` = So alone,
+`1111` = all four). **10 games / 30 seats clean per rung** (2 cells × 5 runs = 10 games × 3 seats),
+0 anomalies. `recognize` = info-seeking score (pre/post, reports = seats that fetched a
+describedby/profile resource).
+
+| model | cell | compl% | $/game | tok/game | invalid (move/outturn/postaken) | struct | **/type** | /profile | recog pre | recog post |
+|-------|------|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| flash | **0001** (So) | 60% (2 stalls) | $0.027 | 359k | 19.0 (9.8/5.0/4.2) | 8.8 | **0.00** | 0.73 | 1.80/4 | 1.53/3 (11/15) |
+| flash | **1111** (all) | 100% | $0.019 | 232k | 7.4 (3.8/2.8/0.8) | 4.2 | **0.00** | 0.75 | 1.80/4 | 1.20/3 (12/15) |
+| 9b | **0001** (So) | 80% (1 stall) | $0.045 | 396k | 25.4 (3.8/11.2/10.4) | 5.8 | **0.00** | 0.00 | 1.67/4 | 1.33/3 (11/15) |
+| 9b | **1111** (all) | 100% | $0.017 | 147k | 8.2 (1.4/3.0/3.8) | 3.0 | **0.00** | 0.80 | 2.60/4 | 1.47/3 (14/15) |
+| **122b** | **0001** (So) | 40% (3 stalls, 1 trunc) | $0.191 | 378k | 15.0 (9.8/3.0/2.2) | 10.2 | **0.00** | 1.14 | 1.07/4 | 0.40/3 (4/15) |
+| **122b** | **1111** (all) | 100% | $0.092 | 192k | 4.8 (0.8/2.0/2.0) | 4.4 | **0.00** | 1.08 | 2.60/4 | 0.53/3 (8/15) |
+
+**So=0 baseline recognize** (SAME archived floor transcripts, re-graded offline with the new grader;
+`typeGets=0` and NO `/type` flag on every So=0 record — confirmed, since So=0 has no `/type` resource):
+
+| model | 0000 | 1000 (A) | 0100 (C) | 0010 (Sd) |
+|-------|:--:|:--:|:--:|:--:|
+| flash | pre 2.77 / post 2.08 | 2.00 / 2.07 | 2.20 / 1.87 | 1.77 / 1.92 |
+| 9b | pre 2.67 / post 1.00 | 2.13 / 1.27 | 2.07 / 1.73 | 2.44 / 1.56 |
+
+**HEADLINE — baseline Linked-Data So is INERT across the whole tested ladder.** `/type = 0.00` on
+**all six** So-on rows now — flash, 9b, **AND 122b**, both cells, all seats (n=5). Even the strongest
+tested tier never dereferences the `describedby` typing link; the "So cell: /type never fetched" flag
+fires on every So seat. **So enters the agent's context zero times, by the agent's own choice.**
+
+**This is NOT capability-gated — it is the affordance KIND.** Same 122b model PREVIOUSLY fetched the
+OLD So (`rel=subjectOf` → `/strategy` prose) at **0.8–1.25/seat** (the reads-free finding below). The
+NEW correct So (`rel=describedby` → schema.org typing) → **0**. The difference is not the agent's
+strength but what the link points at: a "strategy" article is goal-relevant **bait** to a game-playing
+agent; a typing/classification document offers a play loop **nothing to consume**.
+
+- **So does NOT lift recognition — at any tier.** So-on pre/post `recognize` sit at or below the So=0
+  baseline (flash `0001` pre **1.80** vs its `0000` baseline **2.77**; 9b `0001` pre **1.67** vs
+  `0000` **2.67**; 122b `0001` pre **1.07** — the **worst cell measured**). **P5** (ontology lifts
+  play quality, most on weak models) is **UNSUPPORTED across the ladder** — the affordance is never
+  read, so it cannot lift anything.
+- **Discovery axis: the Recognize DV is the discovery measurement, and So does not move it because it
+  is never consumed.** So-only (`0001`) pre-recognition is at/below the bare `0000` baseline at every
+  tier (flash 1.80, 9b 1.67, 122b **1.07** — 122b's is the worst cell measured; baselines flash 2.77,
+  9b 2.67). Where `1111` recognition is strong (122b pre **2.60**) it is **Sd doing the work** —
+  `/profile` IS fetched (~1.1/seat) — with So riding along unused. **So contributes to neither the
+  play axis nor the discovery axis here.**
+- **So-alone (`0001`) ≈ bare board.** A=C=Sd=0 plus an ignored `Link` header behaves like the `0000`
+  control: worst completion of the tested cells (flash **60%** / 2 stalls; 9b **80%** / 1 stall;
+  **122b 40%** / 3 stalls, 1 truncation) and high invalid attempts (flash 19.0, 9b 25.4, 122b 15.0).
+  The cost is bare-board **format-guessing**, no longer `/strategy` read-thrash. (122b `0001`'s 40% is
+  the **A=0 bare-board penalty amplified** — no rendered move form — plus n=5 variance, not a So
+  effect: `/type=0` means So is inert either way.)
+- **Followed LESS than the old fake.** The prior floor's OLD So (`rel=subjectOf` → `/strategy` prose)
+  got *read* and drove the **"costliest cell"** thrash ($.041 / 537k / 30.6 invalid). The CORRECT
+  baseline So (`rel=describedby` → JSON-LD type) is read **even less** (`/type=0`), and new So-only is
+  **cheaper** ($0.027 flash) precisely because the strategy read-thrash is gone. A "strategy" article
+  is goal-relevant *bait* to a weak agent; a typing document is not.
+- **`1111` completes best** (100%, cheapest, fewest invalid — all three models) but on the
+  **A / C / Sd** layers, **NOT So**: `/type=0` there too, So rides along unused. (9b and 122b `1111`
+  pre-recognize **2.60** is each model's best cell — attributable to Sd/C, not So.)
+
+**Working interpretation.** Linked-Data typing is a **retrieval/integration** affordance — its payoff
+is joining the app to the wider graph (queryable metrics, a leaderboard as a dataset, sibling-game /
+provenance links) consumed by something that **deliberately queries**. A tight play loop over a game
+the agent already knows has **nothing to retrieve**, so the typing document has no pull — unread even
+by the strongest tested agent, on both axes. This likely **shifts for a more complex / knowledge-heavy
+app** where borrowing external domain knowledge beats re-deriving it. Here, support comes from the
+**non-So layers** — chiefly **A** (affordances), then **Sd** for discovery.
+
+**CAVEATS:** n=5. The **capable rung is now RESOLVED** — 122b ran and is also `/type=0`; the capability
+hypothesis is falsified for the tested ladder. The only remaining tier gap is **haiku** (a cross-family
+anchor), untested. Across every tested tier So is inert. Framed per discipline: an **interface ×
+model interaction, not a capability claim.**
 
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
