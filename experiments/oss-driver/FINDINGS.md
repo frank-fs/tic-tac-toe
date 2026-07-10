@@ -256,6 +256,61 @@ hypothesis is falsified for the tested ladder. The only remaining tier gap is **
 anchor), untested. Across every tested tier So is inert. Framed per discipline: an **interface ×
 model interaction, not a capability claim.**
 
+## EMBED-FREE cold-start re-baseline — flash, n=5 (2026-07-10, issue #5) — DIRECTIONAL (floor only)
+
+**What changed.** The cold-start prompt disclosed the mutation wire-shape `POST /path key=value&key2=value2`
+— exactly the affordance a rendered move-form (A=1) or `/profile` contract (Sd=1) should teach. Issue #5:
+that embed **pre-compresses A/Sd's marginal value before the surface is read**. Fix (commit
+`edde99f`): drop the body shape → verb-only `GET (read) / POST (act)`; add a uniform content-free nudge
+("read headers as well as bodies — there may be links, a profile/contract, or typing to discover; follow
+linked data"). `.sha256` regenerated. Kept `profile|board` + MOMENT reports. Prior embedded prompt = the
+banked comparison arm (git history + archived floor/LD runs).
+
+Same flash floor model, same surface, committed harness, n=5, 6 cells (`SWEEP_OUT=/tmp/ttt-embedfree-flash-n5`).
+30/30 ran; 4 dropped as anomalous (seat<2 casualties) → n=4–5/cell.
+
+| cell | factor | compl% | $/game | invalid | **/type** | /profile | recog pre |
+|------|--------|:--:|:--:|:--:|:--:|:--:|:--:|
+| 0000 | control | 60% | $0.056 | 67.2 | 0.00 | 0.14 | 2.80/4 |
+| 1000 | A | 75% | $0.032 | 41.8 | 0.00 | 0.00 | 2.40/4 |
+| 0100 | C | 60% | $0.040 | 43.2 | 0.00 | 0.08 | 2.60/4 |
+| 0010 | Sd | **100%** | **$0.028** | **29.8** | 0.00 | **2.60** | 2.87/4 |
+| 0001 | So | 50% | $0.038 | 43.5 | **2.83** | 0.25 | 2.20/4 |
+| 1111 | all | 25% | $0.042 | 50.8 | 0.83 | **4.08** | 2.47/4 |
+
+**Two clean before/afters (flash held constant, only the prompt changed):**
+
+1. **The embed WAS a confound — removing it OVERTURNS the banked "A is 9× cheaper" headline.** Invalid
+   attempts vs the 2026-07-04 embedded floor: control **28→67**, C **17.8→43**, Sd **7.6→30**, all
+   **18.8→51**, and **A 3.2→42**. The embedded `key=value` was suppressing roughly half the format-thrash
+   in *every* cell. A's banked star result (3.2 invalid, ~9× better than control — "the one solid A
+   finding") **collapses**: under embed-free, A=1's rendered form alone does **not** rescue flash from the
+   format-guessing thrash (41.8 invalid, *worse* than Sd's 29.8). The 9× advantage was largely the prompt
+   handing over the POST shape, exactly as issue #5 predicted.
+
+2. **The nudge REVIVES So/Sd header-fetching from literal zero.** vs the 2026-07-06 LD sweep (same real
+   `describedby`→schema.org So surface, embedded-plain prompt) where `/type=0.00` on **all six** So-on rows:
+   embed-free+nudge → **`/type` 0.00→2.83** at `0001`, 0.00→0.83 at `1111`; `/profile` 0.75→**4.08** at
+   `1111`, →2.60 at `0010`. The "follow linked data" pointer got agents to dereference the ontology and the
+   profile contract for the first time — the header-resident Sd/So surfaces they had never inspected.
+
+**But fetching ≠ payoff.** So is still no help where it counts: `0001` (So) stays 50% completion / 43.5
+invalid — the nudge un-sticks *retrieval* but a play loop over a game the agent already knows has nothing
+to *consume* (consistent with the LD-inert finding; the LD-tool arm, issue #1, is where So could pay off).
+Where embed-free help appears, it is **Sd**, not A: `0010` (Sd) is now the **best cell** — 100% completion,
+cheapest, fewest invalid, zero truncations — because the `/profile` contract teaches the move format more
+reliably than A's form once the prompt no longer cheats.
+
+**Other shifts:** completion **de-saturates** (banked ~100% in 4/6 cells → 25–100%, live DV now); `1111`
+(full surface) is *worst* completion (25%) — more surface = more for a floor model to thrash/read-distract
+on; recognition spreads (pre 2.2–2.9, less priming) but stays high (flash knows ttt).
+
+**CAVEATS — DIRECTIONAL, NOT AUTHORITATIVE.** flash floor ONLY, n=5 (n=4 in 4 cells after anomaly drops),
+noisy and non-monotone. This answers issue #5's premise for the floor tier: removing the cheat **does**
+revive Sd differentiation (and reweights it away from A), and the nudge **does** revive So/Sd fetching. The
+`{9b, 122b}` rungs under embed-free are the **remaining gap** before this overturns the banked ladder
+headline outright. Directed (play-skill control) untouched — cold-start-only, per the invariant.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
