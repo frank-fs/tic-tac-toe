@@ -124,6 +124,11 @@ jq -rc 'select(.anomaly|not) | [.cell,.outcome,.seatTrunc] | @tsv' "$OUT" | awk 
 END{ for(c in seen) printf "  %-5s seat-truncations=%d  (of %d seated-seats)  games-with-any=%d  stalled=%d\n",
        c, tot[c]+0, n[c]*2, any[c]+0, stall[c]+0 }' | sort
 
+echo ""
+echo "############ DIMENSION 1 — DISCOVERY: can the agent tell WHAT it is playing + HOW to play it? ############"
+echo "############   (recognize = the 2-moment report; info-seeking = did it fetch the contract;    ############"
+echo "############    format-discovery = did it get the wire FORMAT right. Owned by Sd/So + nudge.)  ############"
+
 # WIRE-TRUTHED (was self-report): count real /profile + /type dereferences from the proxy HTTPLOG
 # (http-*.jsonl), matching the grader's path.Contains semantics — NOT grep of the agent's narrated
 # "GET /profile" in the transcript (which counted intent, and disagreed with the wire). Per game (the
@@ -183,3 +188,26 @@ for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
       "$cell" "$disc" "$posted" "$guess" "$posted" "$rate" "$nop"
   fi
 done
+
+echo ""
+echo "############ DIMENSION 2 — GAMEPLAY: DURING play, does the agent follow the game correctly? ############"
+echo "############   (illegalMoves = attempts at moves illegal for the CURRENT state — the A signal;   ############"
+echo "############    clean-play = minimax blunder-free; completion = reached a terminal. Owned by A/C.) ############"
+
+# illegalMoves = 403 out-of-turn + 422 position-taken: tried a move ILLEGAL FOR THE CURRENT STATE. This is
+# the AFFORDANCE (A) dimension — A renders only currently-legal move-forms, revised each turn, so an
+# affordance-following agent should attempt few/none. Kept DISTINCT from formatErrors (400 = wrong wire
+# shape/vocab = a DISCOVERY problem, Dimension 1), which A does not own.
+echo "=== illegalMoves per cell (403 out-of-turn + 422 position-taken /game — the A/affordance DV) ==="
+jq -rc 'select(.anomaly|not) | [.cell,.outOfTurn,.positionTaken,.invalidMove] | @tsv' "$OUT" | awk -F'\t' '
+{ c=$1; n[c]++; ot[c]+=$2; pt[c]+=$3; fmt[c]+=$4 }
+END{ for(c in n) printf "  %-5s illegalMoves=%4.1f/game  (outOfTurn %.1f + taken %.1f)   [fmt-errors(400)=%.1f, Dim1]\n",
+       c, (ot[c]+pt[c])/n[c], ot[c]/n[c], pt[c]/n[c], fmt[c]/n[c] }' | sort
+
+echo "=== clean-play per cell (minimax blunder-free seats; completion = reached a terminal) ==="
+jq -rc 'select(.anomaly|not) | [.cell,.outcome,.xClean,.oClean] | @tsv' "$OUT" | awk -F'\t' '
+{ c=$1; n[c]++;
+  if($2=="draw"||$2=="x_wins"||$2=="o_wins") comp[c]++;
+  if($3=="true") xc[c]++; if($4=="true") oc[c]++ }
+END{ for(c in n) printf "  %-5s completion=%3d%%  xClean=%d/%d oClean=%d/%d\n",
+       c, comp[c]*100/n[c], xc[c]+0, n[c], oc[c]+0, n[c] }' | sort

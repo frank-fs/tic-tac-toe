@@ -305,9 +305,11 @@ reliably than A's form once the prompt no longer cheats.
 (full surface) is *worst* completion (25%) — more surface = more for a floor model to thrash/read-distract
 on; recognition spreads (pre 2.2–2.9, less priming) but stays high (flash knows ttt).
 
-> **SUPERSEDED for the per-cell efficiency RANKING** by the hardened-harness re-run below (2026-07-10
-> later): the "A collapses / Sd is best" invalid-attempts ordering did NOT reproduce (n=5 flash noise). The
-> wire-level discovery findings (nudge revives fetching; guess-first dominance) DID reproduce and stand.
+> **RE-READ by the hardened re-run below (2026-07-10 later), split into two dimensions:** the DISCOVERY
+> findings (nudge revives fetching; guess-first dominance) reproduced. The GAMEPLAY finding — **A collapses
+> illegal MOVES (403+422)** — ALSO reproduced (A `1000` illegalMoves 0.4–1.0/game vs control 7–10). What did
+> NOT reproduce is the *format-error total ranking* ("A/Sd cheapest") — that total was the wrong lens
+> (400-dominated); A does not own the wire format. See the corrected two-dimension read below.
 
 **CAVEATS — DIRECTIONAL, NOT AUTHORITATIVE.** flash floor ONLY, n=5 (n=4 in 4 cells after anomaly drops),
 noisy and non-monotone. This answers issue #5's premise for the floor tier: removing the cheat **does**
@@ -393,30 +395,51 @@ arm (agent must call `list_tools` itself — no pre-injected schema). Archives:
   `/profile`≤0.8. The header→linked-data path works.
 - **CONFIRMED — guess-first is near-universal: 85/90 seats wrong-format on the first POST.** correct-format-
   first occurs *only* where a contract/form exists (Sd 2/15, A 2/15, all 1/15); never in control/C.
-- **TEMPERED — the first embed-free run's "A collapses / Sd is best" on invalid-attempts did NOT reproduce.**
-  This run: invalid-attempts ~flat 36–50 across all cells; 400s/game lowest at **So (28)**, highest at
-  **A (48)** — opposite ranking to run 1. So the per-cell efficiency *ordering* is **n=5 flash noise, not a
-  robust effect**; completion likewise noisy/non-monotone (secondary DV). The robust signals are the
-  wire-level discovery behaviors above; ranking the cells needs the ladder or more n.
+- **CORRECTED — A IS robust, on the right DV (the two dimensions were conflated).** There are TWO things
+  to measure on every surface, and lumping them into one "invalid-attempts" total hid the A effect:
+  - **Dimension 1 — DISCOVERY** (can the agent tell WHAT it plays + HOW): format errors = **400** (wrong
+    wire shape/vocab). Noisy for A (A doesn't own the format); A even *raises* 400s (48). This is Sd/So/
+    nudge's axis, and there the robust signal is the nudge reviving fetching (above).
+  - **Dimension 2 — GAMEPLAY** (does it follow the rules DURING play): illegal moves = **403 out-of-turn +
+    422 position-taken** (a move illegal for the *current* state). **A OWNS this, and it is clean + robust
+    across BOTH runs:** illegalMoves/game — A `1000` = **0.4/1.0**, all `1111` = **0.6/1.8**, vs control
+    **10.2/7.4**, Sd **12.0/5.2**, So **12.2/4.6** (RUN2/RUN1). A collapses illegal moves ~20× because the
+    affordance renders only currently-legal moves, revised each turn; C partially (announces valid actions);
+    Sd/So do not (discovery, not valid-action presentation).
+  - So the earlier "A is n=5 noise" was measuring the *wrong* DV (the 400-dominated total). **A's effect is
+    the illegal-move collapse — real and reproduced.** The per-cell *efficiency total* remains noisy, but
+    that total was the wrong lens. `aggregate.sh` now prints the two dimensions as labeled blocks with
+    illegalMoves as an explicit A-DV; completion stays secondary/noisy.
 
-**FAIR ERPC floor (de-injected, n=5, single-seat):**
+**FAIR ERPC floor (de-injected, n=5, single-seat) — DIMENSION 1 (discovery) ONLY. Dimension 2 NOT measured.**
 
-| metric | result |
+⚠️ **Scope: this run measures ONLY the discovery dimension. It is NOT a multiplayer gameplay comparison to
+the HTTP 3-seat floor — do not read it as one.** ERPC is single-seat *by harness choice* (2-player ERPC =
+one shared connection multiplexing two identities, still pending). The MCP server's multiplayer regulation
+is **rigorous and intact** — `mcp-rpc/Identity.fs` `decide` assigns O only to a token *distinct* from X
+(`xId <> token`) and rejects the same token moving out of turn (`Rejected NotYourTurn`). The single agent
+**stalls after X's move precisely because the server correctly refuses to let one identity play both seats**
+— that stall *is* the regulation working, not an MCP failure. So the "reached a move 2/5 / stalled"
+outcomes are **single-seat artifacts, not ERPC properties**.
+
+| DIMENSION 1 — discovery metric | result |
 |--------|--------|
-| discovered-first (`list_tools` before any real tool) | **5/5** (0 pre-discovery rejects) |
-| reached a legal move | 2/5 (3/5 discovered+authed, stalled before moving) |
+| discovered-first (`list_tools` before any real tool) | **5/5** (0 pre-discovery rejects), seat-independent — VALID |
 | MOMENT reports emitted | 0/5 — acted via tools, skipped the plain-text reports (**no recognize parity**) |
-| outcome | all `window_truncated` (single-seat, no O — expected) |
+| DIMENSION 2 — gameplay | **NOT MEASURED** (no multiplayer game; needs 2-player ERPC) |
 
-**The contrast is the finding.** Even with the injection cheat removed, ERPC **discovers-first 5/5** while
-HTTP **guesses-first 85/90** — not because ERPC was handed its contract (it was not) but because `tools/list`
-is *one conventional call returning the complete typed contract*, whereas HTTP discovery is multi-hop (read
-headers → find `rel` → fetch `/profile` → parse ALPS → apply). RPC's discovery is structurally **cheaper**
-even when both must reach for it. This confirms P-erpc's spirit (`firstMoveFormat` is structurally `no-post`
-for ERPC; zero format-guessing) and sharpens it: the honest RPC advantage is *cheap conventional discovery*,
-not a rigged pre-load — and it is paid back in **brittleness** (the typed schema is the coupling), which the
-deferred evolvability test is designed to expose. Caveats: single-seat (no completion signal); 0/5 MOMENT
-reports (recognize not comparable this run — a harness gap to fix before a scored ERPC comparison).
+**The valid finding (Dimension 1 only).** Even with the injection cheat removed, ERPC **discovers-first
+5/5** while HTTP **guesses-first 85/90** — not because ERPC was handed its contract (it was not) but because
+`tools/list` is *one conventional call returning the complete typed contract*, whereas HTTP discovery is
+multi-hop (read headers → find `rel` → fetch `/profile` → parse ALPS → apply). RPC's discovery is
+structurally **cheaper** even when both must reach for it. Confirms P-erpc's spirit. The honest RPC advantage
+is *cheap conventional discovery*, not a rigged pre-load — paid back in **brittleness** (the typed schema is
+the coupling), which the deferred evolvability test exposes.
+
+**BLOCKING before any ERPC Dimension-2 (gameplay) comparison:** 2-player ERPC (shared connection, identity
+multiplexing) — so both seats play a server-regulated game; and get the MOMENT reports out of the
+tool-calling loop (recognize parity). Until then, ERPC gameplay is uncharacterized and must not be compared
+to the HTTP gameplay floor.
 
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
