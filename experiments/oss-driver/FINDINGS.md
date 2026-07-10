@@ -441,6 +441,37 @@ multiplexing) — so both seats play a server-regulated game; and get the MOMENT
 tool-calling loop (recognize parity). Until then, ERPC gameplay is uncharacterized and must not be compared
 to the HTTP gameplay floor.
 
+## 3-seat multiplayer ERPC — coordination collapse (2026-07-10) — QUALITATIVE, flash floor n=5
+
+Built the 3-seat ERPC arena (X:1 / O:2 / O:3-observer over ONE shared MCP connection, server-regulated —
+`ErpcDriver.runMultiplayer`, commit merged), parity with the HTTP arena (pre-created shared game like
+`INITIAL_GAMES=1`; app-blind prompt carries the same "never create/reset/delete" the HTTP prompt has;
+`new_game` stays static/visible — NOT hidden, which would be unfaithful to MCP). Ran n=5, flash.
+
+**The run is DEGENERATE — reported qualitatively, NOT as an illegalMoves number.** Completion **0/5**,
+~2.6 accepted moves/game (a full game is 9). The observed illegalMoves (~1.2/game) is an ARTIFACT of games
+barely happening, not good rule-following — it must not be compared to the HTTP floor's fuller games.
+
+**Finding (qualitative): MCP is fine single-seat but collapses on multi-part interaction.** Where the
+turns went (run 3, representative): X **polled `get_state` ×26** and barely moved; O2 spent **31 turns
+emitting text**, ~9 tool calls; the observer **wasted 16 turns trying to move** (`game_full`). All runs hit
+the step cap via *unproductive coordination*, not starvation — so the (real) half-budget artifact of the
+single-process round-robin is largely moot: more budget → more polling, not more completion.
+
+**Mechanism — thesis §7 on the gameplay/coordination axis.** MCP is a single-agent→tools protocol and
+excels there (single-seat: discovery 5/5, clean move). Multi-part interaction needs parties to coordinate
+over shared, changing state, and MCP's **static tools give no turn/coordination affordance** (`make_move`
+always callable; nothing signals "not your turn"). So agents must self-coordinate by polling — and at the
+floor they collapse. Hypermedia's state-dependent affordance (offer the action only on your turn) is exactly
+the coordination scaffold MCP lacks.
+
+**This SUPERSEDES the quantitative P-erpc-gameplay illegalMoves prediction** — the gameplay failure showed
+up as *coordination collapse* (can't sustain a game), a stronger failure than a high illegal-move count.
+**Caveats:** flash floor, n=5, directional; the round-robin gave X/O ~half HTTP's per-seat budget (argued
+moot above); and the collapse may be capability-bound — a *think-first* model might self-coordinate (the
+capability-vs-training fork, now on the coordination axis). Untested. The mechanism (no turn affordance) is
+structural regardless.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
