@@ -311,6 +311,46 @@ revive Sd differentiation (and reweights it away from A), and the nudge **does**
 `{9b, 122b}` rungs under embed-free are the **remaining gap** before this overturns the banked ladder
 headline outright. Directed (play-skill control) untouched — cold-start-only, per the invariant.
 
+### Format-guessing — the sharp discovery DV (embed-free flash transcripts, 78 posting seats)
+
+The question the surfaces exist to answer: does the agent get the POST **format** right (read the
+affordances), or **wildly guess** it? Measured per seat from the transcript (the agent's only way to act
+is to emit `GET/POST /path`, which the driver runs and echoes `HTTP <n>` back — so the action+status
+stream IS the wire). **guessed** = first POST 400'd (unparseable shape/vocabulary); **discovered** = first
+POST parsed (200/303, or 403/422 = a legal-format-but-illegal move — format learned from the board form,
+`/profile`, or prior knowledge; **a contract fetch is not required**). Illegal *moves* (403/422) are NOT
+guessing. New grader DVs: `firstMoveFormat` + `formatGuesses` (400-count).
+
+| cell | factor | correct-format-first | 400s / posting seat (guess volume) |
+|------|--------|:--:|:--:|
+| 0000 | ctrl | 3/14 | 19.9 |
+| 1000 | A | 0/13 | 15.4 |
+| 0100 | C | 0/12 | 13.4 |
+| 0010 | Sd | 1/15 | **11.9** (lowest) |
+| 0001 | So | 0/12 | 15.6 |
+| 1111 | all | 1/12 | 20.3 (highest) |
+| **ALL** | | **5/78** | 16.0 |
+
+- **Guess-first is near-universal at the floor: 73/78 (94%) got the format wrong on their first POST**, in
+  every cell. No surface fixes the *first impulse* — flash flings a guess before reading.
+- **But the guess VOLUME is where surfaces show: Sd is lowest (11.9 400s/seat vs control's 19.9), then C
+  (13.4).** The surfaces don't stop the first guess; they help the agent *recover* (fewer total malformed
+  submissions). `1111` (all) is the *worst* volume (20.3) — more surface = more for a floor model to thrash
+  on, matching the completion result.
+- **`/profile` is a complete contract, not the weak link.** It is an ALPS doc whose `make-move` descriptor
+  spells out `POST player + position`, the exact 9 position names, and the rejection rules — everything
+  needed to format a correct POST. Sd agents fetch it (14/15) yet still guess-first (14/15): they **act
+  before reading it**. The bottleneck is the read-before-acting impulse, not contract quality.
+
+**Measurement note (integrity).** The action/format/fetch DVs above are read from the transcript's
+request+status stream, which is reliable — the agent's emitted `GET/POST` line *is* the request the driver
+makes, and the driver echoes the true status. The one genuinely-unreliable discovery field is the
+self-reported `positionTokenSource` (agents answer "board" reflexively regardless of what they fetched);
+it is retained only as a cross-check against the wire `profileGets`/`typeGets`, never as the discovery DV.
+The pre-hardening flash run (this section) saved no proxy HTTPLOG, so its `formatGuesses`/game and
+wire-`profileGets` will be recomputed exactly on the hardened re-run; the transcript-derived numbers here
+already stand.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The

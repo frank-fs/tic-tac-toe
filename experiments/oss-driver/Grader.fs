@@ -39,13 +39,46 @@ let private loadReports (path: string) : JsonObject option * JsonObject option =
         | _ -> ()
     pre, post
 
-type private Wire = { reads: int; ok: int; rej: int; auth: int; profile: int; typeDoc: int }
+let private actionRe = Regex(@"^\s*(GET|POST)\s+(/\S+)", RegexOptions.IgnoreCase)
+let private httpRe = Regex(@"^HTTP\s+(\d+)", RegexOptions.IgnoreCase)
+
+/// Per-seat FIRST-POST format correctness, from the transcript. The driver echoes each request's status
+/// back as "HTTP <n>", so the first mutation's outcome is legible: a 400 means the server could not parse
+/// the submission = the agent GUESSED the wire format (wrong body shape or invented position vocabulary);
+/// any other status (200/303 accepted, or 403/422 = a parsed-but-illegal move) means the format was
+/// RIGHT — learned from the board's action-form, a /profile, or prior knowledge; a contract fetch is NOT
+/// required to count as discovered. This isolates WILD FORMAT-GUESSING (the DV the surfaces should reduce)
+/// from ordinary illegal moves. "no-post" = never acted (e.g. the observer). R10: bounded by line count.
+let private firstMoveFormat (path: string) : string =
+    let mutable result = ""
+    let mutable awaitingStatus = false
+    for raw in File.ReadLines path do
+        if result = "" then
+            let line = raw.Trim()
+            if line <> "" then
+                try
+                    use doc = JsonDocument.Parse line
+                    let root = doc.RootElement
+                    let get (n: string) = match root.TryGetProperty n with | true, v -> v.GetString() | _ -> null
+                    let content = get "content" |> Option.ofObj |> Option.defaultValue ""
+                    if awaitingStatus && get "role" = "user" then
+                        let hm = httpRe.Match content
+                        if hm.Success then
+                            result <- (if hm.Groups.[1].Value = "400" then "guessed" else "discovered")
+                            awaitingStatus <- false
+                    elif get "role" = "assistant" then
+                        let am = actionRe.Match content
+                        if am.Success && am.Groups.[1].Value.ToUpperInvariant() = "POST" then awaitingStatus <- true
+                with _ -> ()
+    if result = "" then "no-post" else result
+
+type private Wire = { reads: int; ok: int; rej: int; auth: int; profile: int; typeDoc: int; fmt400: int }
 
 let private wire (path: string option) : Wire =
     match path with
-    | None -> { reads = 0; ok = 0; rej = 0; auth = 0; profile = 0; typeDoc = 0 }
+    | None -> { reads = 0; ok = 0; rej = 0; auth = 0; profile = 0; typeDoc = 0; fmt400 = 0 }
     | Some p ->
-        let mutable reads, ok, rej, auth, profile, typeDoc = 0, 0, 0, 0, 0, 0
+        let mutable reads, ok, rej, auth, profile, typeDoc, fmt400 = 0, 0, 0, 0, 0, 0, 0
         for raw in File.ReadLines p do
             let line = raw.Trim()
             if line <> "" then
@@ -63,13 +96,15 @@ let private wire (path: string option) : Wire =
                         if status = 302 then auth <- auth + 1
                         elif m = "GET" then reads <- reads + 1
                         elif m = "POST" && (status = 200 || status = 303) then ok <- ok + 1
-                        elif m = "POST" && status >= 400 then rej <- rej + 1
+                        elif m = "POST" && status >= 400 then
+                            rej <- rej + 1
+                            if status = 400 then fmt400 <- fmt400 + 1   // 400 = unparseable move = format guess (vs 403/422 illegal-but-parsed)
                     | "state_read" -> reads <- reads + 1        // ERPC event-log line
                     | "move_accepted" -> ok <- ok + 1
                     | "move_rejected" -> rej <- rej + 1
                     | _ -> ()
                 with _ -> ()
-        { reads = reads; ok = ok; rej = rej; auth = auth; profile = profile; typeDoc = typeDoc }
+        { reads = reads; ok = ok; rej = rej; auth = auth; profile = profile; typeDoc = typeDoc; fmt400 = fmt400 }
 
 let private kw (text: string) (words: string list) =
     let t = (if isNull text then "" else text).ToLowerInvariant()
@@ -180,6 +215,8 @@ let run (argv: string[]) : int =
         rec'.["positionTokenSource"] <- JsonValue.Create src
         rec'.["positionTokenSourceAcceptable"] <- JsonValue.Create (acceptable.Contains src)
         rec'.["bootstrapped"] <- JsonValue.Create bootstrapped
+        rec'.["firstMoveFormat"] <- JsonValue.Create (firstMoveFormat tp)
+        rec'.["formatGuesses"] <- JsonValue.Create w.fmt400
         rec'.["formatErrors"] <- JsonValue.Create w.rej
         rec'.["friction"] <- friction
         rec'.["profileGets"] <- JsonValue.Create w.profile

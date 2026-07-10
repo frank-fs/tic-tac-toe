@@ -157,3 +157,29 @@ for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
   [ "$nseat" -gt 0 ] && printf "  %-5s pre-correct=%.2f/4  post-correct=%.2f/3  reports=%d/%d  (seats=%d)\n" \
     "$cell" "$(echo "$preC/$nseat"|bc -l)" "$(echo "$postC/$nseat"|bc -l)" "$present" "$nseat" "$nseat"
 done
+
+# FORMAT-GUESSING — the sharp discovery DV: did the agent get the POST FORMAT right, or wildly guess it?
+# firstMoveFormat (grader, from the transcript's first POST + its HTTP status): "guessed" = first POST
+# 400'd (unparseable = wrong shape/vocabulary); "discovered" = first POST parsed (200/303/403/422 —
+# format learned from the board form, /profile, or knowledge; no fetch required). formatGuesses = total
+# 400s/game (the VOLUME of wild guessing — 403/422 illegal MOVES are excluded, they are not guessing).
+# Which enhancements cut format-guessing is the question (e.g. Sd's /profile lowers the 400 volume).
+echo "=== format-guessing per cell (first POST: correct-format vs guessed; + mean 400s/game) ==="
+for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
+  disc=0; guess=0; nop=0; g400=0; ng=0
+  for g in "$D"/g-$cell-r*.json; do
+    [ -f "$g" ] && jq -e . "$g" >/dev/null 2>&1 || continue
+    case "$(jq -r '.firstMoveFormat // "?"' "$g" 2>/dev/null)" in
+      discovered) disc=$((disc+1));; guessed) guess=$((guess+1));; no-post) nop=$((nop+1));; esac
+  done
+  for h in "$D"/http-$cell-r*.jsonl; do
+    [ -f "$h" ] || continue; ng=$((ng+1))
+    g400=$((g400 + $(jq -rc 'select(.method=="POST" and .status==400)' "$h" 2>/dev/null | grep -c . || true)))
+  done
+  posted=$((disc+guess))
+  if [ "$posted" -gt 0 ]; then
+    rate="n/a"; [ "$ng" -gt 0 ] && rate=$(printf '%.1f' "$(echo "$g400/$ng"|bc -l)")
+    printf "  %-5s correct-format=%d/%d  guessed=%d/%d  400s/game=%s  (no-post=%d)\n" \
+      "$cell" "$disc" "$posted" "$guess" "$posted" "$rate" "$nop"
+  fi
+done
