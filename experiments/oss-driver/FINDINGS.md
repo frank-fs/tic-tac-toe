@@ -351,6 +351,29 @@ The pre-hardening flash run (this section) saved no proxy HTTPLOG, so its `forma
 wire-`profileGets` will be recomputed exactly on the hardened re-run; the transcript-derived numbers here
 already stand.
 
+### Pre-registered predictions (2026-07-10, BEFORE the hardened floor + ladder + ERPC runs)
+
+Recorded before the data to avoid post-hoc rationalization (the project's recurring failure mode). The
+`firstMoveFormat` / `formatGuesses` DVs (this session) are the instruments that confirm or refute them.
+
+- **P-ladder (Sd converts from volume-reducer to first-shot-fixer up the model ladder).** At the flash
+  floor, format-guessing's bottleneck is the read-before-acting *impulse*, not contract quality (`/profile`
+  is a complete ALPS contract, yet Sd agents guess-first 14/15). Prediction: as capability rises
+  (9b → 122b → haiku), models increasingly "think first" (fetch `/profile` before acting), so Sd's
+  **discovered-first (correct-format-first) rate rises up the ladder** — Sd's benefit migrates from merely
+  lowering the 400 *volume* (the only place it shows at floor) to fixing the *first* POST. Refuted if
+  discovered-first stays ~floor across tiers (⇒ the impulse is capability-invariant, or the surface is read
+  but not applied).
+- **P-erpc (ERPC is the zero-opacity floor; format-guessing quantifies the HTTP opacity penalty).** The
+  HTTP move format is opaque by construction — `POST /arenas/{id}` with `player`+`position` and the 9
+  position names must be *discovered* (board form, `/profile`, or knowledge); that opacity is what makes
+  format-guessing possible and is the whole point of the HATEOAS arm. ERPC hands the format over in the
+  typed tool schema (`make_move(position, identityToken)`; the prompt calls the schemas "the contract"),
+  so there is nothing to guess. Prediction: ERPC shows **~zero format-guessing** — mechanically it emits
+  tool calls, not `POST /path` lines, so `firstMoveFormat` reads `no-post`/N/A and `formatGuesses`≈0. So
+  format-guessing is the size of the opacity penalty that A/C/Sd/So exist to close, with ERPC as the
+  handed-over baseline. Refuted if a well-formed ERPC arm still logs 400-equivalent format failures.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
