@@ -109,10 +109,13 @@ let stateOf (result: MoveResult) : GameState =
     match result with
     | XTurn(gs, _) | OTurn(gs, _) | Won(gs, _) | Draw gs | Error(gs, _) -> gs
 
+// Turn wording kept consistent with the HTTP arm's board status (templates/game.fs statusText:
+// "X's turn" / "O's turn") so both protocols message whose-turn identically to the agent. (Won/Draw
+// strings are unchanged; the game_over outcome parse in Tools.fs splits only the Won string.)
 let whoseTurnStr (result: MoveResult) =
     match result with
-    | XTurn _ -> "X"
-    | OTurn _ -> "O"
+    | XTurn _ -> "X's turn"
+    | OTurn _ -> "O's turn"
     | Won(_, p) -> sprintf "%O won" p
     | Draw _ -> "draw"
     | Error _ -> "error"

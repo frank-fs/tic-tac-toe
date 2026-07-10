@@ -95,9 +95,16 @@ let private newAgent (role: string) (seat: string) (sys: string) (coldStart: boo
 /// (won/draw) this turn. Turn/identity legality is the SERVER's job (it rejects out-of-turn / wrong-seat
 /// moves via the token the agent passes) — the multiplayer analog of the HTTP per-seat guards; the driver
 /// does not decide whose turn it is. De-inject is per-agent (each must call list_tools itself).
+/// Returns (gameOver, productive). PRODUCTIVE = the turn attempted a move, emitted text, or stalled
+/// (no tool call) — it consumes the turn budget. A pure READ turn (only reads: get_state/list_games/
+/// get_board/list_tools, no move, no text) is FREE — the ERPC analog of the HTTP arm's driver-side 304
+/// poll (reads never cost a turn there). Lets an agent poll to coordinate turn-order without starving its
+/// moves; a loose iteration backstop (runMultiplayer, R10) bounds pure-read spinning.
 let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray) (listOnly: JsonArray)
-                      (debug: bool) (a: Agent) : bool =
+                      (debug: bool) (a: Agent) : bool * bool =
     let mutable over = false
+    let mutable hadToolCalls = false
+    let mutable moveAttempted = false
     let assistant =
         try LlmClient.chatTools backend model a.Messages (if a.Discovered then realDefs else listOnly)
         with e -> let o = JsonObject() in o.["content"] <- JsonValue.Create(sprintf "<chat error: %s>" e.Message); o
@@ -106,12 +113,14 @@ let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray)
     if content <> "" then a.Transcript.Add("assistant", content)
     match assistant.["tool_calls"] with
     | :? JsonArray as calls when calls.Count > 0 ->
+        hadToolCalls <- true
         for call in calls do
             let callObj = call :?> JsonObject
             let id = callObj.["id"].GetValue<string>()
             let fn = callObj.["function"] :?> JsonObject
             let name = fn.["name"].GetValue<string>()
             let argsJson = match fn.["arguments"] with | null -> "{}" | v -> v.GetValue<string>()
+            if name = "make_move" then moveAttempted <- true
             let result =
                 if name = "list_tools" then a.Discovered <- true; realDefs.ToJsonString()
                 elif not a.Discovered then """{"error":"unknown tool — call list_tools first to discover the available tools"}"""
@@ -126,7 +135,8 @@ let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray)
             a.Messages.Add tr
             a.Transcript.Add("tool", result)
     | _ -> a.Messages.Add(msg "user" "Continue: call a tool to act, or emit your MOMENT report as plain text.")
-    over
+    let readOnly = hadToolCalls && not moveAttempted && content = ""
+    over, not readOnly
 
 /// 3-seat multiplayer ERPC game (X:1, O:2, O:3-observer), server-regulated, over ONE shared connection —
 /// the ERPC analog of the HTTP 3-seat arena. Round-robin: the server (not the driver) decides who may act,
@@ -149,11 +159,18 @@ let runMultiplayer (cfg: Driver.Config) : string =
     // the gameId is still discovered, not injected.
     erpc.Call "new_game" (readOnlyDict ([]: (string * obj) list)) |> ignore
     let agents = [| newAgent "X" "X1" sys cfg.ColdStart; newAgent "O" "O2" sys cfg.ColdStart; newAgent "observer" "O3" sys cfg.ColdStart |]
+    // Budget by action KIND (HTTP parity): PRODUCTIVE turns (move/text/stall) spend cfg.MaxTurns; pure
+    // READS are free (like the HTTP 304 poll), bounded only by a loose iteration backstop so polling to
+    // coordinate turn-order does not starve moves. Round-robin by iteration; the server regulates legality.
+    let backstop = cfg.MaxTurns * 3
     let mutable over = false
-    let mutable step = 0
-    while not over && step < cfg.MaxTurns do
-        if stepAgent cfg.Backend cfg.Model erpc realDefs listOnly debug agents.[step % agents.Length] then over <- true
-        step <- step + 1
+    let mutable productive = 0
+    let mutable iter = 0
+    while not over && productive < cfg.MaxTurns && iter < backstop do
+        let o, prod = stepAgent cfg.Backend cfg.Model erpc realDefs listOnly debug agents.[iter % agents.Length]
+        over <- o
+        if prod then productive <- productive + 1
+        iter <- iter + 1
     let prefix = Environment.GetEnvironmentVariable "TRANSCRIPT_PREFIX"
     for a in agents do
         match prefix with
@@ -168,7 +185,8 @@ let runMultiplayer (cfg: Driver.Config) : string =
     let res = JsonObject()
     res.["arm"] <- JsonValue.Create "erpc"
     res.["seats"] <- JsonValue.Create agents.Length
-    res.["totalSteps"] <- JsonValue.Create step
+    res.["productiveTurns"] <- JsonValue.Create productive
+    res.["totalIters"] <- JsonValue.Create iter
     res.["gameOver"] <- JsonValue.Create over
     res.["outcome"] <- JsonValue.Create (if over then "over" else "window_truncated")
     let bySeat = JsonArray()
