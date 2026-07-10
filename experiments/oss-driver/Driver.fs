@@ -220,10 +220,29 @@ let run (cfg: Config) : string =
             IO.File.WriteAllText(tmp, buildResultJson ())
             IO.File.Move(tmp, path, true)
         | _ -> ()
+    // Same hazard for the transcript (the discovery record — MOMENT 1/2 reports + every request):
+    // it was written only at loop-end, so a seat killed at the sweep teardown wall lost it entirely,
+    // dropping the whole game to a seats<2 casualty. Flush it on SIGTERM too. Snapshot then
+    // temp-then-move: the handler runs on a runtime thread while the main loop is blocked in a sync
+    // HTTP/Sleep call (not mutating messages), so an atomic write never leaves a partial transcript.
+    let writeTranscriptFile () =
+        match Environment.GetEnvironmentVariable "TRANSCRIPT_PATH" with
+        | null | "" -> ()
+        | path ->
+            let snapshot = messages |> Seq.toArray
+            let tmp = path + ".tmp"
+            ( use w = new IO.StreamWriter(tmp)
+              for (role, content) in snapshot do
+                  let o = JsonObject()
+                  o["role"] <- JsonValue.Create role
+                  o["content"] <- JsonValue.Create content
+                  w.WriteLine(o.ToJsonString()) )
+            IO.File.Move(tmp, path, true)
+    let writeOnExit () = writeResultFile (); writeTranscriptFile ()
     let _sigterm =
         System.Runtime.InteropServices.PosixSignalRegistration.Create(
-            System.Runtime.InteropServices.PosixSignal.SIGTERM, fun _ -> writeResultFile ())
-    AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> writeResultFile ())
+            System.Runtime.InteropServices.PosixSignal.SIGTERM, fun _ -> writeOnExit ())
+    AppDomain.CurrentDomain.ProcessExit.Add(fun _ -> writeOnExit ())
 
     while not stop && attempts < cfg.MaxAttempts && step < cfg.MaxTurns do
         let reply =
@@ -280,18 +299,9 @@ let run (cfg: Config) : string =
     // outcome is a truncated observation, NOT a play failure (R10 backstop tripped).
     if not stop && outcome = "incomplete" then outcome <- "window_truncated"
 
-    // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant
-    // replies, not actions) when TRANSCRIPT_PATH is set — that IS the discovery data to grade.
-    match Environment.GetEnvironmentVariable "TRANSCRIPT_PATH" with
-    | null | "" -> ()
-    | path ->
-        use w = new IO.StreamWriter(path)
-        for (role, content) in messages do
-            let o = JsonObject()
-            o["role"] <- JsonValue.Create role
-            o["content"] <- JsonValue.Create content
-            w.WriteLine(o.ToJsonString())
-
+    // Persist the full transcript (incl. MOMENT 1/2 discovery reports, which are assistant replies,
+    // not actions) — that IS the discovery data to grade. Same writer the SIGTERM handler uses.
+    writeTranscriptFile ()
     writeResultFile ()
     persisted <- true
     buildResultJson ()

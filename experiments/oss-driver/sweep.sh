@@ -20,16 +20,29 @@ PROXY_BASE=http://127.0.0.1:6328
 MODEL="${MODEL:-anthropic/claude-haiku-4.5}"
 CELLS="${CELLS:-0000 1000 0100 0010 0001 1111}"
 RUNS="${RUNS:-1 2 3 4 5}"
-MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"      # POST-attempt budget (mutations). Generous: play never nears it.
+MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"      # POST-attempt budget: MUTATIONS ONLY (Driver.fs counts attempts
+                                        # on POST; GET reads — page refresh, /profile, /type — are free).
+                                        # 30 legal-move tries is plenty; not bootstrapping in 30 is a real
+                                        # failure (kept as bootstrapFail), not a cap artifact.
 MAX_TURNS="${MAX_TURNS:-80}"            # total-turn backstop incl. free GETs (R10). Agent-invisible.
 D="${SWEEP_OUT:-/tmp/ttt-sweep}"; mkdir -p "$D"
 printf 'attempts=%s turns=%s\n' "$MAX_ATTEMPTS" "$MAX_TURNS" > "$D/.bounds"
 PROMPT="${PROMPT:-plain}"                # plain (cold-start instrument) | browser (re-test arm)
+COLDSTART="$REPO/experiments/oss-driver/coldstart-prompt.md"
 if [ "$PROMPT" = "browser" ]; then
   export COLDSTART_PROMPT_PATH="$REPO/experiments/oss-driver/coldstart-browser-prompt.md"
   export DIRECTED_PROMPT_PATH="$REPO/experiments/oss-driver/directed-browser-prompt.md"
+  COLDSTART="$COLDSTART_PROMPT_PATH"
 fi
 echo "$PROMPT" > "$D/.prompt"
+# Harness provenance: identify WHICH cold-start instrument produced this run so results are only ever
+# compared like-to-like, never across harnesses. `instrument` = embed-free (verb-only, header/linked-data
+# nudge; the trusted current harness) vs embedded (the retired POST key=value cheat) — detected from the
+# prompt body. `quality=good|bad`: embedded pre-disclosed A/Sd's affordance = confounded = bad.
+if grep -q 'key=value' "$COLDSTART" 2>/dev/null; then instrument=embedded; quality=bad
+else instrument=embed-free; quality=good; fi
+printf 'prompt=%s\ninstrument=%s\nquality=%s\ncoldstart_sha=%s\n' \
+  "$PROMPT" "$instrument" "$quality" "$(shasum -a 256 "$COLDSTART" 2>/dev/null | cut -d' ' -f1)" > "$D/.instrument"
 cd "$REPO"
 
 PIDF="$D/.sweep.pid"
@@ -78,6 +91,7 @@ run_game() {
   done
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
   cp /tmp/arena-surface.jsonl "$D/log-$tag.jsonl" 2>/dev/null || true
+  cp /tmp/arena-surface.http.jsonl "$D/http-$tag.jsonl" 2>/dev/null || true   # proxy wire: the authoritative discovery record
   dotnet run --project experiments/oss-driver --no-build -- quality --game "$gid" --log "$D/log-$tag.jsonl" --out "$D/q-$tag.json" >/dev/null 2>&1 || true
   for spec in X:1 O:2 O:3; do
     local role=${spec%%:*} n=${spec##*:}
@@ -88,6 +102,7 @@ run_game() {
     local grole=$role; [ "$n" = 3 ] && grole=observer
     dotnet run --project experiments/oss-driver --no-build -- grade \
       --transcript "$D/t-$tag-$role$n.jsonl" --gt "experiments/oss-driver/groundtruth/cell-$cell.json" \
+      --proxy "$D/http-$tag.jsonl" \
       --role "$grole" --out "$D/g-$tag-$role$n.json" >/dev/null 2>&1 || echo '{}' > "$D/g-$tag-$role$n.json"
   done
   bash "$ARENA" down surface >/dev/null 2>&1; ensure_clean

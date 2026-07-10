@@ -42,8 +42,13 @@ for q in "$D"/q-*.json; do
     if [ ! -s "$f" ] || ! jq -e . "$f" >/dev/null 2>&1 || [ -n "$(jq -r '.error // empty' "$f" 2>/dev/null)" ]; then outMissing=true; fi
   done
 
+  # seats<2 is NOT an anomaly: under the embed-free instrument a seat can burn its whole attempt budget
+  # without landing a single legal move. Dropping these hid embed-free's worst failures and biased
+  # completion upward. Record it as a first-class BOOTSTRAP-FAILURE outcome (kept in stats — its invalid
+  # attempts are the primary DV) instead of discarding the game. Only a corrupt/double-terminal log is
+  # a true anomaly.
+  bootstrapFail=false; [ "$seats" -lt 2 ] && bootstrapFail=true
   reason=""
-  [ "$seats" -lt 2 ] && reason="${reason}seats<2 "
   [ "$overs" -gt 1 ] && reason="${reason}game_over>1 "
   [ "$dataAnom" = "true" ] && reason="${reason}logCorrupt "
   anomaly=false; [ -n "$reason" ] && anomaly=true
@@ -72,11 +77,11 @@ for q in "$D"/q-*.json; do
   done
 
   jq -c --arg cell "$cell" --argjson run "$run" --arg reason "${reason% }" \
-        --argjson anomaly "$anomaly" --argjson outMissing "$outMissing" --argjson seats "$seats" --argjson overs "$overs" \
+        --argjson anomaly "$anomaly" --argjson bootstrapFail "$bootstrapFail" --argjson outMissing "$outMissing" --argjson seats "$seats" --argjson overs "$overs" \
         --argjson cost "$cost" --argjson toks "$toks" \
         --argjson im "$invalidMove" --argjson ot "$outOfTurn" --argjson pt "$positionTaken" --argjson st "$structural" \
         --argjson seatTrunc "$seatTrunc" '
-    {cell:$cell,run:$run,anomaly:$anomaly,reason:$reason,outMissing:$outMissing,outcome,moveCount,seats:$seats,gameOvers:$overs,
+    {cell:$cell,run:$run,anomaly:$anomaly,bootstrapFail:$bootstrapFail,reason:$reason,outMissing:$outMissing,outcome,moveCount,seats:$seats,gameOvers:$overs,
      xClean:.byRole.X.clean,oClean:.byRole.O.clean,
      gameCost:$cost,gameTokens:$toks,
      invalidMove:$im,outOfTurn:$ot,positionTaken:$pt,invalidTotal:($im+$ot+$pt),structural:$st,
@@ -90,6 +95,11 @@ echo "records: $total   anomalies(dropped): $anom   clean: $((total-anom))   (di
 echo "=== DROPPED anomalies (cell run reason) ==="
 jq -r 'select(.anomaly) | "  \(.cell) r\(.run)  \(.reason)"' "$OUT" 2>/dev/null | sort
 [ "$anom" -eq 0 ] && echo "  (none)"
+
+bfail=$(jq -rc 'select(.bootstrapFail and (.anomaly|not))' "$OUT" | grep -c . || true)
+echo "=== bootstrap failures (KEPT — a seat never landed a legal move; embed-free thrash, a real outcome) ==="
+jq -r 'select(.bootstrapFail and (.anomaly|not)) | "  \(.cell) r\(.run)  moveCount=\(.moveCount) invalidTotal=\(.invalidTotal)"' "$OUT" 2>/dev/null | sort
+[ "$bfail" -eq 0 ] && echo "  (none)"
 
 gaps=$(jq -rc 'select((.anomaly|not) and .outMissing)' "$OUT" | grep -c . || true)
 echo "=== reporting gaps (KEPT + graded; cost/tokens understated — seated driver .out missing) ==="
@@ -114,15 +124,20 @@ jq -rc 'select(.anomaly|not) | [.cell,.outcome,.seatTrunc] | @tsv' "$OUT" | awk 
 END{ for(c in seen) printf "  %-5s seat-truncations=%d  (of %d seated-seats)  games-with-any=%d  stalled=%d\n",
        c, tot[c]+0, n[c]*2, any[c]+0, stall[c]+0 }' | sort
 
-echo "=== info-seeking per cell (mean agent GETs across clean-game seats) ==="
+# WIRE-TRUTHED (was self-report): count real /profile + /type dereferences from the proxy HTTPLOG
+# (http-*.jsonl), matching the grader's path.Contains semantics — NOT grep of the agent's narrated
+# "GET /profile" in the transcript (which counted intent, and disagreed with the wire). Per game (the
+# proxy log aggregates all seats; it does not attribute to a seat), so this is mean dereferences/game.
+echo "=== info-seeking per cell (mean /profile + /type dereferences from proxy wire, per game) ==="
 for cell in $(jq -r 'select(.anomaly|not).cell' "$OUT" | sort -u); do
   strat=0; prof=0; n=0
-  for t in "$D"/t-$cell-r*.jsonl; do
-    [ -f "$t" ] || continue; n=$((n+1))
-    strat=$((strat + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -icE "GET /arenas/[^ ]*/type")))
-    prof=$((prof + $(jq -r 'select(.role=="assistant").content' "$t" 2>/dev/null | grep -ic "GET /profile")))
+  for h in "$D"/http-$cell-r*.jsonl; do
+    [ -f "$h" ] || continue; n=$((n+1))
+    prof=$((prof + $(jq -rc 'select(.path|type=="string" and test("/profile"))' "$h" 2>/dev/null | grep -c . || true)))
+    strat=$((strat + $(jq -rc 'select(.path|type=="string" and test("/type"))' "$h" 2>/dev/null | grep -c . || true)))
   done
-  [ "$n" -gt 0 ] && printf "  %-5s /type=%.2f  /profile=%.2f  (seats=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
+  if [ "$n" -gt 0 ]; then printf "  %-5s /type=%.2f  /profile=%.2f  (games=%d)\n" "$cell" "$(echo "$strat/$n"|bc -l)" "$(echo "$prof/$n"|bc -l)" "$n"
+  else printf "  %-5s (no proxy HTTPLOG — pre-hardening run?)\n" "$cell"; fi
 done
 
 # RECOGNIZE (discovery axis) — the DV that carries P1/P3/P4/P6. Per cell, mean correct verdicts from
