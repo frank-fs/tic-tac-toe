@@ -20,7 +20,8 @@ let private drive (argv: string[]) : int =
     let role = argVal argv "--role" ""
     let baseUrl = argVal argv "--base" ""
     let route = argVal argv "--route" ""
-    if role <> "X" && role <> "O" then eprintfn "--role X|O required"; exit 2
+    let multiplayer = Array.contains "--multiplayer" argv   // ERPC: run all 3 seats over one shared connection
+    if not multiplayer && role <> "X" && role <> "O" then eprintfn "--role X|O required"; exit 2
     if arm = "http" then
         if baseUrl = "" then eprintfn "--base <proxy url> required"; exit 2
         if route <> "games" && route <> "arenas" then eprintfn "--route games|arenas required"; exit 2
@@ -40,7 +41,9 @@ let private drive (argv: string[]) : int =
           Window = argVal argv "--window" "8" |> int
           PollSeconds = argVal argv "--poll-seconds" "3" |> float }
 
-    let result = if arm = "erpc" then ErpcDriver.run cfg else Driver.run cfg
+    let result =
+        if arm = "erpc" then (if multiplayer then ErpcDriver.runMultiplayer cfg else ErpcDriver.run cfg)
+        else Driver.run cfg
     printfn "%s" result
     0
 

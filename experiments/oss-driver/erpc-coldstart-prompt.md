@@ -14,4 +14,4 @@ MOMENT 2 (after you have attempted to participate):
 
 For positionTokenSource, say honestly where any move details came from: the tool schemas/descriptions (report this as "profile" — they are the contract), a value you read back from a result ("board"), a guess, or none.
 
-After MOMENT 2, keep acting toward the goal until it is reached or you are blocked. It is not a race; read state between turns.
+After MOMENT 2, keep acting toward the goal until it is reached or you are blocked. It is not a race; read state between turns. Something may already be in progress — find it, read it, and attempt your turn in the existing one; never create, reset, or delete anything.
