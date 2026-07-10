@@ -472,6 +472,23 @@ moot above); and the collapse may be capability-bound — a *think-first* model 
 capability-vs-training fork, now on the coordination axis). Untested. The mechanism (no turn affordance) is
 structural regardless.
 
+### Fair-harness re-run (2026-07-10) — the budget confound removed, collapse HOLDS
+
+Re-ran on a fully fair harness — **reads made free** (like HTTP's driver-side 304 poll; productive turns =
+move/text/stall spend the budget, pure reads don't), **whose-turn wording aligned** to HTTP's board
+(`"X's turn"`/`"O's turn"`, `mcp-rpc/Identity.fs`), pre-created shared game, static tools kept. Archive
+`experiments/results/archive/erpc-fair-floor-2026-07-10/`.
+
+**Completion 1/5, mean 2.8 moves/game** (full game = 9); the 4 non-completing runs burned all 80 productive
+turns on text/stalls with ~2 moves; observer `game_full` flailing 4.8/game. So with the budget confound
+GONE (reads free) and whose-turn messaged identically to HTTP, **the multi-party collapse still holds** — it
+is the protocol + small model, not the accounting. (HTTP floor completion 60–100%.) One run *did* complete
+(r3, 13 productive turns) — occasional coordination happens, so it is not a hard impossibility; consistent
+with "small models struggle," leaving the capability door open (bigger model = the ladder). The failure is
+**non-progression / coordination collapse**, not illegal-move-heavy (illegal moves stay low only because
+games barely happen). This confirms the **multi-party amendment** (thesis §8): MCP dominates single-agent,
+collapses multi-party — no clean role/turn disambiguation.
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
