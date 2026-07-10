@@ -305,6 +305,10 @@ reliably than A's form once the prompt no longer cheats.
 (full surface) is *worst* completion (25%) — more surface = more for a floor model to thrash/read-distract
 on; recognition spreads (pre 2.2–2.9, less priming) but stays high (flash knows ttt).
 
+> **SUPERSEDED for the per-cell efficiency RANKING** by the hardened-harness re-run below (2026-07-10
+> later): the "A collapses / Sd is best" invalid-attempts ordering did NOT reproduce (n=5 flash noise). The
+> wire-level discovery findings (nudge revives fetching; guess-first dominance) DID reproduce and stand.
+
 **CAVEATS — DIRECTIONAL, NOT AUTHORITATIVE.** flash floor ONLY, n=5 (n=4 in 4 cells after anomaly drops),
 noisy and non-monotone. This answers issue #5's premise for the floor tier: removing the cheat **does**
 revive Sd differentiation (and reweights it away from A), and the nudge **does** revive So/Sd fetching. The
@@ -373,6 +377,46 @@ Recorded before the data to avoid post-hoc rationalization (the project's recurr
   tool calls, not `POST /path` lines, so `firstMoveFormat` reads `no-post`/N/A and `formatGuesses`≈0. So
   format-guessing is the size of the opacity penalty that A/C/Sd/So exist to close, with ERPC as the
   handed-over baseline. Refuted if a well-formed ERPC arm still logs 400-equivalent format failures.
+
+## Hardened-harness flash floor + FAIR ERPC (2026-07-10, later) — n=5
+
+Re-ran the flash floor under the hardened harness (wire-truthed discovery via the proxy HTTPLOG;
+bootstrap-failures KEPT not dropped; `firstMoveFormat`/`formatGuesses`), and ran the **de-injected** ERPC
+arm (agent must call `list_tools` itself — no pre-injected schema). Archives:
+`experiments/results/archive/embedfree-flash-hardened-2026-07-10/` + `erpc-fair-floor-2026-07-10/`.
+
+**HTTP floor, 30/30 clean, 0 dropped (4 bootstrap-failures now KEPT — moveCount=1, 76–89 invalid each):**
+
+- **CONFIRMED on the wire — the nudge revives dereferencing, more strongly than the self-report estimate.**
+  So `0001` `/type` = **8.4/game** (banked 2026-07-06 = 0.00; earlier self-report guess 2.83); Sd `0010`
+  `/profile` = **7.8/game**; `1111` `/type` 1.8 / `/profile` 6.4. Cells without the surface: `/type`=0,
+  `/profile`≤0.8. The header→linked-data path works.
+- **CONFIRMED — guess-first is near-universal: 85/90 seats wrong-format on the first POST.** correct-format-
+  first occurs *only* where a contract/form exists (Sd 2/15, A 2/15, all 1/15); never in control/C.
+- **TEMPERED — the first embed-free run's "A collapses / Sd is best" on invalid-attempts did NOT reproduce.**
+  This run: invalid-attempts ~flat 36–50 across all cells; 400s/game lowest at **So (28)**, highest at
+  **A (48)** — opposite ranking to run 1. So the per-cell efficiency *ordering* is **n=5 flash noise, not a
+  robust effect**; completion likewise noisy/non-monotone (secondary DV). The robust signals are the
+  wire-level discovery behaviors above; ranking the cells needs the ladder or more n.
+
+**FAIR ERPC floor (de-injected, n=5, single-seat):**
+
+| metric | result |
+|--------|--------|
+| discovered-first (`list_tools` before any real tool) | **5/5** (0 pre-discovery rejects) |
+| reached a legal move | 2/5 (3/5 discovered+authed, stalled before moving) |
+| MOMENT reports emitted | 0/5 — acted via tools, skipped the plain-text reports (**no recognize parity**) |
+| outcome | all `window_truncated` (single-seat, no O — expected) |
+
+**The contrast is the finding.** Even with the injection cheat removed, ERPC **discovers-first 5/5** while
+HTTP **guesses-first 85/90** — not because ERPC was handed its contract (it was not) but because `tools/list`
+is *one conventional call returning the complete typed contract*, whereas HTTP discovery is multi-hop (read
+headers → find `rel` → fetch `/profile` → parse ALPS → apply). RPC's discovery is structurally **cheaper**
+even when both must reach for it. This confirms P-erpc's spirit (`firstMoveFormat` is structurally `no-post`
+for ERPC; zero format-guessing) and sharpens it: the honest RPC advantage is *cheap conventional discovery*,
+not a rigged pre-load — and it is paid back in **brittleness** (the typed schema is the coupling), which the
+deferred evolvability test is designed to expose. Caveats: single-seat (no completion signal); 0/5 MOMENT
+reports (recognize not comparable this run — a harness gap to fix before a scored ERPC comparison).
 
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
