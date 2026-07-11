@@ -591,6 +591,74 @@ with "small models struggle," leaving the capability door open (bigger model = t
 games barely happen). This confirms the **multi-party amendment** (thesis §8): MCP dominates single-agent,
 collapses multi-party — no clean role/turn disambiguation.
 
+## FULL 2⁴ FACTORIAL — flash, HTTP arm, n=5, all 16 cells (2026-07-11) — interaction resolution
+
+The banked sweeps only ever ran **6 of 16 cells** (control `0000`, four singles, all-on `1111`). That
+design can see *main effects* but is blind to *interactions* — it cannot tell whether a pair/triple is
+super-additive (layers help more together than apart) or anti-synergistic (a layer that helps alone hurts
+in company). This run fills the **10 missing combinations** (6 pairs + 4 triples) and re-runs the 6 banked
+cells **in the same pass, on the same harness SHA**, so all 16 are internally comparable (no cross-harness
+splice — the project's recurring confound). Flash floor, embed-free prompt (SHA `35e2bd79`, `quality=good`),
+hardened harness (wire-truthed discovery, bootstrapFails KEPT), reads-free. 80/80 games clean, 0 dropped,
+11 bootstrapFails kept. Archive `experiments/results/archive/http-flash-factorial-2026-07-11/`.
+
+**Headline: the two-dimension separation HOLDS at full resolution, and the interaction cells REFUTE
+super-additivity. What the factorial actually contains is a near-sufficient A main effect on gameplay +
+independent additive discovery channels + one ANTI-synergy — the opposite of the old haiku "only 1111 wins"
+story (which was the noisy completion DV; on the sharp per-dimension DVs it does not appear).**
+
+### Dimension 2 (gameplay) — A is a near-sufficient main effect; NO super-additivity
+
+illegalMoves/game (403 out-of-turn + 422 position-taken), grouped by the A bit across all 16 cells:
+
+- **A=1 mean 0.93 vs A=0 mean 7.52 → 8.1× collapse**, reproduced across the *full* factorial (banked 6-cell
+  read confirmed, now with 8 A-on vs 8 A-off cells, not 1 vs 1).
+- **PERFECT separation, zero overlap: A=1 max = 2.2, A=0 min = 4.6.** Every one of the 8 affordance-on cells
+  is gameplay-cleaner than every one of the 8 affordance-off cells, regardless of which other layers are
+  stacked. A works in *every* combinatorial context; nothing substitutes for it.
+- **A alone (`1000`) = 0.0 illegal/game — the single best cell.** Adding C/Sd/So *on top of* A does not
+  improve gameplay (`1111` = 2.2, `1010` = 2.2); it slightly *raises* illegal moves. So the layers are **not
+  super-additive on the gameplay DV** — A is nearly sufficient by itself and the rest is noise-on-top.
+- Conversely, no amount of discovery rescues gameplay without A: `0111` (C+Sd+So, everything *but* A) is the
+  **worst** cell at 14.4 illegal/game. C/Sd/So cannot stand in for A.
+
+**The one real interaction is ANTI-synergistic (opposite of super-additive): So-without-A inflates
+position-taken illegal moves.** 422 (position-taken) mean: So=1 & A=0 = **3.15** vs So=0 & A=0 = **0.70**
+(~4.5×); A=1 kills it entirely (So=1 & A=1 = **0.10**). Per-cell: So-alone `0001` taken 0.8 → Sd+So `0011`
+taken 5.4 → C+Sd+So `0111` taken 6.4. Mechanism: fetching the ontology/contract mid-game with **no
+affordance rendering the currently-legal squares** sends the agent back to replay an already-taken cell.
+Discovery layers actively *harm* gameplay when A is absent — the surface pulls the agent into read-and-thrash
+instead of tracking board state. This is why the old completion-DV "1111 super-additive" read never held on
+the sharp DVs: the layers do not combine to a gameplay win; A does the gameplay work and the others add drag.
+
+### Dimension 1 (discovery) — independent additive channels, each factor owns its own
+
+- **Sd owns `/profile` fetching: Sd=1 mean 10.30 vs Sd=0 0.50/game (~20×).** Clean across all 8 Sd-on cells.
+- **So owns `/type` (schema.org typing) fetching: So=1 mean 5.15 vs So=0 0.00/game** — from literal zero, the
+  header→linked-data nudge revives it wherever So is present.
+- The two channels fire **independently and additively** — `1111` carries *both* high (`/profile` 13.2,
+  `/type` 3.0); neither amplifies the other. No discovery super-additivity either, just two separate taps.
+- Sd gives only a **weak** recognition lift (pre-correct Sd=1 3.09 vs Sd=0 2.95 — within noise; flash already
+  knows ttt). **A does NOT own the wire format** (400s/game A=1 42.8 ≈ A=0 38.3), and **guess-first stays
+  near-universal in every cell** (13–15/15 seats wrong-format on the first POST; best cell `1010` only
+  3/15 correct-first). No surface fixes the read-before-acting impulse at the floor — consistent with the
+  banked format-guessing finding.
+
+### Completion (noisy secondary — do not over-read)
+
+A=1 mean 75% vs A=0 60%, but non-monotone and cell-noisy (`1000` = 60% yet `1100`/`1101` = 100%, `0000` =
+100%). Completion does not track any factor cleanly at n=5; the sharp DVs above (illegalMoves, /profile,
+/type) are where the signal lives. Reported for completeness, not weighted.
+
+**What the interaction cells settle.** The goal was to resolve what the 6-cell design cannot see: pairs/triples
+show **no super-additivity on either dimension**. The factorial decomposes into (a) an A main effect that
+near-saturates gameplay alone and holds in every context, (b) Sd and So as independent additive discovery
+channels, and (c) a single anti-synergy where discovery-without-affordance worsens gameplay. A alone still
+dominates Dimension 2; more layers do not beat it. **CAVEATS:** flash floor only, n=5, directional; the
+`{9b, 122b}` rungs under this hardened embed-free harness remain the gap before this generalizes up the
+ladder (P-ladder predicts Sd's discovery benefit migrates from volume-reducer to first-shot-fixer as models
+think-first). Framed per discipline: an **interface × model interaction, not a capability claim.**
+
 ## CORRECTION — reads-free / agent-blind re-baseline (2026-07-04, branch `reads-free`)
 
 Re-ran the plain ladder (122b + 35b) after fixing three confounds discovered this session. **The
