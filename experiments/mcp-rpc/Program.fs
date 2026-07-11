@@ -3,6 +3,8 @@ module TicTacToe.McpRpc.Program
 open System.Security.Claims
 open System.Threading
 open System.Text.Json.Nodes
+open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
@@ -64,19 +66,24 @@ let private bridgeIdentity (next: McpMessageHandler) : McpMessageHandler =
 
         next.Invoke(context, ct))
 
-[<EntryPoint>]
-let main _ =
-    let builder = Host.CreateApplicationBuilder()
-    configureLogging builder
-
-    builder.Services.AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ()) |> ignore
-    builder.Services.AddSingleton<PlayerAssignmentStore>() |> ignore
-    builder.Services.AddSingleton<EventLog>(fun _ ->
+/// Shared DI: the same singletons back both transports so game state, seat assignment, the login registry
+/// and the event log persist for the whole run regardless of how clients connect.
+let private registerServices (services: IServiceCollection) =
+    services.AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ()) |> ignore
+    services.AddSingleton<PlayerAssignmentStore>() |> ignore
+    services.AddSingleton<Tools.ToolState>() |> ignore
+    services.AddSingleton<EventLog>(fun _ ->
         match System.Environment.GetEnvironmentVariable("TICTACTOE_REQUEST_LOG_PATH") with
         | null | "" -> EventLog()
         | path -> EventLog(path))
     |> ignore
 
+/// stdio host: one client, one session (the single-seat discovery arm). Identity flows per-request via the
+/// _meta bridge, unchanged.
+let private runStdio () =
+    let builder = Host.CreateApplicationBuilder()
+    configureLogging builder
+    registerServices builder.Services
     builder.Services
         .AddMcpServer()
         .WithStdioServerTransport()
@@ -84,6 +91,23 @@ let main _ =
             filters.AddIncomingFilter(McpMessageFilter(bridgeIdentity)) |> ignore)
         .WithTools<Tools.TicTacToeTools>()
     |> ignore
-
     builder.Build().Run()
+
+/// HTTP host: MANY clients, each its own session (the multiplayer arm). Stateful transport gives one
+/// McpServer per session, so authenticate() binds identity to the session — no _meta bridge needed.
+let private runHttp (url: string) =
+    let builder = WebApplication.CreateBuilder()
+    builder.Logging.AddConsole(fun opts -> opts.LogToStandardErrorThreshold <- LogLevel.Trace) |> ignore
+    builder.WebHost.UseUrls(url) |> ignore
+    registerServices builder.Services
+    builder.Services.AddMcpServer().WithHttpTransport().WithTools<Tools.TicTacToeTools>() |> ignore
+    let app = builder.Build()
+    app.MapMcp() |> ignore
+    app.Run()
+
+[<EntryPoint>]
+let main argv =
+    match Array.tryFindIndex ((=) "--http") argv with
+    | Some i when i + 1 < argv.Length -> runHttp argv.[i + 1]
+    | _ -> runStdio ()
     0

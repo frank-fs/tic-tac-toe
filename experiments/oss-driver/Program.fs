@@ -63,4 +63,5 @@ let main argv =
     | Some "code" -> Coder.run argv.[1..]
     | Some "quality" -> Quality.run argv.[1..]
     | Some "erpc-smoke" when argv.Length > 1 -> McpClient.smoke argv.[1] (System.IO.Directory.GetCurrentDirectory())
+    | Some "erpc-http-smoke" when argv.Length > 1 -> McpClient.smokeHttp argv.[1] (System.IO.Directory.GetCurrentDirectory())
     | _ -> drive argv

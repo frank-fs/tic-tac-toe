@@ -17,9 +17,15 @@
     <ProjectReference Include="../../src/TicTacToe.Engine/TicTacToe.Engine.fsproj" />
   </ItemGroup>
 
+  <!-- ASP.NET Core for the HTTP/SSE multi-client MCP host (multiplayer). stdio single-seat path stays too. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="10.0.102" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
   </ItemGroup>

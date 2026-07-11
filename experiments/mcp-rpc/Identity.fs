@@ -24,7 +24,7 @@ type private StoreMessage =
         gameId: string *
         token: string *
         isXTurn: bool *
-        AsyncReplyChannel<MoveValidationResult>
+        AsyncReplyChannel<MoveValidationResult * bool>
     | SeatOf of
         gameId: string *
         token: string *
@@ -56,7 +56,9 @@ type PlayerAssignmentStore() =
                     | TryAssign(gameId, token, isXTurn, reply) ->
                         let current = state |> Map.tryFind gameId |> Option.defaultValue emptyAssignment
                         let result, updated = decide current token isXTurn
-                        reply.Reply result
+                        // newlySeated: this move bound a seat for the first time (None -> Some). The mailbox
+                        // is serialized, so this is the single race-free source of "a player was assigned".
+                        reply.Reply(result, updated <> current)
                         return! loop (state |> Map.add gameId updated)
                     | SeatOf(gameId, token, reply) ->
                         let current = state |> Map.tryFind gameId |> Option.defaultValue emptyAssignment
@@ -70,8 +72,9 @@ type PlayerAssignmentStore() =
 
             loop Map.empty)
 
-    /// Assign the token to an open seat (lazily, on first move) and validate the turn.
-    member _.TryAssignAndValidate(gameId: string, token: string, isXTurn: bool) : MoveValidationResult =
+    /// Assign the token to an open seat (lazily, on first move) and validate the turn. Returns the
+    /// validation result and whether THIS call bound a new seat (for a race-free player_assigned log).
+    member _.TryAssignAndValidate(gameId: string, token: string, isXTurn: bool) : MoveValidationResult * bool =
         agent.PostAndReply(fun reply -> TryAssign(gameId, token, isXTurn, reply))
 
     /// Read-only: which seat (if any) this token already holds in the game. Used to
@@ -84,7 +87,7 @@ open System.Text.Json.Nodes
 
 /// Outcome of a move attempt, ready to be boxed into the MCP JSON response.
 type MoveOutcome =
-    | Moved of board: JsonObject * whoseTurn: string * status: string * side: Player
+    | Moved of board: JsonObject * whoseTurn: string * status: string * side: Player * newlySeated: bool
     | Rejected of code: string
 
 let allPositions =
@@ -164,13 +167,13 @@ let private requireSeat
     (gameId: string)
     (token: string)
     (before: MoveResult)
-    : Result<Player, string> =
+    : Result<Player * bool, string> =
     let isXTurn = (match before with | XTurn _ -> true | _ -> false)
 
     match assignments.TryAssignAndValidate(gameId, token, isXTurn) with
-    | MoveValidationResult.Rejected NotYourTurn -> Result.Error "not_your_turn"
-    | MoveValidationResult.Rejected NotAPlayer -> Result.Error "game_full"
-    | MoveValidationResult.Allowed side -> Ok side
+    | MoveValidationResult.Rejected NotYourTurn, _ -> Result.Error "not_your_turn"
+    | MoveValidationResult.Rejected NotAPlayer, _ -> Result.Error "game_full"
+    | MoveValidationResult.Allowed side, newlySeated -> Ok(side, newlySeated)
 
 /// Parse the target square and confirm it is empty in the pre-move board.
 let private requireEmptySquare (before: MoveResult) (position: string) : Result<SquarePosition, string> =
@@ -195,14 +198,18 @@ let resolveMove
             let! token = requireToken token
             let! game = requireGame supervisor gameId
             let! before = requirePlayable game
-            let! side = requireSeat assignments gameId token before
+            // Validate the square BEFORE seating: requireSeat mutates the assignment store (binds the seat
+            // and signals newlySeated), so it must run only on a move that will actually be applied — else a
+            // first move onto a taken square would bind the seat, consume newlySeated, and lose the
+            // player_assigned log for the real move.
             let! pos = requireEmptySquare before position
+            let! side, newlySeated = requireSeat assignments gameId token before
             let move = match side with | X -> XMove pos | O -> OMove pos
             game.MakeMove move
             let after = game.GetState()
-            return (renderBoard (stateOf after), whoseTurnStr after, statusStr after, side)
+            return (renderBoard (stateOf after), whoseTurnStr after, statusStr after, side, newlySeated)
         }
 
     match outcome with
-    | Ok(board, whoseTurn, status, side) -> Moved(board, whoseTurn, status, side)
+    | Ok(board, whoseTurn, status, side, newlySeated) -> Moved(board, whoseTurn, status, side, newlySeated)
     | Result.Error code -> MoveOutcome.Rejected code

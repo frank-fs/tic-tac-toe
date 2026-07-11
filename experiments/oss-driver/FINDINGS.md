@@ -2,6 +2,67 @@
 
 _2026-07-01, branch sp3-redux. Model held constant: `anthropic/claude-haiku-4.5` (OpenRouter)._
 
+## ERPC multiplayer IDENTITY REWRITE — fair multi-client harness, flash + 9b n=5 (2026-07-11) — AUTHORITATIVE, SUPERSEDES all prior 3-seat ERPC
+
+**The prior 3-seat ERPC runs (2026-07-10 "coordination collapse" + "fair-harness re-run") are RETRACTED.**
+They ran over ONE shared stdio connection with the driver puppeting all three identities — identity was
+entangled with the connection, seats churned (`player_assigned` re-fired every move), and a single agent
+could self-play by minting two tokens. Completion numbers from that harness (incl. the transient "9b 5/5")
+are artifacts and must not be cited.
+
+**Rebuilt as a faithful multi-client arm** (branch `erpc-identity-pin`):
+- **3 separate JSON-RPC connections.** `mcp-rpc` is now a persistent HTTP/SSE MCP host
+  (`ModelContextProtocol.AspNetCore`, `WithHttpTransport` + `MapMcp`); each of the 3 agents opens its OWN
+  client session — the fair analog of the HTTP arm's 3 separate seat processes. Singletons (game supervisor,
+  assignment store, login registry) are shared across sessions. The stdio single-seat discovery path is kept
+  (`--http <url>` selects the web host; default stays stdio).
+- **Registered login tokens (cookie jar).** `authenticate()` mints + registers a unique token; each client
+  logs in once and the driver presents THAT client's own token on every `make_move`. The model never
+  touches identity, so it can neither fumble nor spoof it, and a move bearing an unissued token is rejected.
+  (Session-object keying was attempted first but the SDK hands a fresh `McpServer` per request — no stable
+  session handle in 1.2.0 — so identity travels in the bearer token, which is transport-independent.)
+- **Identity ≠ seat.** X/O are assigned by MOVE ORDER (first two distinct movers lock in), never by the
+  login token — `Identity.fs decide` unchanged. Which nominal seat (X1/O2/O3) becomes X/O/observer is
+  emergent, exactly as in the HTTP arm.
+- **`player_assigned` emitted by the assignment authority.** The serialized `PlayerAssignmentStore`
+  MailboxProcessor signals `newlySeated` (a seat bound None→Some) and the log fires there — so it fires
+  EXACTLY once per seat regardless of request/session lifecycle. (The old per-request `seatedRoles` dedup
+  was the churn source.) Seat validation now runs AFTER the empty-square check so a first move onto a taken
+  square can't bind-then-lose the signal; board state is public (`get_board`) so this precedence change
+  leaks nothing.
+- **Isolation.** Each run picks a FREE ephemeral port and the whole server lifecycle is under `finally`, so
+  a leaked/slow-dying server can never contaminate the next run; a `MaxGamesReached` at setup fails LOUDLY.
+
+**Result — clean matched pair (reads-free budget, whose-turn wording parity, SHA-locked cold-start prompt
+`b7ae9be…` UNCHANGED). Archive `experiments/results/archive/erpc-identity-rewrite-2026-07-11/`:**
+
+| model | completion | player_assigned / run | mean accepted moves |
+|---|---|:--:|:--:|
+| flash (floor) | **2/5** | **2** (all runs) | ~4 |
+| 9b | **3/5** | **2** (all runs) | ~6 |
+
+`player_assigned == 2` in all 10 runs = seating provably clean (no churn, no undercount). Multi-party MCP
+coordination is a REAL challenge that IMPROVES with capability (flash 2/5 → 9b 3/5) but does not saturate,
+vs the HTTP arm's 40–100% completion. **Confirms thesis §8 (MCP dominates single-agent, struggles
+multi-party) on a fair, self-play-proof identity harness.** Single-seat stays discovery-only: with one
+identity a player gets ONE seat and cannot finish a game (the opponent's turn rejects the same token) — a
+single-seat "completion" would signal double-login self-play, which is exactly why the real measure needs
+the multi-agent harness. Tool descriptions changed to match the new mechanism, so single-seat DISCOVERY
+metrics need a re-baseline (its role is the contrast — MCP great single-user — not a controlled number).
+
+**CAVEATS:** n=5, directional; round-robin gives each seat a share of the turn budget; the capability trend
+(flash→9b) wants the 122b rung to confirm direction.
+
+## HTTP 9b ladder sweep — n=5, embed-free, per-cell ranking RESOLVED (2026-07-11)
+
+Ran the HTTP arm at `qwen/qwen3.5-9b` (the floor per-cell ranking was n=5 noise; 9b resolves it).
+- **DIM2 gameplay — A owns it (as at flash):** `1000` (A) illegalMoves **5.2**/game + **100%** completion;
+  full `1111` **2.2** (lowest); control `0000` 9.8; **Sd-alone `0010` 17.2 (worst) + 40% completion** —
+  more affordance → fewer illegal moves, Sd alone HURTS gameplay.
+- **DIM1 discovery — nudge revives fetching at 9b:** So `0001` /type=7.8, Sd `0010` /profile=11.8
+  (wire-confirmed). A `1000` best move-format (12/14 correct, 400s/game=5.4); `1111` worst format thrash
+  (400s=22.4).
+
 ## Factor-isolation sweep — n=5, haiku, 60 games incl. 0000 control, 0 anomalies (2026-07-03)
 
 Cells 0000 (control) + 1000/0100/0010/0001/1111 (4 single-factor + all-on) × plain/browser × 5.

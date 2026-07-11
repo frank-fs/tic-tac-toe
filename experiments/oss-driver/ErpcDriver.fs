@@ -67,6 +67,14 @@ let private parseArgs (s: string) : IReadOnlyDictionary<string, obj> =
      with _ -> ())
     d :> IReadOnlyDictionary<_, _>
 
+/// Carry the caller's login token as identityToken on a make_move (its cookie jar). The token is this
+/// client's own — obtained from its single authenticate() at setup — so identity is stable and per-client,
+/// never multiplexed. Identity is NOT a seat: the server assigns X/O by move order.
+let private withIdentity (token: string) (argsJson: string) : IReadOnlyDictionary<string, obj> =
+    let d = Dictionary<string, obj>(parseArgs argsJson |> Seq.map (fun kv -> KeyValuePair(kv.Key, kv.Value)))
+    d.["identityToken"] <- box token
+    d :> IReadOnlyDictionary<_, _>
+
 let private directedPrompt (cfg: Driver.Config) : string =
     let facts = JsonNode.Parse(IO.File.ReadAllText factsPath) :?> JsonObject
     let f (k: string) = facts.[k].GetValue<string>()
@@ -78,29 +86,37 @@ let private directedPrompt (cfg: Driver.Config) : string =
 /// analog of the HTTP arm's 3 separate seat processes.
 type private Agent =
     { Role: string; Seat: string
+      // Each agent has its OWN MCP client connection (the fair analog of the HTTP arm's separate seat
+      // processes) and its OWN login token, obtained from that connection's single authenticate() at setup.
+      // The driver carries this token on every move (cookie jar), so an agent can neither fumble nor spoof
+      // identity, and the connections never share one. Identity is NOT the seat: X/O are assigned by the
+      // server on move order (first two distinct movers).
+      Client: McpClient.ErpcHttp
+      Token: string
       Messages: JsonArray
       Transcript: ResizeArray<string * string>
       mutable Discovered: bool
       mutable Moves: int }
 
-let private newAgent (role: string) (seat: string) (sys: string) (coldStart: bool) : Agent =
+let private newAgent (role: string) (seat: string) (client: McpClient.ErpcHttp) (token: string) (sys: string) (coldStart: bool) : Agent =
     let m = JsonArray()
     m.Add(msg "system" sys)
     m.Add(msg "user" "Begin.")
     let t = ResizeArray<string * string>()
     t.Add("system", sys)
-    { Role = role; Seat = seat; Messages = m; Transcript = t; Discovered = not coldStart; Moves = 0 }
+    { Role = role; Seat = seat; Client = client; Token = token
+      Messages = m; Transcript = t; Discovered = not coldStart; Moves = 0 }
 
-/// One LLM turn for one agent over the SHARED erpc connection. Returns true if the game reached a terminal
-/// (won/draw) this turn. Turn/identity legality is the SERVER's job (it rejects out-of-turn / wrong-seat
-/// moves via the token the agent passes) — the multiplayer analog of the HTTP per-seat guards; the driver
-/// does not decide whose turn it is. De-inject is per-agent (each must call list_tools itself).
+/// One LLM turn for one agent over ITS OWN session (a.Client). Returns true if the game reached a terminal
+/// (won/draw) this turn. Turn/identity/seat legality is the SERVER's job (it recognizes the caller by its
+/// session and rejects out-of-turn / not-a-player moves) — the multiplayer analog of the HTTP per-seat
+/// guards; the driver does not decide whose turn it is. De-inject is per-agent (each must call list_tools).
 /// Returns (gameOver, productive). PRODUCTIVE = the turn attempted a move, emitted text, or stalled
 /// (no tool call) — it consumes the turn budget. A pure READ turn (only reads: get_state/list_games/
 /// get_board/list_tools, no move, no text) is FREE — the ERPC analog of the HTTP arm's driver-side 304
 /// poll (reads never cost a turn there). Lets an agent poll to coordinate turn-order without starving its
 /// moves; a loose iteration backstop (runMultiplayer, R10) bounds pure-read spinning.
-let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray) (listOnly: JsonArray)
+let private stepAgent backend model (realDefs: JsonArray) (listOnly: JsonArray)
                       (debug: bool) (a: Agent) : bool * bool =
     let mutable over = false
     let mutable hadToolCalls = false
@@ -124,7 +140,9 @@ let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray)
             let result =
                 if name = "list_tools" then a.Discovered <- true; realDefs.ToJsonString()
                 elif not a.Discovered then """{"error":"unknown tool — call list_tools first to discover the available tools"}"""
-                else try erpc.Call name (parseArgs argsJson) with e -> sprintf "{\"error\":\"%s\"}" e.Message
+                else
+                    let args = if name = "make_move" then withIdentity a.Token argsJson else parseArgs argsJson
+                    try a.Client.Call name args with e -> sprintf "{\"error\":\"%s\"}" e.Message
             if debug then eprintfn "[%s] TOOL %s %s -> %s" a.Seat name argsJson (result.Substring(0, min 120 result.Length))
             if name = "make_move" && not (result.Contains "\"error\"") then a.Moves <- a.Moves + 1
             if result.Contains "\"status\":\"won\"" || result.Contains "\"status\":\"draw\"" then over <- true
@@ -138,50 +156,21 @@ let private stepAgent backend model (erpc: McpClient.Erpc) (realDefs: JsonArray)
     let readOnly = hadToolCalls && not moveAttempted && content = ""
     over, not readOnly
 
-/// 3-seat multiplayer ERPC game (X:1, O:2, O:3-observer), server-regulated, over ONE shared connection —
-/// the ERPC analog of the HTTP 3-seat arena. Round-robin: the server (not the driver) decides who may act,
-/// so a fair schedule is equal turns until a terminal or the total-turn cap (R10). Writes per-seat
-/// transcripts to $TRANSCRIPT_PREFIX-<seat>.jsonl.
-let runMultiplayer (cfg: Driver.Config) : string =
-    let dll = Environment.GetEnvironmentVariable "ERPC_SERVER_DLL" |> Option.ofObj |> Option.defaultValue defaultDll
-    let logPath = Environment.GetEnvironmentVariable "ERPC_LOG_PATH" |> Option.ofObj |> Option.defaultValue "/tmp/erpc-game.jsonl"
-    IO.File.WriteAllText(logPath, "")
-    use erpc = new McpClient.Erpc(dll, IO.Directory.GetCurrentDirectory(), readOnlyDict [ "TICTACTOE_REQUEST_LOG_PATH", logPath ])
-    let realDefs = toolDefs erpc.Tools
-    let listOnly = listToolsDefs ()
-    let debug = not (isNull (Environment.GetEnvironmentVariable "DRIVER_DEBUG"))
-    // All seats get the SAME app-blind cold-start prompt. The server seats the first two distinct
-    // identities as X/O and rejects the third's moves (NotAPlayer) — the observer must recognize it, as
-    // in the HTTP arm.
-    let sys = Driver.loadPrompt erpcColdPath
-    // Pre-create the ONE shared game (server-side setup, like HTTP's INITIAL_GAMES=1) so seats DISCOVER it
-    // via list_games and play it, rather than racing new_game/MaxGamesReached. Agents never see this call;
-    // the gameId is still discovered, not injected.
-    erpc.Call "new_game" (readOnlyDict ([]: (string * obj) list)) |> ignore
-    let agents = [| newAgent "X" "X1" sys cfg.ColdStart; newAgent "O" "O2" sys cfg.ColdStart; newAgent "observer" "O3" sys cfg.ColdStart |]
-    // Budget by action KIND (HTTP parity): PRODUCTIVE turns (move/text/stall) spend cfg.MaxTurns; pure
-    // READS are free (like the HTTP 304 poll), bounded only by a loose iteration backstop so polling to
-    // coordinate turn-order does not starve moves. Round-robin by iteration; the server regulates legality.
-    let backstop = cfg.MaxTurns * 3
-    let mutable over = false
-    let mutable productive = 0
-    let mutable iter = 0
-    while not over && productive < cfg.MaxTurns && iter < backstop do
-        let o, prod = stepAgent cfg.Backend cfg.Model erpc realDefs listOnly debug agents.[iter % agents.Length]
-        over <- o
-        if prod then productive <- productive + 1
-        iter <- iter + 1
-    let prefix = Environment.GetEnvironmentVariable "TRANSCRIPT_PREFIX"
-    for a in agents do
-        match prefix with
-        | null | "" -> ()
-        | p ->
+/// Write each agent's transcript to $TRANSCRIPT_PREFIX-<seat>.jsonl (no-op if the env var is unset).
+let private writeTranscripts (agents: Agent[]) : unit =
+    match Environment.GetEnvironmentVariable "TRANSCRIPT_PREFIX" with
+    | null | "" -> ()
+    | p ->
+        for a in agents do
             use w = new IO.StreamWriter(sprintf "%s-%s.jsonl" p a.Seat)
             for (role, content) in a.Transcript do
                 let o = JsonObject()
                 o.["role"] <- JsonValue.Create role
                 o.["content"] <- JsonValue.Create content
                 w.WriteLine(o.ToJsonString())
+
+/// The run's result JSON: outcome + per-seat accepted-move counts.
+let private buildResult (agents: Agent[]) (productive: int) (iter: int) (over: bool) : string =
     let res = JsonObject()
     res.["arm"] <- JsonValue.Create "erpc"
     res.["seats"] <- JsonValue.Create agents.Length
@@ -198,6 +187,73 @@ let runMultiplayer (cfg: Driver.Config) : string =
         bySeat.Add s
     res.["bySeat"] <- bySeat
     res.ToJsonString()
+
+/// Round-robin the 3 agents until a terminal or the R10 caps. PRODUCTIVE turns (move/text/stall) spend the
+/// budget; pure reads are free (HTTP-parity 304 poll) so polling to coordinate turn-order can't starve moves.
+let private playLoop (cfg: Driver.Config) (realDefs: JsonArray) (listOnly: JsonArray) (debug: bool) (agents: Agent[]) : int * int * bool =
+    let backstop = cfg.MaxTurns * 3
+    let mutable over = false
+    let mutable productive = 0
+    let mutable iter = 0
+    while not over && productive < cfg.MaxTurns && iter < backstop do
+        let o, prod = stepAgent cfg.Backend cfg.Model realDefs listOnly debug agents.[iter % agents.Length]
+        over <- o
+        if prod then productive <- productive + 1
+        iter <- iter + 1
+    productive, iter, over
+
+/// 3-seat multiplayer ERPC game (X1, O2, O3-observer). Each agent holds its OWN HTTP session to ONE shared
+/// persistent server — the fair analog of the HTTP arm's 3 separate seat processes. The server recognizes
+/// each caller by its session; X/O are assigned by move order (first two distinct movers). The driver logs
+/// each session in ONCE (establishes its identity, like the HTTP seat's cookie jar); the model never
+/// touches identity, so it can neither fumble nor spoof it.
+let runMultiplayer (cfg: Driver.Config) : string =
+    let dll = Environment.GetEnvironmentVariable "ERPC_SERVER_DLL" |> Option.ofObj |> Option.defaultValue defaultDll
+    let logPath = Environment.GetEnvironmentVariable "ERPC_LOG_PATH" |> Option.ofObj |> Option.defaultValue "/tmp/erpc-game.jsonl"
+    // A FRESH port per run (unless overridden): a leaked/slow-dying server from a prior run can never be
+    // reached by this run's clients, so cross-run seat/state contamination is impossible.
+    let url =
+        Environment.GetEnvironmentVariable "ERPC_HTTP_URL"
+        |> Option.ofObj
+        |> Option.defaultValue (sprintf "http://127.0.0.1:%d/" (McpClient.freePort ()))
+    IO.File.WriteAllText(logPath, "")
+    let debug = not (isNull (Environment.GetEnvironmentVariable "DRIVER_DEBUG"))
+    let sys = Driver.loadPrompt erpcColdPath
+    let server = McpClient.launchHttpServer dll (IO.Directory.GetCurrentDirectory()) url [ "TICTACTOE_REQUEST_LOG_PATH", logPath ]
+    // EVERYTHING after the launch is under finally so the server process is ALWAYS killed — a setup-time
+    // exception (ready-wait / new_game / authenticate / tool-list) must never leak a server onto the port.
+    try
+        if not (McpClient.waitHttpReady url 60) then failwithf "ERPC HTTP server not ready at %s" url
+        // Pre-create the ONE shared game via a throwaway (non-player) session, so agents DISCOVER it via
+        // list_games rather than racing new_game/MaxGamesReached. A MaxGamesReached here means the server
+        // already holds a game = cross-run contamination; fail LOUDLY rather than play a stale board.
+        (use setup = new McpClient.ErpcHttp(url)
+         let r = setup.Call "new_game" (readOnlyDict ([]: (string * obj) list))
+         if r.Contains "MaxGamesReached" then failwithf "ERPC server contaminated (stale game present): %s" r)
+        let clients = [| new McpClient.ErpcHttp(url); new McpClient.ErpcHttp(url); new McpClient.ErpcHttp(url) |]
+        try
+            // Each client logs in ONCE and keeps its own token — its cookie jar. The token is registered
+            // server-side; the driver presents it on every move, so the model can't fumble or spoof identity.
+            let tokenOf (c: McpClient.ErpcHttp) =
+                match JsonNode.Parse(c.Call "authenticate" (readOnlyDict ([]: (string * obj) list))) with
+                | :? JsonObject as o when o.ContainsKey "token" -> o.["token"].GetValue<string>()
+                | _ -> failwith "authenticate returned no token"
+            let tokens = clients |> Array.map tokenOf
+            let realDefs = toolDefs clients.[0].Tools
+            let listOnly = listToolsDefs ()
+            let agents =
+                [| newAgent "X" "X1" clients.[0] tokens.[0] sys cfg.ColdStart
+                   newAgent "O" "O2" clients.[1] tokens.[1] sys cfg.ColdStart
+                   newAgent "observer" "O3" clients.[2] tokens.[2] sys cfg.ColdStart |]
+            let productive, iter, over = playLoop cfg realDefs listOnly debug agents
+            writeTranscripts agents
+            buildResult agents productive iter over
+        finally
+            for c in clients do (c :> IDisposable).Dispose()
+    finally
+        (try server.Kill true with _ -> ())
+        (try server.Dispose() with _ -> ())
+        (try server.Dispose() with _ -> ())
 
 let run (cfg: Driver.Config) : string =
     let dll = Environment.GetEnvironmentVariable "ERPC_SERVER_DLL" |> Option.ofObj |> Option.defaultValue defaultDll

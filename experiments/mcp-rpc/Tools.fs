@@ -2,7 +2,6 @@ module TicTacToe.McpRpc.Tools
 
 open System.Collections.Concurrent
 open System.ComponentModel
-open System.Security.Claims
 open System.Text.Json
 open System.Text.Json.Nodes
 open ModelContextProtocol.Server
@@ -16,28 +15,53 @@ type NewGameResponse = { gameId: string }
 
 /// Final snapshot of a finished game, retained for reads after the supervisor
 /// drops it (GameSupervisor removes a game on completion — Engine.fs OnCompleted).
-type private CompletedState =
+type CompletedState =
     { Board: JsonObject; WhoseTurn: string; Status: string }
+
+/// Cross-request state that MUST outlive a single tool invocation. The MCP SDK instantiates the tool
+/// class per tools/call, so any state held as a TicTacToeTools instance field resets every request —
+/// which made player_assigned re-fire on every move (seatedRoles reset) and dropped completed-game
+/// snapshots (post-terminal reads failed). Registered as a singleton so all of it persists for the run.
+///
+/// Also the LOGIN REGISTRY. Over the multi-client HTTP host each agent connects on its OWN session and
+/// logs in once: authenticate() mints a unique token and registers it here. A move is only accepted if it
+/// bears a registered token (login is mandatory), and each client re-presents its own token per request —
+/// its cookie jar — so identity is stable for the run and an agent cannot spoof or reconnect into another.
+/// Identity is NOT a seat: X/O are assigned later by move order. (The stateful-HTTP session object can't be
+/// used as the key — the SDK hands a fresh McpServer instance per request — so identity travels in the
+/// registered bearer token, which the SDK special-cases nowhere and is therefore transport-independent.)
+type ToolState() =
+    let issued = ConcurrentDictionary<string, bool>()          // every token ever minted (the registry)
+    member val CompletedGames = ConcurrentDictionary<string, CompletedState>()
+
+    /// Mint + register a fresh unique login token.
+    member _.Mint() : string =
+        let t = System.Guid.NewGuid().ToString("N")
+        issued.[t] <- true
+        t
+
+    /// Was this token issued by authenticate()? Unissued/blank tokens are not valid identities.
+    member _.IsIssued(token: string) : bool =
+        not (System.String.IsNullOrWhiteSpace token) && issued.ContainsKey token
 
 [<McpServerToolType>]
 type TicTacToeTools
     (
         supervisor: GameSupervisor,
         assignments: PlayerAssignmentStore,
-        eventLog: EventLog
+        eventLog: EventLog,
+        toolState: ToolState
     ) =
 
-    // stdio transport is sequential (one request at a time), so these reads/writes
-    // cannot interleave. Retains finished games for post-game get_board/get_state.
-    let completedGames = ConcurrentDictionary<string, CompletedState>()
-
-    // First-seat tracking per (gameId, side) so player_assigned fires once per role.
-    let seatedRoles = ConcurrentDictionary<string, bool>()
+    // stdio transport is sequential (one request at a time), so these reads/writes cannot interleave.
+    // Both live on the injected singleton (ToolState) — NOT instance fields — so they survive the
+    // per-request tool lifetime. Retains finished games for post-game get_board/get_state.
+    let completedGames = toolState.CompletedGames
 
     [<McpServerTool>]
-    [<Description("Authenticate as a player. Returns an identity token; pass it on each subsequent call's `_meta.identityToken` to bind your moves to a seat.")>]
+    [<Description("Authenticate to obtain your identity token. Pass it as identityToken on every make_move so the server recognizes you. This is your login identity, not a seat — X or O is decided later by move order.")>]
     member _.authenticate() : AuthResponse =
-        { token = System.Guid.NewGuid().ToString("N") }
+        { token = toolState.Mint() }
 
     [<McpServerTool>]
     [<Description("List all active in-progress games. Returns an array of {gameId, whoseTurn, status}.")>]
@@ -64,29 +88,24 @@ type TicTacToeTools
         | Some(gameId, _) -> box { gameId = gameId }
 
     [<McpServerTool>]
-    [<Description("Make a move. Authenticate first to get an identity token, then pass it as identityToken (or via _meta.identityToken); the server derives your side (X or O) from it. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
+    [<Description("Make a move. Authenticate first to get an identity token, then pass it as identityToken; the server derives your side (X or O) from it by move order. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.")>]
     member _.make_move
         (
-            user: ClaimsPrincipal,
             [<Description("The game ID returned by new_game")>] gameId: string,
             [<Description("Board position: TopLeft | TopCenter | TopRight | MiddleLeft | MiddleCenter | MiddleRight | BottomLeft | BottomCenter | BottomRight")>] position: string,
             [<System.Runtime.InteropServices.Optional; System.Runtime.InteropServices.DefaultParameterValue("")>]
-            [<Description("Your identity token from authenticate(). Pass it here when your client cannot set _meta.identityToken (e.g. a generic MCP client). Falls back to _meta if omitted.")>] identityToken: string
+            [<Description("Your identity token from authenticate(). The server derives your side (X or O) from it by move order.")>] identityToken: string
         ) : obj =
-        // Explicit param wins (portable to any MCP client); else fall back to the
-        // _meta-bridged ClaimsPrincipal (the bespoke orchestrator's per-request path).
-        let token =
-            if not (System.String.IsNullOrWhiteSpace identityToken) then Some identityToken
-            else
-                match user with
-                | null -> None
-                | u -> u.Identity |> Option.ofObj |> Option.bind (fun i -> Option.ofObj i.Name)
+        // Identity is the caller's registered login token, presented every request (its cookie jar). Only a
+        // token that authenticate() issued counts — no login (blank/unknown token) -> no identity -> rejected.
+        let token = if toolState.IsIssued identityToken then Some identityToken else None
 
         match resolveMove supervisor assignments token gameId position with
-        | Moved(board, turn, status, side) ->
+        | Moved(board, turn, status, side, newlySeated) ->
             let role = side.ToString()
-            if seatedRoles.TryAdd($"{gameId}:{role}", true) then
-                eventLog.LogEvent("player_assigned", gameId, role = role)
+            // player_assigned is emitted by the assignment authority (newlySeated), so it fires EXACTLY
+            // once per seat — never per move — regardless of request/session lifecycle.
+            if newlySeated then eventLog.LogEvent("player_assigned", gameId, role = role)
             eventLog.LogEvent("move_accepted", gameId, role = role, move = position)
             if status = "won" || status = "draw" then
                 completedGames[gameId] <- { Board = board; WhoseTurn = turn; Status = status }
