@@ -591,6 +591,73 @@ with "small models struggle," leaving the capability door open (bigger model = t
 games barely happen). This confirms the **multi-party amendment** (thesis §8): MCP dominates single-agent,
 collapses multi-party — no clean role/turn disambiguation.
 
+## FULL 2⁴ FACTORIAL — 9b, HTTP arm, n=5, all 16 cells (2026-07-12) — the ladder rung
+
+Same full 16-cell factorial one rung up (`qwen/qwen3.5-9b`), **identical hardened embed-free harness**
+(coldstart SHA `35e2bd79` — byte-identical to the flash run, so flash↔9b is a clean like-for-like ladder
+comparison). 80/80 clean, 0 dropped, **0 bootstrapFails** (vs flash's 11 — 9b never fails to land a first
+legal move; a real capability gap). Archive `experiments/results/archive/http-9b-factorial-2026-07-12/`.
+
+**Headline: the three flash findings REPRODUCE at 9b (A main effect, independent discovery channels, the
+So-without-A anti-synergy), and a new capability effect appears — first-shot format correctness jumps ~8×.
+At THIS rung the jump is MODEL-WIDE, not Sd-attributable. This is ONE ladder data point, NOT a refutation
+of P-ladder: P-ladder is a *trend* claim (Sd's discovered-first rises *across* tiers) and reading a slope
+needs ≥2 capability points — the capable anchors are still to come. Best current read: 9b has already
+crossed the discovery-capability threshold, which MASKS Sd's marginal first-shot contribution here (at
+flash, below threshold, Sd *did* show — lowest 400-volume). Capability buys DISCOVERY (format), affordance
+buys GAMEPLAY (legal moves); the two axes dissociate cleanly on the ladder.**
+
+### Dimension 2 (gameplay) — A main effect REPRODUCES, still perfect separation
+
+- **A=1 mean 2.65 vs A=0 14.95 illegalMoves/game → 5.6× collapse** (flash was 0.93 vs 7.52, 8.1×).
+  **Separation still PERFECT: A=1 max 3.8 < A=0 min 9.8**, zero overlap across all 16 cells, same as flash.
+  A owns gameplay at both tiers.
+- **Dissociation worth stating:** 9b is *not* gameplay-cleaner without affordances — its A=0 illegal
+  (14.95) is **higher** than flash's A=0 (7.52). 9b thrashes *more* illegal moves when unaided; the extra
+  capability shows up in discovery (below), not in rule-following-without-an-affordance. With A on, both
+  tiers collapse to low (9b 2.65, flash 0.93). So **A is the gameplay lever independent of model tier.**
+- **Anti-synergy reproduces (weaker/noisier):** position-taken with So-on-but-A-off = 7.40 vs So-off-A-off
+  5.60; A=1 kills it (1.10). Same direction as flash (3.15 vs 0.70), smaller margin. Discovery-without-
+  affordance still drags gameplay.
+- Completion is **cleaner at 9b**: A=1 90% vs A=0 60% (flash was a noisy 75/60). A now visibly helps
+  completion, not just illegal-move count.
+
+### Dimension 1 (discovery) — channels REPRODUCE; the first-shot jump is the ladder story
+
+- **Sd owns `/profile` (9.65 vs 0.15), So owns `/type` (5.08 vs 0.00)** — same independent additive channels
+  as flash (~20× and from-zero). Fetching behaviour is tier-stable.
+- **THE LADDER EFFECT — first-shot format correctness jumps ~8×: 9b discovered-first 8.3/15 (~55%) vs flash
+  ~1/15 (5/78, ~6%).** 9b usually gets the POST shape right on its *first* attempt; flash almost never did.
+  This is the "think-first models fix the first shot" capability effect P-ladder anticipated in spirit —
+  format-guessing is a capability floor, and it lifts sharply with one rung.
+- **At this rung the jump is NOT Sd-attributable — but that is a single ladder point, NOT a refutation of
+  P-ladder.** P-ladder predicts *Sd's* discovered-first rate rises *across* the ladder (Sd migrating from
+  400-volume-reducer to first-POST-fixer) — a **trend** claim, and a slope needs ≥2 capability points. At
+  9b alone the first-shot jump is **model-wide, not Sd-driven**: Sd=1 correct-first **7.2/15 is LOWER than
+  Sd=0 9.4/15**, and Sd=1 cells even carry **more** 400s (18.2 vs 11.3). Read: 9b has likely **crossed the
+  discovery-capability threshold**, so the surface's marginal first-shot contribution is **masked** here
+  (ceiling) — whereas at flash, *below* threshold, Sd *did* show (lowest 400-volume 11.9 vs control 19.9).
+  This is consistent with "**Sd helps most where the model is weakest**" and leaves the Sd-migration
+  question **OPEN**, to be read off the slope once the `{gpt-oss-20b, gpt-oss-120b}` anchors land. Do NOT
+  cite 9b as refuting Sd — small models can already carry enough discovery capability; this is a ladder
+  finding, not a wholistic property of Sd.
+- Recognition stays flat/weak (pre-correct Sd1 2.34 ≈ Sd0 2.33; both tiers know ttt); 400-volume is lower
+  at 9b overall (fewer guesses) consistent with the first-shot jump.
+
+### What the rung settles
+
+- **Reproduces (tier-stable):** A = near-sufficient gameplay main effect with perfect A=1/A=0 separation;
+  Sd/So = independent additive discovery channels; So-without-A anti-synergy; **no super-additivity on
+  either dimension** (A dominates DIM2 alone, discovery channels don't amplify each other).
+- **Moves with capability:** first-shot format correctness (1/15 → 8.3/15) — at 9b a **model-wide** effect,
+  not Sd-attributable *at this rung*. This is one ladder point; P-ladder's Sd-migration trend stays **OPEN**
+  (needs the capable anchors to read the slope), NOT refuted.
+- **Clean dissociation for the thesis:** capability buys *discovery* (getting the format right unaided);
+  the affordance (A) buys *gameplay* (legal moves) at any tier. Two separable axes — exactly the
+  two-dimension split the harness reports. **CAVEATS:** n=5, HTTP arm; the capable tier is now the
+  cross-family **gpt-oss anchors** (20b/120b), not qwen-122b (retired), which will test whether the
+  first-shot effect keeps climbing and whether any Sd-specific first-shot benefit emerges higher up.
+
 ## FULL 2⁴ FACTORIAL — flash, HTTP arm, n=5, all 16 cells (2026-07-11) — interaction resolution
 
 The banked sweeps only ever ran **6 of 16 cells** (control `0000`, four singles, all-on `1111`). That
