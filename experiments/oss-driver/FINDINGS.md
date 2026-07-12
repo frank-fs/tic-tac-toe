@@ -591,6 +591,64 @@ with "small models struggle," leaving the capability door open (bigger model = t
 games barely happen). This confirms the **multi-party amendment** (thesis §8): MCP dominates single-agent,
 collapses multi-party — no clean role/turn disambiguation.
 
+## FULL 2⁴ FACTORIAL — gpt-oss-20b, HTTP arm, n=5, all 16 cells (2026-07-12) — first CROSS-FAMILY point
+
+Same 16-cell factorial, **first off-Qwen model** (`openai/gpt-oss-20b`, ~3.6B-active MoE), byte-identical
+hardened embed-free harness (SHA `35e2bd79`). Model chosen as a **cross-family anchor** (held-family was
+convenience, not a design requirement — a pattern surviving across families is stronger evidence). 80/80
+clean, 0 dropped, 0 bootstrapFails. **Cheapest run yet, ~$0.022/game** (output rate 0.140/M).
+Archive `experiments/results/archive/http-oss20b-factorial-2026-07-12/`.
+
+**Headline: the two CORE findings survive off-Qwen — A owns gameplay with perfect A=1/A=0 separation, and
+Sd/So own their discovery channels — promoting both from "Qwen findings" to CROSS-FAMILY properties. Two
+findings DON'T travel: the So-without-A anti-synergy does NOT replicate (Qwen-only or noise), and the
+A-collapse RATIO narrows sharply (family/model-specific, so the ratio is not a clean capability metric —
+the qualitative SEPARATION is the robust invariant). First-shot format is model-wide again (2nd
+above-threshold point); Sd-specific first-shot lift still absent — evidence accumulating AGAINST P-ladder's
+Sd-migration but still OPEN (needs the capable 120b anchor; cross-family complicates "up the ladder").**
+
+### Dimension 2 (gameplay) — A separation holds CROSS-FAMILY; ratio narrows
+
+- **A=1 4.38 vs A=0 12.03 illegalMoves/game.** **Separation still PERFECT: A=1 max 5.4 < A=0 min 7.8** —
+  every affordance-on cell cleaner than every affordance-off cell, now on a THIRD model and the FIRST
+  off-Qwen one. **A-owns-gameplay + perfect separation is a cross-family property**, not a Qwen artifact.
+- **But the RATIO is not a capability metric.** A-collapse: flash 8.1× → 9b 5.6× → oss-20b **2.7×**. A=1
+  illegal *rises* across these (0.93 → 2.65 → 4.38) — gpt-oss-20b is simply thrashier on gameplay even with
+  the affordance. The ratio tracks model/family idiosyncrasy, not a clean capability axis. What is invariant
+  across all three models is the **qualitative separation** (A=0 min always > A=1 max), not its magnitude.
+- **Anti-synergy does NOT replicate off-Qwen.** position-taken So-on-A-off = 2.95 vs So-off-A-off **3.85** —
+  *inverted* here (So-on slightly lower), where flash (3.15 > 0.70) and 9b (7.40 > 5.60) both showed So-
+  without-A inflating taken. So the So-without-A anti-synergy is **Qwen-family-specific or n=5 noise, not a
+  robust cross-family effect** — demoted. (A=1 still suppresses taken everywhere: 1.20.)
+- Completion A=1 58% vs A=0 40% — A helps completion, direction consistent with both Qwen tiers.
+
+### Dimension 1 (discovery) — channels REPRODUCE cross-family; still no Sd first-shot lift
+
+- **Sd owns `/profile` (8.43 vs 0.28), So owns `/type` (6.60 vs 0.00)** — clean channel ownership on the
+  off-Qwen model too. **Cross-family confirmed.**
+- **First-shot format is HIGH again: overall 9.2/15 (~61%)**, right beside 9b's 8.3/15 and far above flash's
+  ~1/15. gpt-oss-20b is **above the discovery-capability threshold** — contrary to the n=1 smoke hint (that
+  thrashy single game was noise; at n=5 it discovers the format well). *Placed by measured behaviour it is
+  ~9b-tier on discovery, not floor* — exactly why we place by data, not by the ~3.6B-active param count.
+- **Sd-specific first-shot lift is still ABSENT** (2nd above-threshold model to show it): Sd=1 first-shot
+  **8.9/15 ≈/< Sd=0 9.6/15**, and Sd=1 cells again carry more 400-volume (15.3 vs 7.8). With flash
+  (below-threshold, Sd reduced 400-volume) + two above-threshold points (9b, oss-20b, both model-wide, no
+  Sd first-shot edge), the picture reads like a **capability STEP that makes format model-wide** rather than
+  a gradual Sd-migration. **Evidence is accumulating AGAINST P-ladder's Sd-specific claim — but it stays
+  OPEN, not refuted:** the definitive slope needs the capable 120b anchor, and oss-20b is cross-family so it
+  is not a clean same-lineage "up the ladder" step from 9b. Do NOT cite this as refuting Sd.
+
+### What this cross-family point settles
+
+- **Promoted to cross-family properties:** A = gameplay main effect with perfect A=1/A=0 separation;
+  Sd/So = independent discovery-channel ownership; A helps completion; no super-additivity.
+- **Demoted / did NOT travel:** the So-without-A anti-synergy (Qwen-only or noise); the A-collapse *ratio*
+  as a capability metric (family-idiosyncratic — only the separation is invariant).
+- **Still open:** P-ladder's Sd-migration — two above-threshold points now show first-shot is model-wide,
+  leaning against the Sd-specific form, but the slope needs the 120b anchor. **CAVEATS:** n=5, HTTP arm,
+  cross-family (not a same-lineage capability step). Next: gpt-oss-120b (the within-family scale partner of
+  20b + the capable point) then optionally deepseek-4-flash.
+
 ## FULL 2⁴ FACTORIAL — 9b, HTTP arm, n=5, all 16 cells (2026-07-12) — the ladder rung
 
 Same full 16-cell factorial one rung up (`qwen/qwen3.5-9b`), **identical hardened embed-free harness**
