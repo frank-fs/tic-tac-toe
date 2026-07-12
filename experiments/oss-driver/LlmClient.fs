@@ -73,6 +73,22 @@ let defaultModel backend =
         |> Option.defaultValue "gpt-4o-mini"
     | Anthropic -> "claude-haiku-4-5"
 
+/// OpenRouter provider pin (WORKER_PROVIDER, e.g. "Cerebras"): route a whole sweep to ONE
+/// named provider with no fallbacks — same quant/throughput across every game, so provider
+/// choice never confounds the factorial. Only applied on the OpenRouter host; no-op when unset.
+let private applyProviderPin (backend: Backend) (req: JsonObject) =
+    match backend with
+    | OpenAiCompat when (baseUrl backend).Contains "openrouter" ->
+        match Environment.GetEnvironmentVariable "WORKER_PROVIDER" with
+        | null | "" -> ()
+        | prov ->
+            let order = JsonArray() in order.Add(JsonValue.Create prov)
+            let p = JsonObject()
+            p["order"] <- order
+            p["allow_fallbacks"] <- JsonValue.Create false
+            req["provider"] <- p
+    | _ -> ()
+
 // Retry transient 5xx (cold/loaded endpoint); 4xx fails immediately.
 let private post (backend: Backend) (json: string) : string =
     let url = baseUrl backend + "/v1/chat/completions"
@@ -108,6 +124,7 @@ let chatWithUsage (backend: Backend) (model: string) (messages: (string * string
     if (baseUrl backend).Contains "openrouter" then
         let u = JsonObject() in u["include"] <- JsonValue.Create true
         req["usage"] <- u
+    applyProviderPin backend req
     let respBody = post backend (req.ToJsonString())
     let resp = JsonNode.Parse respBody :?> JsonObject
     let message = resp["choices"].[0].["message"] :?> JsonObject
@@ -132,6 +149,7 @@ let chatTools (backend: Backend) (model: string) (messages: JsonArray) (tools: J
     req["max_tokens"] <- JsonValue.Create 1024
     req["messages"] <- messages.DeepClone()
     if tools.Count > 0 then req["tools"] <- tools.DeepClone()
+    applyProviderPin backend req
     let respBody = post backend (req.ToJsonString())
     let resp = JsonNode.Parse respBody :?> JsonObject
     (resp["choices"].[0].["message"]).DeepClone() :?> JsonObject
