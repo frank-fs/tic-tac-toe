@@ -2,6 +2,47 @@
 
 _2026-07-01, branch sp3-redux. Model held constant: `anthropic/claude-haiku-4.5` (OpenRouter)._
 
+## ERPC RECOGNIZE-PARITY resolved + ERPC↔HTTP recognize ladder — flash/9b/20b/120b n=5 (2026-07-13)
+
+The ERPC arm emitted **0/5 MOMENT reports** (the 2-moment recognize report), so its discovery could not be
+scored against the HTTP arm. Root cause: the tool-calling loop (`ErpcDriver` `run` + `playLoop` agent-turn)
+only added a user message when the model made NO tool call, so after `list_tools` the agent kept tool-calling
+and never got a text beat to emit the plain-text report the grader reads. **Fix (branch `erpc-parity`): a
+NEUTRAL `"Continue."` user turn after EVERY assistant turn** — the same every-turn text opportunity the HTTP
+arm has after each action. Deliberately no MOMENT nag (the shared cold-start prompt is the only instruction,
+matching HTTP); whether the agent then emits is the *measured finding*, not a harness artifact. Provider
+matched per rung (flash/9b default, 20b/120b WandB — same provider as each model's HTTP run, since provider
+quant confounds count DVs). Archive `experiments/results/archive/erpc-parity-ladder-2026-07-13/`.
+
+**ERPC↔HTTP recognize, per rung (emission rate | recognize quality when emitted):**
+
+| tier | HTTP emit | HTTP pre-corr | ERPC emit | ERPC pre-corr |
+|------|:--:|:--:|:--:|:--:|
+| flash | 99% | 3.02/4 | 13% | **3.25** |
+| 9b    | 88% | 2.34   | 27% | **2.88** |
+| 20b   | 95% | 2.25   | 87% | **2.65** |
+| 120b  | 96% | 3.24   | 47% | **3.29** |
+
+**Headline: MCP doesn't lack UNDERSTANDING — it lacks LEGIBILITY.**
+
+1. **Emission — HTTP reliably surfaces the report (88–99% every tier); ERPC is variable and mostly lower
+   (13–87%).** The hypermedia surface forces text expression, so the agent's grasp lands on the wire every
+   turn. MCP tool-mode *suppresses reflection* — acting-via-tools crowds out narrating-via-text — worst at
+   flash (13%) and 9b (27%). Emission is NOT cleanly capability-ordered (20b 87% is the outlier high; 120b
+   drops to 47%); n=5, treat the ordering as noisy, the HTTP≫ERPC *gap* as the signal.
+2. **Quality when emitted — ERPC ≥ HTTP at EVERY tier** (3.25≥3.02, 2.88≥2.34, 2.65≥2.25, 3.29≥3.24). An MCP
+   agent that *does* narrate recognizes the app at least as well as the hypermedia agent — the typed tool
+   schemas convey what/how effectively. Understanding is present.
+
+**Interpretation (dual-audience thesis).** The RPC/MCP arm's comprehension is *present but OPAQUE* — buried
+inside tool calls, surfaced only 13–87% of the time. The hypermedia arm's comprehension is *LEGIBLE* —
+emitted and observable ~95% of the time. For any human / observer / debugging audience, that legibility is
+exactly HTTP's edge: the agent's grasp is on the wire, not hidden in RPC. This is a *sharper* result than a
+single recognize number would have been — the fair neutral-beat design turned "ERPC scores 0" into "ERPC
+understands but doesn't say so." Validated capability-dependence in smoke (flash 0 free-text turns vs 9b
+2–3 correct reports/seat). **CAVEATS:** n=5; emission non-monotone; ERPC has no A/C/Sd/So factor structure
+(single config, compared to HTTP's per-cell mean); recognize *quality* averaged over emitted seats only.
+
 ## ERPC multiplayer IDENTITY REWRITE — fair multi-client harness, flash + 9b n=5 (2026-07-11) — AUTHORITATIVE, SUPERSEDES all prior 3-seat ERPC
 
 **The prior 3-seat ERPC runs (2026-07-10 "coordination collapse" + "fair-harness re-run") are RETRACTED.**
