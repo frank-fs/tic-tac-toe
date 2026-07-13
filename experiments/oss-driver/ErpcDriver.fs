@@ -152,7 +152,12 @@ let private stepAgent backend model (realDefs: JsonArray) (listOnly: JsonArray)
             tr.["content"] <- JsonValue.Create result
             a.Messages.Add tr
             a.Transcript.Add("tool", result)
-    | _ -> a.Messages.Add(msg "user" "Continue: call a tool to act, or emit your MOMENT report as plain text.")
+        // Recognize-parity: give the tool-calling agent the same every-turn text beat the HTTP arm gets
+        // after each action, so it CAN emit the MOMENT reports the shared cold-start prompt asks for.
+        // Deliberately NEUTRAL (no MOMENT nag) — HTTP isn't nudged either; whether ERPC emits is the
+        // measured finding, not a harness artifact.
+        a.Messages.Add(msg "user" "Continue.")
+    | _ -> a.Messages.Add(msg "user" "Continue.")
     let readOnly = hadToolCalls && not moveAttempted && content = ""
     over, not readOnly
 
@@ -310,8 +315,13 @@ let run (cfg: Driver.Config) : string =
                 messages.Add tr
                 transcript.Add("tool", result)
             if moves >= cfg.MaxMoves then outcome <- "move_cap"; stop <- true
+            // Recognize-parity: give the tool-calling agent the same every-turn text beat the HTTP arm
+            // gets after each action, so it CAN emit the MOMENT reports the shared cold-start prompt asks
+            // for. Deliberately NEUTRAL (no MOMENT nag) — HTTP isn't nudged either; whether ERPC then emits
+            // is the measured finding, not a harness artifact.
+            if not stop then messages.Add(msg "user" "Continue.")
         | _ ->
-            messages.Add(msg "user" "Continue: call a tool to act, or emit your MOMENT report as plain text.")
+            messages.Add(msg "user" "Continue.")
         step <- step + 1
 
     if not stop && outcome = "incomplete" then outcome <- "window_truncated"
