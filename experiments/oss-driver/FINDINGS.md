@@ -1,5 +1,72 @@
 # SP3 Seating & Conduct — Findings and Apparatus State
 
+## ★ CAPSTONE SYNTHESIS — the cross-model ladder (2026-07-13)
+
+Consolidates the full HTTP 2⁴ factorial ladder (`A`ffordances × `C` accessibility × `Sd` discovery ×
+`So` ontology) + the ERPC (RPC/MCP null-hypothesis) arm, across **4 models / 2 families / both arms**, all
+on the byte-identical hardened embed-free harness (cold-start SHA `35e2bd79`). Read the per-run sections
+below for detail; this is the through-line and its limits.
+
+**Thesis.** A single evolvable HTTP/hypermedia contract can serve agents AND humans; the RPC/MCP arm is the
+null hypothesis (typed tools instead of a HATEOAS surface). Two dimensions are measured on every surface:
+**DIM 1 DISCOVERY** (can the agent tell WHAT it plays + HOW) and **DIM 2 GAMEPLAY** (does it follow the
+rules DURING play).
+
+### What REPRODUCES (robust — provider-invariant in direction, holds within every run)
+
+1. **A owns gameplay** — illegalMoves/game collapses A=1 vs A=0 in every model:
+
+   | model (provider) | A=1 | A=0 | separation |
+   |---|--:|--:|---|
+   | flash (default) | 0.93 | 7.52 | perfect (max 2.2 < min 4.6) |
+   | 9b (default) | 2.65 | 14.95 | perfect (3.8 < 9.8) |
+   | 20b (WandB) | 3.98 | 13.68 | perfect (7.0 < 10.4) |
+   | 120b (WandB) | 1.90 | 5.17 | **overlaps (3.2 = 3.2)** |
+
+   The affordance (rendering only currently-legal moves) is a near-sufficient gameplay lever at every tier.
+
+2. **Sd and So own their discovery channels, independently and additively** — Sd→`/profile` (~8–14/game vs
+   ~0), So→`/type` (~5–15/game vs 0), in every run, both families. Neither amplifies the other.
+
+3. **No super-additivity** on either dimension, any model — the factorial decomposes into main effects
+   (A gameplay; Sd/So discovery) + one anti-synergy, not a "layers win together" interaction. (This overturns
+   the earlier haiku "only 1111 wins" story, which was the noisy completion DV.)
+
+### What MOVES with capability (the ladder's real gradient)
+
+- **A's marginal value ERODES as models get capable.** 120b's A=0 illegal (5.17) is the lowest unaided
+  count of any model — a strong model tracks state well enough that the affordance's separation *collapses*
+  (A=1 max = A=0 min). **Affordances help weak models most.** (Confirmatory 3rd-family test of this — the
+  one thing a deepseek/Llama anchor would add — is NOT done; see limits.)
+- **First-shot format correctness rises with capability** (flash ~1/15 → 9b/20b/120b 5–9/15) but as a
+  **model-wide** effect, not Sd-attributable: P-ladder's Sd-migration prediction is **unsupported** across
+  the ladder (Sd cells never lead first-shot). Left OPEN, not refuted (trend needs a same-family slope).
+
+### ERPC (RPC/MCP) — the headline null-hypothesis result
+
+**MCP lacks LEGIBILITY, not UNDERSTANDING.** With recognize-parity fixed (neutral text beat, HTTP-matched),
+across flash/9b/20b/120b: HTTP surfaces the recognize report **88–99%** of seats; ERPC only **13–87%**
+(tool-mode suppresses reflection — acting-via-tools crowds out narrating). Yet recognize *quality when
+emitted* is ERPC ≥ HTTP every tier (selection-caveated). The MCP agent understands the app; its
+comprehension is just **opaque**, buried in tool calls, while hypermedia's is **on the wire** ~95% of the
+time. For any human / observer / debugging audience, that legibility is HTTP's structural edge — the core
+dual-audience claim.
+
+### LIMITS / confounds (do not over-read)
+
+- **Provider-quant confound (proven):** OpenRouter providers serve the same model at different quantizations
+  → cross-model ABSOLUTE count DVs are provider-dependent (gpt-oss-20b first-shot 9.2 default vs 4.9 WandB,
+  same model/harness). Only same-provider pairs (20b↔120b WandB) compare cleanly on absolutes; everything
+  else relies on within-run *direction*.
+- **Completion is a noisy secondary DV throughout** — and latency-sensitive (slow providers truncate games
+  at the 400s cap). Not weighted; the sharp DVs (illegalMoves, `/profile`/`/type`, first-shot, recognize)
+  carry the findings.
+- **n=5, HTTP arm, one game (tic-tac-toe).** So (ontology/Linked-Data) is inert here — a tight play loop has
+  nothing to retrieve (its payoff needs a knowledge-heavy app + an LD-consuming tool). One Qwen-only
+  anti-synergy (So-without-A raises position-taken) did NOT replicate off-Qwen.
+- **3rd family untested:** deepseek-4-flash evaluated + dropped (too slow-served on OpenRouter — 71% of
+  games truncated). Cross-family generalization rests on Qwen + gpt-oss (2 families).
+
 _2026-07-01, branch sp3-redux. Model held constant: `anthropic/claude-haiku-4.5` (OpenRouter)._
 
 ## ERPC RECOGNIZE-PARITY resolved + ERPC↔HTTP recognize ladder — flash/9b/20b/120b n=5 (2026-07-13)
