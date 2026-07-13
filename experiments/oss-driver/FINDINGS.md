@@ -591,6 +591,58 @@ with "small models struggle," leaving the capability door open (bigger model = t
 games barely happen). This confirms the **multi-party amendment** (thesis §8): MCP dominates single-agent,
 collapses multi-party — no clean role/turn disambiguation.
 
+## PROVIDER-QUANT CONFOUND + gpt-oss-120b — HTTP arm, n=5 (2026-07-12/13) — the scale pair + a methodology reckoning
+
+Two results landed together: the capable rung (gpt-oss-120b) and a **methodological finding that reframes
+every cross-model number in this ladder.**
+
+### The provider confound (proven, important)
+
+Running the two slow models (20b, 120b) pinned to **WandB** for latency-clean completion surfaced this: on
+`gpt-oss-20b`, **first-shot format correctness = 9.2/15 on OpenRouter default routing vs 4.9/15 pinned to
+WandB** — SAME model, SAME harness, SAME prompt SHA `35e2bd79`, 240 posting-seats each, distributions barely
+overlapping. This is a *timing-independent* count DV, so it is **not** latency and **not** n=5 noise:
+**different OpenRouter providers serve gpt-oss at different quantizations → materially different agent
+behaviour.** Default-20b and WandB-20b are effectively different models on the discovery axis.
+
+**Consequence for the ladder.** It is cross-provider by construction (flash ≈ Alibaba, 9b ≈ a Qwen provider,
+20b/120b = WandB), so **cross-model comparisons of ABSOLUTE count DVs are provider-confounded.** What remains
+trustworthy:
+- **Within-run factorial effects are ROBUST** (provider-invariant in *direction*, since all 16 cells of a
+  run share one model+provider): A separates gameplay, Sd owns `/profile`, So owns `/type` — these reproduce
+  in *every* run regardless of provider.
+- **The only clean same-provider cross-model pair is 20b-WandB ↔ 120b-WandB** (both WandB). All other
+  cross-model magnitude claims (first-shot rates up the ladder, A-separation sharpness) are flagged
+  provider-confounded and must not be read as pure capability effects.
+- **20b-WandB supersedes 20b-default** for any cross-model use (the 20b section below is retained but its
+  cross-model magnitudes are now read through the WandB re-run). Archives:
+  `http-oss20b-wandb-2026-07-12/`, `http-oss120b-wandb-2026-07-12/`.
+
+### gpt-oss-120b results (WandB-pinned, n=5, genuine — 0 truncations, 45 stalls)
+
+- **A main effect holds but its SEPARATION breaks for the first time.** illegalMoves A=1 **1.90** vs A=0
+  **5.17** (2.7×), but A=1 max **3.2** = A=0 min **3.2** — the perfect A=1<A=0 separation seen at flash/9b/20b
+  no longer holds. Reason: 120b's A=0 illegal (5.17) is the **lowest unaided count of any model** — the
+  capable model tracks state well enough on its own that **A's marginal gameplay value shrinks**. Thesis-
+  relevant: the affordance pays off most for *weak* models; a strong model needs it least.
+- **Discovery channels hold and are strongest yet:** `/type` So1 **15.2** (vs So0 0.00), `/profile` Sd1
+  **13.1** (vs Sd0 0.33). The capable model dereferences the ontology and contract the most.
+- **Completion 44% — LOWER than 20b's 64%, despite being far bigger.** Genuine (0 truncations; 45 stalls):
+  120b *stalls* more in multiplayer — longer deliberation / non-progression, not latency. Capability does
+  not buy multiplayer completion here (completion stays the noisy secondary + is stall-driven at 120b).
+
+### The clean scale pair (20b-WandB ↔ 120b-WandB, provider-controlled)
+
+The one cross-model comparison free of the provider confound:
+- **A gameplay:** A=1 3.98→1.90, A=0 13.68→5.17 — 120b cleaner on both, and the A=0 drop is what collapses
+  the separation (capability substitutes for the affordance).
+- **first-shot format:** 4.9→6.8 — **rises with scale within one family+provider** (the cleanest signal that
+  format-discovery improves with capability, now confound-free).
+- **Sd first-shot lift:** still ABSENT at both (Sd1 4.0/6.9 ≈ Sd0 5.8/6.6). P-ladder's Sd-migration remains
+  unsupported even on the provider-controlled pair — evidence continues to accumulate against the Sd-specific
+  form, though a same-family point at higher capability could still surprise. **CAVEATS:** n=5; completion is
+  noisy + stall-driven; cross-family absolute magnitudes are provider-confounded (this section's whole point).
+
 ## FULL 2⁴ FACTORIAL — gpt-oss-20b, HTTP arm, n=5, all 16 cells (2026-07-12) — first CROSS-FAMILY point
 
 Same 16-cell factorial, **first off-Qwen model** (`openai/gpt-oss-20b`, ~3.6B-active MoE), byte-identical
