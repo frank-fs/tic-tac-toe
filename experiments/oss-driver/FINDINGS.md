@@ -32,7 +32,12 @@ quant confounds count DVs). Archive `experiments/results/archive/erpc-parity-lad
    drops to 47%); n=5, treat the ordering as noisy, the HTTP≫ERPC *gap* as the signal.
 2. **Quality when emitted — ERPC ≥ HTTP at EVERY tier** (3.25≥3.02, 2.88≥2.34, 2.65≥2.25, 3.29≥3.24). An MCP
    agent that *does* narrate recognizes the app at least as well as the hypermedia agent — the typed tool
-   schemas convey what/how effectively. Understanding is present.
+   schemas convey what/how effectively. Understanding is present. **CAVEAT — SELECTION BIAS:** this quality
+   is averaged over *emitted* seats only (ERPC 13–87% of seats vs HTTP ~95%), so the ERPC≥HTTP gap may be
+   partly a **selection artifact** — the ERPC agents that *chose* to narrate could be exactly the ones that
+   understood best, while the silent 13–87% are unmeasured. So read "≥HTTP" as "the ERPC agents who report
+   are not worse recognizers," NOT as proof MCP yields better comprehension. The robust claim is the
+   *emission gap* (legibility), which is not selection-sensitive.
 
 **Interpretation (dual-audience thesis).** The RPC/MCP arm's comprehension is *present but OPAQUE* — buried
 inside tool calls, surfaced only 13–87% of the time. The hypermedia arm's comprehension is *LEGIBLE* —
@@ -650,6 +655,11 @@ hardened embed-free harness (SHA `35e2bd79`). Model chosen as a **cross-family a
 convenience, not a design requirement — a pattern surviving across families is stronger evidence). 80/80
 clean, 0 dropped, 0 bootstrapFails. **Cheapest run yet, ~$0.022/game** (output rate 0.140/M).
 Archive `experiments/results/archive/http-oss20b-factorial-2026-07-12/`.
+
+> ⚠️ **This run used OpenRouter DEFAULT routing.** Its absolute count DVs (esp. first-shot 9.2/15) are
+> **provider-confounded and SUPERSEDED by the WandB re-run** (first-shot 4.9/15) for any cross-model use —
+> see the "PROVIDER-QUANT CONFOUND" section above. Read this section for the *within-run* factorial pattern
+> (A separates, Sd/So channels), NOT for cross-model absolute magnitudes.
 
 **Headline: the two CORE findings survive off-Qwen — A owns gameplay with perfect A=1/A=0 separation, and
 Sd/So own their discovery channels — promoting both from "Qwen findings" to CROSS-FAMILY properties. Two
