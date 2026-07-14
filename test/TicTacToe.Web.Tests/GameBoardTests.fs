@@ -7,6 +7,7 @@ open Oxpecker.ViewEngine
 open TicTacToe.Web.templates.game
 open TicTacToe.Model
 open TicTacToe.Web.Model
+open TicTacToe.Web
 // Helper to create a game state with specific moves
 let createGameStateWith (moves: (SquarePosition * Player) list) =
     let mutable gameState = Map.empty<SquarePosition, SquareState>
@@ -36,12 +37,12 @@ let testGameId = "test-game-123"
 
 /// Render as an unassigned viewer who can play (derives player from whose turn it is)
 let renderGameBoardToString result =
-    let element = renderGameBoard testGameId result "" None 6
+    let element = renderGameBoard Surface.full testGameId result "" None 6
     Render.toString element
 
 /// Render as a spectator (no specific viewer)
 let renderBroadcastToString result assignment =
-    let element = renderGameBoard testGameId result "" assignment 6
+    let element = renderGameBoard Surface.full testGameId result "" assignment 6
     Render.toString element
 
 [<Tests>]

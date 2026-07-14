@@ -16,6 +16,7 @@ open TicTacToe.Web.templates.game
 open TicTacToe.Engine
 open TicTacToe.Model
 open TicTacToe.Web.Model
+open TicTacToe.Web.Surface
 
 /// Signals type for move data from Datastar
 [<CLIMutable>]
@@ -23,6 +24,56 @@ type MoveSignals =
     { gameId: string
       player: string
       position: string }
+
+/// The surface cell this process was booted on (TICTACTOE_CELL; full surface by default).
+let private surfaceOf (ctx: HttpContext) =
+    ctx.RequestServices.GetRequiredService<Surface>()
+
+// ============================================================================
+// Sd: semantic-discovery headers. So: ontology typing (httpRange-14).
+// ============================================================================
+
+/// State-dependent Allow for a game resource.
+let private gameAllow (result: MoveResult) =
+    match result with
+    | XTurn _ | OTurn _ -> "GET, POST, DELETE, OPTIONS"
+    | _ -> "GET, DELETE, OPTIONS"   // terminal: no further moves
+
+let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: string option) =
+    ctx.Response.Headers.Append("Link", $"</profile>; rel=\"profile\", <{selfPath}>; rel=\"self\"")
+    match allow with
+    | Some a -> ctx.Response.Headers.Append("Allow", a)
+    | None -> ()
+
+/// So: the game URI names the Game (the thing); its RDF description is a distinct document
+/// (httpRange-14). Advertise it with a describedby Link on the HTML representation. Independent
+/// of Sd's /profile Link — both coexist as separate Link headers when Sd+So.
+let private setDescribedByHeader (ctx: HttpContext) (gameId: string) =
+    ctx.Response.Headers.Append("Link", $"</games/{gameId}/type>; rel=\"describedby\"")
+
+/// So content negotiation: an agent asking for RDF (application/ld+json) is 303-redirected from
+/// the thing (the game) to its describing document (/games/{id}/type).
+let private acceptsLdJson (ctx: HttpContext) =
+    ctx.Request.Headers.Accept.ToString().Contains "application/ld+json"
+
+/// A client that cannot consume an event stream must never be handed one: an SSE response to a
+/// plain GET holds the connection open until the caller's own timeout (a wasted turn for a
+/// non-streaming agent). The stream is a stream — say so, and point back at the resource that
+/// answers a GET. Enforced in middleware (Program.useStreamGuard), because the datastar handler
+/// flushes stream headers the moment it is entered.
+let acceptsEventStream (ctx: HttpContext) =
+    ctx.Request.Headers.ContainsKey "datastar-request"
+    || ctx.Request.Headers.Accept.ToString().Contains "text/event-stream"
+
+/// 406 for a non-streaming caller of a stream endpoint, naming the media type and linking the
+/// resource that does answer a plain GET.
+let rejectNonStream (ctx: HttpContext) (canonical: string) =
+    task {
+        ctx.Response.StatusCode <- 406
+        ctx.Response.ContentType <- "text/plain; charset=utf-8"
+        ctx.Response.Headers.Append("Link", $"<{canonical}>; rel=\"canonical\"")
+        do! ctx.Response.WriteAsync $"This endpoint serves text/event-stream. GET {canonical} for the current state."
+    }
 
 // Active game subscriptions - maps gameId to subscription disposable
 let private gameSubscriptions =
@@ -50,13 +101,13 @@ let private rejectionSlug =
 
 /// Wrap a page in a no-JS error banner when the request carries an ?error= flash token
 /// (set by a Post/Redirect/Get write that was rejected), otherwise the page unchanged.
-let private withBanner (ctx: HttpContext) (content: HtmlElement) : HtmlElement =
+let private withBanner (surface: Surface) (ctx: HttpContext) (content: HtmlElement) : HtmlElement =
     match ctx.Request.Query.TryGetValue("error") with
-    | true, v when v.Count > 0 -> Fragment() { renderErrorBanner (string v.[0]); content } :> HtmlElement
+    | true, v when v.Count > 0 -> Fragment() { renderErrorBanner surface (string v.[0]); content } :> HtmlElement
     | _ -> content
 
 /// Subscribe to a game's state changes and broadcast updates
-let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssignmentManager) (supervisor: GameSupervisor) =
+let subscribeToGame (surface: Surface) (gameId: string) (game: Game) (assignmentManager: PlayerAssignmentManager) (supervisor: GameSupervisor) =
     if not (gameSubscriptions.ContainsKey(gameId)) then
         let subscription =
             game.Subscribe(
@@ -66,7 +117,7 @@ let subscribeToGame (gameId: string) (game: Game) (assignmentManager: PlayerAssi
                         let assignment = assignmentManager.GetAssignment(gameId)
                         let gameCount = supervisor.GetActiveGameCount()
                         let renderForRole userId =
-                            let element = renderGameBoard gameId result userId assignment gameCount
+                            let element = renderGameBoard surface gameId result userId assignment gameCount
                             PatchElements (fun tw -> Render.toTextWriterAsync tw element)
                         broadcastPerRoleForGame gameId renderForRole
 
@@ -156,6 +207,7 @@ let home (ctx: HttpContext) =
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        let surface = surfaceOf ctx
         let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
         // One round-trip for all games' current state (avoids the per-game N+1 actor traffic
         // and the GetGame/GetState TOCTOU); kept eager so actor errors surface before flush.
@@ -169,12 +221,13 @@ let home (ctx: HttpContext) =
             snapshot
             |> List.map (fun (gameId, result) ->
                 let assignment = assignmentManager.GetAssignment(gameId)
-                renderGameBoard gameId result userId assignment gameCount)
+                renderGameBoard surface gameId result userId assignment gameCount)
         // Dynamic, per-viewer (role-personalised) representation: never cache, and Vary on
         // Cookie so an intermediary can't serve one user's board to another.
         ctx.Response.Headers.CacheControl <- "no-cache, private"
         ctx.Response.Headers.Vary <- "Cookie"
-        let element = templates.home.homePage ctx allowCreate boards |> withBanner ctx |> layout.html ctx
+        if surface.Sd then setDiscoveryHeaders ctx "/" None
+        let element = templates.home.homePage surface ctx allowCreate boards |> withBanner surface ctx |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
     }
@@ -186,6 +239,7 @@ let sse (ctx: HttpContext) =
         let (myChannel, subscription) = subscribe userId None
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let surface = surfaceOf ctx
 
         try
             // Send all existing games to the connecting client, personalized to their role.
@@ -195,7 +249,7 @@ let sse (ctx: HttpContext) =
             let gameCount = List.length snapshot
             for (gameId, state) in snapshot do
                 let assignment = assignmentManager.GetAssignment(gameId)
-                let element = renderGameBoard gameId state userId assignment gameCount
+                let element = renderGameBoard surface gameId state userId assignment gameCount
                 do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
 
             // Keep connection open, forwarding all broadcast events
@@ -213,13 +267,12 @@ let sse (ctx: HttpContext) =
 /// Per-game SSE endpoint — streams ONLY this game's events. On connect it sends a
 /// morph-by-id snapshot of the current board (connect-resync, no container clear), then
 /// forwards that game's broadcasts. Mirrors the dashboard `sse` but filtered to one game.
-let gameSse (ctx: HttpContext) =
+let private streamGame (ctx: HttpContext) (gameId: string) (userId: string) =
     task {
-        let gameId = ctx.Request.RouteValues.["id"] |> string
-        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-        let (myChannel, subscription) = subscribe userId (Some gameId)
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let surface = surfaceOf ctx
+        let (myChannel, subscription) = subscribe userId (Some gameId)
 
         try
             // Connect-resync: send the current board so a connect-after-move shows current state.
@@ -227,7 +280,7 @@ let gameSse (ctx: HttpContext) =
             | Some result ->
                 let assignment = assignmentManager.GetAssignment(gameId)
                 let gameCount = supervisor.GetActiveGameCount()
-                let element = renderGameBoard gameId result userId assignment gameCount
+                let element = renderGameBoard surface gameId result userId assignment gameCount
                 do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
             | None -> ()
 
@@ -242,6 +295,13 @@ let gameSse (ctx: HttpContext) =
         subscription.Dispose()
     }
 
+let gameSse (ctx: HttpContext) =
+    task {
+        let gameId = ctx.Request.RouteValues.["id"] |> string
+        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+        do! streamGame ctx gameId userId
+    }
+
 
 // ============================================================================
 // REST API Handlers for Multi-Game Support
@@ -253,6 +313,7 @@ let createGame (ctx: HttpContext) =
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let limits = ctx.RequestServices.GetRequiredService<GameLimits>()
+        let surface = surfaceOf ctx
         // No-JS form POST gets Post/Redirect/Get; datastar/API keeps status+Location.
         let wantsHtml = wantsHtmlResponse ctx
 
@@ -270,7 +331,7 @@ let createGame (ctx: HttpContext) =
             do! ctx.Response.WriteAsJsonAsync({| error = "MaxGamesReached" |})
         | Some(gameId, game) ->
             // Subscribe to game state changes
-            subscribeToGame gameId game assignmentManager supervisor
+            subscribeToGame surface gameId game assignmentManager supervisor
 
             // Get initial state and broadcast to all clients
             use initialSub =
@@ -278,7 +339,7 @@ let createGame (ctx: HttpContext) =
                     { new IObserver<MoveResult> with
                         member _.OnNext(result) =
                             let gameCount = supervisor.GetActiveGameCount()
-                            let element = renderGameBoard gameId result "" None gameCount
+                            let element = renderGameBoard surface gameId result "" None gameCount
                             broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                         member _.OnError(_) = ()
@@ -300,6 +361,7 @@ let getGame (ctx: HttpContext) =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
         let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let surface = surfaceOf ctx
         let gameId = ctx.Request.RouteValues.["id"] |> string
 
         // GET is safe: no subscription side effect here. Every game is subscribed for
@@ -307,13 +369,19 @@ let getGame (ctx: HttpContext) =
         // Read from the supervisor's cached state (TryGetState): never messages the game actor,
         // so a just-deleted game returns None (404) instead of hanging on a Stopped actor.
         match supervisor.TryGetState(gameId) with
+        | Some _ when surface.So && acceptsLdJson ctx ->
+            // httpRange-14: an RDF request on the thing → 303 See Other to its describing document.
+            ctx.Response.StatusCode <- 303
+            ctx.Response.Headers.Location <- Microsoft.Extensions.Primitives.StringValues $"/games/{gameId}/type"
         | Some result ->
             let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
             let assignment = assignmentManager.GetAssignment(gameId)
             let gameCount = supervisor.GetActiveGameCount()
             ctx.Response.Headers.CacheControl <- "no-cache, private"
             ctx.Response.Headers.Vary <- "Cookie"
-            let body = renderGameBoard gameId result userId assignment gameCount |> withBanner ctx
+            if surface.Sd then setDiscoveryHeaders ctx $"/games/{gameId}" (Some(gameAllow result))
+            if surface.So then setDescribedByHeader ctx gameId
+            let body = renderGameBoard surface gameId result userId assignment gameCount |> withBanner surface ctx
             let element = layout.htmlWithStream ctx (sprintf "/games/%s/sse" gameId) body
             ctx.Response.ContentType <- "text/html; charset=utf-8"
             do! Render.toStreamAsync ctx.Response.Body element
@@ -404,7 +472,7 @@ let makeMove (ctx: HttpContext) =
                     if not (hadSeat before uid) && (role = "X" || role = "O") then
                         eventLog.LogEvent("player_assigned", gameId, role = role)
                     // Command accepted; the new board is projected via the SSE event stream.
-                    subscribeToGame gameId game assignmentManager supervisor
+                    subscribeToGame (surfaceOf ctx) gameId game assignmentManager supervisor
                     game.MakeMove(moveAction)
                     let movePos = match moveAction with | XMove p | OMove p -> p
                     let after = game.GetState()
@@ -464,6 +532,9 @@ let deleteGame (ctx: HttpContext) =
         let wantsHtml = wantsHtmlResponse ctx
 
         match supervisor.GetGame(gameId), userId with
+        | _, _ when gameLocked () ->
+            // Locked experiment game: immutable to agents (no delete-and-replace contamination).
+            ctx.Response.StatusCode <- 409
         | Some game, Some uid ->
             // Check if deleting would reduce count below 6
             let gameCount = supervisor.GetActiveGameCount()
@@ -507,6 +578,9 @@ let resetGame (ctx: HttpContext) =
         let wantsHtml = wantsHtmlResponse ctx
 
         match supervisor.GetGame(gameId), userId with
+        | _, _ when gameLocked () ->
+            // Locked experiment game: an agent cannot clear the board and replay it.
+            ctx.Response.StatusCode <- 409
         | Some oldGame, Some uid ->
             // Check authorization - must be an assigned player
             let currentState = oldGame.GetState()
@@ -523,7 +597,7 @@ let resetGame (ctx: HttpContext) =
                     let (newGameId, newGame) = supervisor.CreateGame()
 
                     // Subscribe to new game state changes
-                    subscribeToGame newGameId newGame assignmentManager supervisor
+                    subscribeToGame (surfaceOf ctx) newGameId newGame assignmentManager supervisor
 
                     // Clear old game's player assignments
                     assignmentManager.RemoveGame(gameId)
@@ -540,7 +614,7 @@ let resetGame (ctx: HttpContext) =
                             { new IObserver<MoveResult> with
                                 member _.OnNext(result) =
                                     let gameCount = supervisor.GetActiveGameCount()
-                                    let element = renderGameBoard newGameId result "" None gameCount
+                                    let element = renderGameBoard (surfaceOf ctx) newGameId result "" None gameCount
                                     broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                                 member _.OnError(_) = ()
@@ -560,4 +634,48 @@ let resetGame (ctx: HttpContext) =
                 ctx.Response.StatusCode <- 403  // Forbidden - not an assigned player
         | None, _ -> ctx.Response.StatusCode <- 404
         | _, None -> ctx.Response.StatusCode <- 401  // Unauthorized - no user
+    }
+
+// ============================================================================
+// Sd / So: discovery documents (404 when the factor is off — the surface is the toggle)
+// ============================================================================
+
+/// GET /profile — ALPS profile of the app's affordances (Sd only).
+let profile (ctx: HttpContext) =
+    task {
+        let surface = surfaceOf ctx
+        if not surface.Sd then
+            ctx.Response.StatusCode <- 404
+        else
+            setDiscoveryHeaders ctx "/profile" (Some "GET, OPTIONS")
+            ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
+            do! ctx.Response.WriteAsync Discovery.alpsProfile
+    }
+
+/// GET /.well-known/home — JSON Home document (Sd only).
+let wellKnownHome (ctx: HttpContext) =
+    task {
+        let surface = surfaceOf ctx
+        if not surface.Sd then
+            ctx.Response.StatusCode <- 404
+        else
+            setDiscoveryHeaders ctx "/.well-known/home" (Some "GET, OPTIONS")
+            ctx.Response.ContentType <- "application/json-home; charset=utf-8"
+            do! ctx.Response.WriteAsync Discovery.jsonHome
+    }
+
+/// GET /games/{id}/type — the game's RDF description as schema.org/Game JSON-LD (So only).
+/// The document the game URI (the thing) dereferences to under content negotiation.
+let gameType (ctx: HttpContext) =
+    task {
+        let surface = surfaceOf ctx
+        let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+        let gameId = ctx.Request.RouteValues.["id"] |> string
+        match surface.So, supervisor.TryGetState(gameId) with
+        | false, _ | _, None ->
+            ctx.Response.StatusCode <- 404
+        | true, Some _ ->
+            let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}/games/{gameId}"
+            ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
+            do! ctx.Response.WriteAsync(Discovery.gameJsonLd gameUri)
     }

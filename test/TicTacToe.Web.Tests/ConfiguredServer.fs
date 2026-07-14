@@ -12,7 +12,7 @@ open System.Threading
 /// (InitialGames/MaxGames via the same env vars the orchestrator uses), on a free port.
 /// Runs the already-built dll (the test project references TicTacToe.Web, so it is built
 /// alongside the tests) to avoid `dotnet run` rebuild/file-lock issues. Disposing kills it.
-type ConfiguredServer(initialGames: int, maxGames: int) =
+type ConfiguredServer(initialGames: int, ?maxGames: int) =
 
     static let repoRoot () =
         let rec up (dir: DirectoryInfo) =
@@ -28,7 +28,7 @@ type ConfiguredServer(initialGames: int, maxGames: int) =
         listener.Stop()
         port
 
-    static let startProcess (baseUrl: string) (initialGames: int) (maxGames: int) =
+    static let startProcess (baseUrl: string) (initialGames: int) (maxGames: int option) =
         let baseDir = DirectoryInfo(AppContext.BaseDirectory)   // .../bin/<Config>/<tfm>
         let tfm = baseDir.Name
         let config = baseDir.Parent.Name
@@ -39,7 +39,8 @@ type ConfiguredServer(initialGames: int, maxGames: int) =
         psi.ArgumentList.Add "--urls"
         psi.ArgumentList.Add baseUrl
         psi.Environment.["TICTACTOE_INITIAL_GAMES"] <- string initialGames
-        psi.Environment.["TICTACTOE_MAX_GAMES"] <- string maxGames
+        // No cap unless one is asked for: the shared suite server runs the app's own defaults.
+        maxGames |> Option.iter (fun m -> psi.Environment.["TICTACTOE_MAX_GAMES"] <- string m)
         psi.Environment.["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] <- "1"
         psi.Environment.["ASPNETCORE_ENVIRONMENT"] <- "Development"
         psi.RedirectStandardOutput <- true

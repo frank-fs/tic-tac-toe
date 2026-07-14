@@ -14,11 +14,9 @@ type TestBase() =
     let mutable context: IBrowserContext = null
     let mutable page: IPage = null
 
-    let baseUrl =
-        Environment.GetEnvironmentVariable("TEST_BASE_URL")
-        |> Option.ofObj
-        |> Option.filter (fun s -> not (String.IsNullOrEmpty(s)))
-        |> Option.defaultValue "http://localhost:5000"
+    // Set by the SharedServer global fixture: TEST_BASE_URL when supplied, else the URL of the
+    // server it booted for this run.
+    let baseUrl = SharedServer.BaseUrl
 
     let timeoutMs =
         Environment.GetEnvironmentVariable("TEST_TIMEOUT_MS")

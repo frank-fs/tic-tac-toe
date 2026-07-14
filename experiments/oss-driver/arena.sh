@@ -28,12 +28,16 @@ arm_config() {          # one job: set globals for the named arm
       EXTRA_ENV=(TICTACTOE_DISABLE_JS=1)
       ;;
     surface)
-      PROJECT="$REPO_ROOT/experiments/src/TicTacToe.Web.Surface"
+      # The Surface twin is retired (spec 003b): the primary app IS the factorial surface,
+      # driven by TICTACTOE_CELL. Same binary as `proto`, different port + cell.
+      PROJECT="$REPO_ROOT/src/TicTacToe.Web"
       PORT=5328
-      ROUTE=arenas
-      # LOCK_GAME: the experiment game is immutable to agents (delete/restart -> 409), so an
-      # agent that discovers or invents /restart cannot reset+replay the board and corrupt the run.
-      EXTRA_ENV=(${CELL:+TICTACTOE_CELL=$CELL} TICTACTOE_LOCK_GAME=1)
+      ROUTE=games
+      # LOCK_GAME: the experiment game is immutable to agents (delete/reset -> 409), so an
+      # agent that discovers or invents /reset cannot reset+replay the board and corrupt the run.
+      # DISABLE_JS: no datastar bundle, no SSE auto-connect — the cold-start page is the
+      # progressive-enhancement HTML the twin served, with no stream URL to waste a turn on.
+      EXTRA_ENV=(${CELL:+TICTACTOE_CELL=$CELL} TICTACTOE_LOCK_GAME=1 TICTACTOE_DISABLE_JS=1)
       ;;
     *)
       echo "unknown arm: $1 (expected proto|surface)" >&2

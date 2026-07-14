@@ -12,6 +12,8 @@
     <Compile Include="HomeRenderTests.fs" />
     <Compile Include="AuthTests.fs" />
     <Compile Include="TestHelpers.fs" />
+    <Compile Include="ConfiguredServer.fs" />
+    <Compile Include="SharedServer.fs" />
     <Compile Include="TestBase.fs" />
     <Compile Include="HomePageTests.fs" />
     <Compile Include="GamePlayTests.fs" />
@@ -24,7 +26,6 @@
     <Compile Include="AffordanceTests.fs" />
     <Compile Include="ProtoPeServerRenderTests.fs" />
     <Compile Include="SseBroadcastTests.fs" />
-    <Compile Include="ConfiguredServer.fs" />
     <Compile Include="PerGameStreamTests.fs" />
   </ItemGroup>
 

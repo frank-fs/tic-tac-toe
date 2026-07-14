@@ -2,9 +2,10 @@ module TicTacToe.Web.templates.home
 
 open Microsoft.AspNetCore.Http
 open Oxpecker.ViewEngine
+open TicTacToe.Web.Surface
 open TicTacToe.Web.templates.game
 
-let homePage (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq) =
+let homePage (surface: Surface) (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq) =
     ctx.Items["Title"] <- "Tic Tac Toe"
 
     Fragment() {
@@ -15,8 +16,8 @@ let homePage (ctx: HttpContext) (allowCreate: bool) (gameBoards: HtmlElement seq
             h1(class' = "title") { "Tic Tac Toe" }
 
             // New Game button - creates a game via POST /games.
-            // Withheld once the game cap is reached.
-            if allowCreate then
+            // Withheld once the game cap is reached, and by A=0 (no action affordance).
+            if allowCreate && surface.A then
                 div(class' = "new-game-container") {
                     // Real form so a game can be created with no JS; datastar enhances the
                     // submit when present.

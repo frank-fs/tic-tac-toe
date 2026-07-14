@@ -1,0 +1,88 @@
+{
+  "cell": "1110",
+  "arm": "http",
+  "factors": {
+    "A": true,
+    "C": true,
+    "Sd": true,
+    "So": false
+  },
+  "core": {
+    "appIs": {
+      "value": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+      "keywords": [
+        "tic",
+        "tac",
+        "toe",
+        "tictactoe"
+      ],
+      "partial": [
+        "game",
+        "board",
+        "grid"
+      ]
+    },
+    "goal": {
+      "value": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+      "keywords": [
+        "row",
+        "three",
+        "line",
+        "in a row"
+      ],
+      "partial": [
+        "win",
+        "beat",
+        "goal",
+        "draw"
+      ]
+    },
+    "howToJoin": {
+      "value": "take a seat by submitting the first move for a side; the first mover on each side is seated (X moves first, then O); later arrivals are observers",
+      "keywords": [
+        "seat",
+        "first move",
+        "claim",
+        "submitting"
+      ],
+      "partial": [
+        "move",
+        "post",
+        "play",
+        "join"
+      ]
+    },
+    "isMultiplayer": true
+  },
+  "rolesExpected": {
+    "X": {
+      "myRole": "X",
+      "canIMove": true,
+      "myAffordances": [
+        "make a move on X's turn to an empty square"
+      ]
+    }
+  },
+  "artifactsPresent": {
+    "bodyActionForms": {
+      "present": true,
+      "gating": "seat+turn"
+    },
+    "profileContract": true,
+    "ariaStructure": true,
+    "ontologyTyping": false
+  },
+  "expectedActionVocabSource": {
+    "acceptable": [
+      "board",
+      "profile"
+    ],
+    "likelyUnderA1": "profile",
+    "note": "A=1 gates the active form to the caller's legal squares (seat+turn); C labels every square '{position}, {state}', so the vocabulary is on the board either way. /profile also enumerates them."
+  },
+  "expectedArtifactDiscovery": [
+    "ARIA grid/gridcell roles + a live status region; squares accessibly labeled '{position}, {state}' — the position vocabulary (TopLeft..BottomRight) exposed to assistive tech",
+    "the /profile ALPS contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the game; /.well-known/home"
+  ],
+  "notes": "Factors on: ACSd. A=1: a move form ONLY on the caller's currently-legal squares (seat+turn-gated); the seat is claimed by submitting. C=1: accessible structure; the position vocabulary is announced via aria-labels. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=0: no describedby Link, /games/{id}/type 404s."
+}

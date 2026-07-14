@@ -92,7 +92,8 @@ run_game() {
   for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done
   cp /tmp/arena-surface.jsonl "$D/log-$tag.jsonl" 2>/dev/null || true
   cp /tmp/arena-surface.http.jsonl "$D/http-$tag.jsonl" 2>/dev/null || true   # proxy wire: the authoritative discovery record
-  dotnet run --project experiments/oss-driver --no-build -- quality --game "$gid" --log "$D/log-$tag.jsonl" --out "$D/q-$tag.json" >/dev/null 2>&1 || true
+  # quality: the minimax scorer moved to experiment/scorer/ (spec 003b, IQualityScorer plugin);
+  # the agent-hypothesis harness `quality` subcommand loads it and writes q-<tag>.json.
   for spec in X:1 O:2 O:3; do
     local role=${spec%%:*} n=${spec##*:}
     dotnet run --project experiments/oss-driver --no-build -- code --transcript "$D/t-$tag-$role$n.jsonl" --role "$role" > "$D/c-$tag-$role$n.json" 2>/dev/null || echo '{}' > "$D/c-$tag-$role$n.json"

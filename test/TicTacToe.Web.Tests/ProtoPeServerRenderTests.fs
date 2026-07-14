@@ -22,11 +22,8 @@ type ProtoPeServerRenderTests() =
     let mutable client: HttpClient = null
     let mutable handler: HttpClientHandler = null
 
-    let baseUrl =
-        Environment.GetEnvironmentVariable("TEST_BASE_URL")
-        |> Option.ofObj
-        |> Option.filter (fun s -> not (String.IsNullOrEmpty(s)))
-        |> Option.defaultValue "http://localhost:5000"
+    // TEST_BASE_URL when supplied, else the server the SharedServer fixture booted for this run.
+    let baseUrl = SharedServer.BaseUrl
 
     let postForm (url: string) (fields: (string * string) list) : Task<HttpResponseMessage> =
         let content = new FormUrlEncodedContent(fields |> List.map (fun (k, v) -> KeyValuePair(k, v)))

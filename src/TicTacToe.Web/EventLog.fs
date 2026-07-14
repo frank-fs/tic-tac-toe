@@ -29,6 +29,9 @@ type EventLog(?logPath: string) =
                 mp.Post(obj.ToJsonString())
             // drop silently when saturated — log loss acceptable over crash
 
+    /// Emits BOTH vocabularies on one line: the app's own `role`/`move`/`reason` keys and the
+    /// spec-001 §5 generic envelope (`actor` + opaque `payload`) the app-agnostic harness reads.
+    /// One line, one truth — no second log to drift.
     member _.LogEvent(eventType: string, gameId: string,
                       ?role: string, ?move: string, ?reason: string,
                       ?outcome: string, ?moveCount: int) =
@@ -37,8 +40,13 @@ type EventLog(?logPath: string) =
         obj["timestamp"] <- JsonValue.Create(DateTimeOffset.UtcNow.ToString("o"))
         obj["game_id"] <- JsonValue.Create(gameId)
         role |> Option.iter (fun r -> obj["role"] <- JsonValue.Create(r))
+        role |> Option.iter (fun r -> obj["actor"] <- JsonValue.Create(r))
         move |> Option.iter (fun m -> obj["move"] <- JsonValue.Create(m))
         reason |> Option.iter (fun r -> obj["reason"] <- JsonValue.Create(r))
         outcome |> Option.iter (fun o -> obj["outcome"] <- JsonValue.Create(o))
         moveCount |> Option.iter (fun n -> obj["move_count"] <- JsonValue.Create(n))
+        let payload = JsonObject()
+        move |> Option.iter (fun m -> payload["move"] <- JsonValue.Create(m))
+        reason |> Option.iter (fun r -> payload["reason"] <- JsonValue.Create(r))
+        obj["payload"] <- payload
         writeJson obj

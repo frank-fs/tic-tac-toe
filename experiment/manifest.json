@@ -1,0 +1,30 @@
+{
+  "sample": "tic-tac-toe",
+  "launch": {
+    "project": "src/TicTacToe.Web",
+    "port": 5328,
+    "route": "games",
+    "readyProbe": "/login",
+    "gameIdPattern": "games/[0-9a-f-]{36}"
+  },
+  "requestLogEnv": "TICTACTOE_REQUEST_LOG_PATH",
+  "fixedEnv": {
+    "TICTACTOE_LOCK_GAME": "1",
+    "TICTACTOE_INITIAL_GAMES": "1",
+    "TICTACTOE_MAX_GAMES": "1",
+    "TICTACTOE_DISABLE_JS": "1"
+  },
+  "toggle": {
+    "convention": "bitstring",
+    "var": "TICTACTOE_CELL",
+    "factors": ["A", "C", "Sd", "So"]
+  },
+  "artifactPaths": {
+    "profileContract": "/profile",
+    "ontologyTyping": "/type"
+  },
+  "seats": ["X:1", "O:2", "O:3"],
+  "scorer": "experiment/scorer/TicTacToe.Quality.fsproj",
+  "directedFacts": "experiment/directed-facts.json",
+  "groundtruthDir": "experiment/groundtruth"
+}

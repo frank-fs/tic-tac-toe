@@ -1,0 +1,87 @@
+{
+  "cell": "0011",
+  "arm": "http",
+  "factors": {
+    "A": false,
+    "C": false,
+    "Sd": true,
+    "So": true
+  },
+  "core": {
+    "appIs": {
+      "value": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+      "keywords": [
+        "tic",
+        "tac",
+        "toe",
+        "tictactoe"
+      ],
+      "partial": [
+        "game",
+        "board",
+        "grid"
+      ]
+    },
+    "goal": {
+      "value": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+      "keywords": [
+        "row",
+        "three",
+        "line",
+        "in a row"
+      ],
+      "partial": [
+        "win",
+        "beat",
+        "goal",
+        "draw"
+      ]
+    },
+    "howToJoin": {
+      "value": "take a seat by submitting the first move for a side; the first mover on each side is seated (X moves first, then O); later arrivals are observers",
+      "keywords": [
+        "seat",
+        "first move",
+        "claim",
+        "submitting"
+      ],
+      "partial": [
+        "move",
+        "post",
+        "play",
+        "join"
+      ]
+    },
+    "isMultiplayer": true
+  },
+  "rolesExpected": {
+    "X": {
+      "myRole": "X",
+      "canIMove": true,
+      "myAffordances": [
+        "make a move on X's turn to an empty square"
+      ]
+    }
+  },
+  "artifactsPresent": {
+    "bodyActionForms": {
+      "present": false,
+      "gating": "none"
+    },
+    "profileContract": true,
+    "ariaStructure": false,
+    "ontologyTyping": true
+  },
+  "expectedActionVocabSource": {
+    "acceptable": [
+      "profile"
+    ],
+    "likelyUnderA1": "profile",
+    "note": "No move form and no aria labels: /profile is the only place the position tokens are named."
+  },
+  "expectedArtifactDiscovery": [
+    "the /profile ALPS contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the game; /.well-known/home",
+    "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
+  ],
+  "notes": "Factors on: SdSo. A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=0: no ARIA roles, landmarks or live region. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=1: schema.org Game ontology typing."
+}

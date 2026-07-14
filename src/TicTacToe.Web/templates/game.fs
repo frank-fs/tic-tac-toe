@@ -3,6 +3,7 @@ module TicTacToe.Web.templates.game
 open Oxpecker.ViewEngine
 open TicTacToe.Model
 open TicTacToe.Web.Model
+open TicTacToe.Web.Surface
 
 let private allPositions =
     [ TopLeft
@@ -76,7 +77,7 @@ let hasGameActivity (result: MoveResult) (assignment: PlayerAssignment option) =
 
 /// No-JS error banner rendered from a Post/Redirect/Get ?error= flash token, so a rejected
 /// write (at-capacity create, rejected move) is legible after the redirect without JS.
-let renderErrorBanner (error: string) : HtmlElement =
+let renderErrorBanner (surface: Surface) (error: string) : HtmlElement =
     let message =
         match error with
         | "at-capacity" -> "Cannot create a new game: the game limit has been reached."
@@ -85,8 +86,8 @@ let renderErrorBanner (error: string) : HtmlElement =
         | "wrong-player" -> "Move rejected: wrong player."
         | "game-over" -> "Move rejected: the game is over."
         | _ -> "That action could not be completed."
-    div(class' = "error-banner").attr("role", "alert") { message }
-    :> HtmlElement
+    let banner = div(class' = "error-banner") { message }
+    (if surface.C then banner.attr("role", "alert") else banner) :> HtmlElement
 
 /// Self-descriptive 404 body for a missing game, with a way home.
 let notFoundPage: HtmlElement =
@@ -102,33 +103,51 @@ let notFoundPage: HtmlElement =
 // Private Rendering
 // ============================================================================
 
+/// Occupancy of a square, in the vocabulary C announces to assistive tech.
+let private occupancyOf (state: GameState) (position: SquarePosition) =
+    match state.TryGetValue(position) with
+    | true, Taken player -> player.ToString()
+    | _ -> "empty"
+
 /// Render a clickable square for a valid move.
-/// Progressive enhancement: a real form so the move command works as a plain POST
-/// without JavaScript; datastar enhances the submit (preventing the native POST and
-/// sending the move as signals) when JS is present.
-let private renderClickableSquare gameId (player: Player) (position: SquarePosition) =
+/// A=1 only: the move affordance IS the form. Progressive enhancement — a real form so the
+/// move command works as a plain POST without JavaScript; datastar enhances the submit
+/// (preventing the native POST and sending the move as signals) when JS is present.
+/// C=1 names the action ("Play X at TopLeft") and hides the decorative preview glyph.
+let private renderClickableSquare (surface: Surface) gameId (player: Player) (position: SquarePosition) =
     let posStr = position.ToString()
     let playerStr = player.ToString()
+    let preview = span(class' = "preview") { playerStr }
+    let button' = button(class' = "square square-clickable", type' = "submit")
+    let square =
+        if surface.C then
+            button'.attr("aria-label", sprintf "Play %s at %s" playerStr posStr) { preview.attr("aria-hidden", "true") }
+        else
+            button' { preview }
     form(method = "post", action = sprintf "/games/%s" gameId)
         .attr("rel", "make-move")
         .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
         input(type' = "hidden", name = "player", value = playerStr)
         input(type' = "hidden", name = "position", value = posStr)
-        button(class' = "square square-clickable", type' = "submit")
-            .attr("aria-label", sprintf "Play %s at %s" playerStr posStr) {
-            span(class' = "preview").attr("aria-hidden", "true") { playerStr }
-        }
+        square
     }
     :> HtmlElement
 
-/// Render a static square (taken or empty)
-let private renderStaticSquare (state: GameState) (position: SquarePosition) =
+/// Render a static square (taken, not the caller's to play, or A=0 — no action affordance).
+/// C=1 makes it a labelled gridcell, so the position vocabulary reaches the a11y tree even
+/// where no form names it.
+let private renderStaticSquare (surface: Surface) (state: GameState) (position: SquarePosition) =
     let content =
         match state.TryGetValue(position) with
         | true, Taken player -> span(class' = "player") { player.ToString() }
         | _ -> span(class' = "empty") { raw "·" }
-    div(class' = "square") { content }
-    :> HtmlElement
+    let cell = div(class' = "square") { content }
+    let cell' =
+        if surface.C then
+            cell.attr("role", "gridcell")
+                .attr("aria-label", sprintf "%s, %s" (position.ToString()) (occupancyOf state position))
+        else cell
+    cell' :> HtmlElement
 
 /// Render the player legend showing X and O assignments
 let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: Player option) =
@@ -148,7 +167,7 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
 /// Render one control as a real no-JS form (enabled) or a disabled button (disabled).
 /// rel types the affordance in the markup (the delete form is the no-JS POST alias for the
 /// DELETE verb on the canonical /games/{id} resource). datastarAction enhances the submit.
-let private controlButton enabled (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) =
+let private controlButton enabled (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) : HtmlElement =
     if enabled then
         form(method = "post", action = action)
             .attr("rel", rel)
@@ -160,10 +179,13 @@ let private controlButton enabled (btnClass: string) (rel: string) (action: stri
         button(class' = btnClass, type' = "button").attr("disabled", "disabled") { label }
         :> HtmlElement
 
-/// Render control buttons (reset/delete) based on viewer assignment and game state
-let private renderControls gameId viewerPlayer assignment gameCount activity =
+/// Render control buttons (reset/delete) based on viewer assignment and game state.
+/// A=0 withholds the action affordance (disabled buttons, no form); a locked game
+/// (TICTACTOE_LOCK_GAME) offers neither, so an agent cannot reset-and-replay a run.
+let private renderControls (surface: Surface) locked gameId viewerPlayer assignment gameCount activity =
     let resetEnabled, deleteEnabled =
         match viewerPlayer, assignment with
+        | _ when locked || not surface.A -> (false, false)
         | Some X, Some { PlayerXId = Some _ }
         | Some O, Some { PlayerOId = Some _ } ->
             (activity, true)
@@ -185,24 +207,28 @@ let private renderControls gameId viewerPlayer assignment gameCount activity =
 // ============================================================================
 
 /// Render a complete game board, personalized for the given viewer.
-/// Resolves the viewer's player token internally from assignment + userId.
-let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
+/// Resolves the viewer's player token internally from assignment + userId — the A=1 self-seat:
+/// an unseated visitor on X's turn sees the claimable board as X and seats X by submitting.
+/// A=0 renders no move form at all: the action still exists on the wire (POST player+position),
+/// but the representation does not afford it.
+let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
     let (State state) = result
     let viewerPlayer = resolveViewer assignment userId result
     let activity = hasGameActivity result assignment
+    let locked = gameLocked ()
+    let staticSquare = renderStaticSquare surface state
     let renderSquare, currentPlayer, status, canMove =
         match (result, viewerPlayer) with
-        | CanMove(player, validMoves, status) ->
+        | CanMove(player, validMoves, status) when surface.A ->
             let render pos =
                 if validMoves |> Array.contains pos then
-                    renderClickableSquare gameId player pos
+                    renderClickableSquare surface gameId player pos
                 else
-                    renderStaticSquare state pos
+                    staticSquare pos
             (render, Some player, status, true)
-        | Watching(cp, status) ->
-            (renderStaticSquare state, cp, status, false)
-        | Finished status ->
-            (renderStaticSquare state, None, status, false)
+        | CanMove(player, _, status) -> (staticSquare, Some player, status, false)
+        | Watching(cp, status) -> (staticSquare, cp, status, false)
+        | Finished status -> (staticSquare, None, status, false)
     // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
     // parsing the display prose; data-can-move says whether THIS viewer may move now.
     let statusToken =
@@ -212,6 +238,16 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
         | Won(_, player) -> sprintf "won-%s" (player.ToString().ToLowerInvariant())
         | Draw _ -> "draw"
         | Error _ -> "error"
+    let statusRegion =
+        let d = div(class' = "status") { h2() { status } }
+        if surface.C then d.attr("role", "status").attr("aria-live", "polite") else d
+    let boardGrid =
+        let d =
+            div(class' = "board") {
+                for position in allPositions do
+                    renderSquare position
+            }
+        if surface.C then d.attr("role", "grid") else d
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-game-status", statusToken)
         .attr("data-can-move", (if canMove then "true" else "false"))
@@ -222,15 +258,12 @@ let renderGameBoard (gameId: string) (result: MoveResult) (userId: string) (assi
         div(class' = "game-link") {
             a(href = sprintf "/games/%s" gameId) { sprintf "Game %s" gameId }
         }
-        // role="status" announces turn/win/draw to assistive tech on both the JS-morph and
+        // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
-        div(class' = "status").attr("role", "status").attr("aria-live", "polite") { h2() { status } }
-        div(class' = "board") {
-            for position in allPositions do
-                renderSquare position
-        }
+        statusRegion
+        boardGrid
         renderLegend assignment currentPlayer
-        renderControls gameId viewerPlayer assignment gameCount activity
+        renderControls surface locked gameId viewerPlayer assignment gameCount activity
     }
 
 /// CSS styles for the game board

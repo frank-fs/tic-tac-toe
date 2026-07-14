@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+    <AssemblyName>TicTacToe.Quality</AssemblyName>
+  </PropertyGroup>
+
+  <!-- The harness owns AgentHypothesis.Contract and pins it via AssemblyLoadContext when it loads
+       this plugin, so the contract is REFERENCED, never copied. Default path assumes the harness
+       repo is a sibling checkout; the harness (which consumes this sample as a submodule) overrides
+       it: -p:ContractProject=<path>. Deliberately NOT in TicTacToe.sln — the app must build with no
+       harness present. -->
+  <PropertyGroup>
+    <ContractProject Condition="'$(ContractProject)' == ''">$(MSBuildThisFileDirectory)../../../agent-hypothesis/src/Contract/AgentHypothesis.Contract.fsproj</ContractProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Quality.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(ContractProject)" Private="false" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="10.0.102" />
+  </ItemGroup>
+
+</Project>

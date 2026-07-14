@@ -1,5 +1,6 @@
 open System
 open System.IO.Compression
+open System.Threading.Tasks
 open Microsoft.AspNetCore.Authentication
 open Microsoft.AspNetCore.Authentication.Cookies
 open Microsoft.AspNetCore.Builder
@@ -15,6 +16,7 @@ open Frank.OpenApi
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Web.EventLog
+open TicTacToe.Web.Surface
 open TicTacToe.Engine
 open TicTacToe.Web.Extensions
 
@@ -46,6 +48,7 @@ let configureServices (services: IServiceCollection) =
     services.AddRouting().AddHttpContextAccessor() |> ignore
 
     services
+        .AddSingleton<Surface>(Surface.fromEnvironment ())
         .AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ())
         .AddSingleton<GameLimits>(fun _ -> gameLimits ())
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
@@ -144,6 +147,74 @@ let gameSse =
         datastar Handlers.gameSse
     }
 
+// Sd: the discovery documents. Present on every cell as routes; 404 unless Sd is on, so the
+// factor — not the routing table — decides whether the contract is discoverable.
+let profileResource =
+    resource "/profile" {
+        name "Profile"
+        requireAuth
+        get Handlers.profile
+    }
+
+let wellKnownHomeResource =
+    resource "/.well-known/home" {
+        name "WellKnownHome"
+        requireAuth
+        get Handlers.wellKnownHome
+    }
+
+// So: the describing document the game URI dereferences to under ld+json conneg.
+let gameType =
+    resource "/games/{id}/type" {
+        name "GameType"
+        requireAuth
+        get Handlers.gameType
+    }
+
+let private optionsAllow (path: string) =
+    match path with
+    | "/" -> Some "GET, OPTIONS"
+    | "/games" -> Some "POST, OPTIONS"
+    | "/profile" | "/.well-known/home" -> Some "GET, OPTIONS"
+    | p when p.StartsWith "/games/" -> Some "GET, POST, DELETE, OPTIONS"
+    | _ -> None
+
+/// Sd: OPTIONS answers "what can I do here?" without a state change. Off entirely when Sd is off.
+let useOptionsDiscovery (app: IApplicationBuilder) =
+    let surface = app.ApplicationServices.GetRequiredService<Surface>()
+    if not surface.Sd then app
+    else
+        app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+            task {
+                match ctx.Request.Method, optionsAllow ctx.Request.Path.Value with
+                | "OPTIONS", Some allow ->
+                    ctx.Response.StatusCode <- 204
+                    ctx.Response.Headers.Append("Allow", allow)
+                | _ -> do! next.Invoke ctx
+            }
+            :> Task)
+
+/// The resource a stream endpoint streams ABOUT — None when the path is not a stream endpoint.
+let private streamCanonical (path: string) =
+    match path with
+    | "/sse" -> Some "/"
+    | p when p.EndsWith "/sse" -> Some(p.Substring(0, p.Length - 4))
+    | _ -> None
+
+/// Guard the SSE endpoints: a caller that did not ask for text/event-stream gets an immediate 406
+/// linking the resource that answers a plain GET, instead of an open stream it would sit on until
+/// its own timeout fires. Must run BEFORE routing — the datastar handler flushes stream headers as
+/// soon as it is entered, so a status set inside it never reaches the wire.
+let useStreamGuard (app: IApplicationBuilder) =
+    app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+        task {
+            match streamCanonical ctx.Request.Path.Value with
+            | Some canonical when not (Handlers.acceptsEventStream ctx) ->
+                do! Handlers.rejectNonStream ctx canonical
+            | _ -> do! next.Invoke ctx
+        }
+        :> Task)
+
 /// Create initial games on application startup
 let createInitialGames (app: IApplicationBuilder) =
     let lifetime =
@@ -151,6 +222,7 @@ let createInitialGames (app: IApplicationBuilder) =
 
     let supervisor = app.ApplicationServices.GetRequiredService<GameSupervisor>()
     let limits = app.ApplicationServices.GetRequiredService<GameLimits>()
+    let surface = app.ApplicationServices.GetRequiredService<Surface>()
 
     let assignmentManager =
         app.ApplicationServices.GetRequiredService<PlayerAssignmentManager>()
@@ -158,7 +230,7 @@ let createInitialGames (app: IApplicationBuilder) =
     lifetime.ApplicationStarted.Register(fun () ->
         for _ in 1..limits.InitialGames do
             let (gameId, game) = supervisor.CreateGame()
-            Handlers.subscribeToGame gameId game assignmentManager supervisor)
+            Handlers.subscribeToGame surface gameId game assignmentManager supervisor)
     |> ignore
 
     app
@@ -190,6 +262,8 @@ let main args =
         // state-changing POSTs is mitigated by the SameSite=Strict auth cookie (see useAuthentication),
         // which blocks the cross-site requests an antiforgery token would otherwise guard.
         plugBeforeRouting createInitialGames
+        plugBeforeRouting useOptionsDiscovery
+        plugBeforeRouting useStreamGuard
 
         resource login
         resource logout
@@ -198,9 +272,12 @@ let main args =
         resource sse
         resource games
         resource gameById
+        resource gameType
         resource gameReset
         resource gameDelete
         resource gameSse
+        resource profileResource
+        resource wellKnownHomeResource
     }
 
     0

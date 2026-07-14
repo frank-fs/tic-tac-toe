@@ -1,0 +1,82 @@
+{
+  "cell": "0000",
+  "arm": "http",
+  "factors": {
+    "A": false,
+    "C": false,
+    "Sd": false,
+    "So": false
+  },
+  "core": {
+    "appIs": {
+      "value": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+      "keywords": [
+        "tic",
+        "tac",
+        "toe",
+        "tictactoe"
+      ],
+      "partial": [
+        "game",
+        "board",
+        "grid"
+      ]
+    },
+    "goal": {
+      "value": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+      "keywords": [
+        "row",
+        "three",
+        "line",
+        "in a row"
+      ],
+      "partial": [
+        "win",
+        "beat",
+        "goal",
+        "draw"
+      ]
+    },
+    "howToJoin": {
+      "value": "take a seat by submitting the first move for a side; the first mover on each side is seated (X moves first, then O); later arrivals are observers",
+      "keywords": [
+        "seat",
+        "first move",
+        "claim",
+        "submitting"
+      ],
+      "partial": [
+        "move",
+        "post",
+        "play",
+        "join"
+      ]
+    },
+    "isMultiplayer": true
+  },
+  "rolesExpected": {
+    "X": {
+      "myRole": "X",
+      "canIMove": true,
+      "myAffordances": [
+        "make a move on X's turn to an empty square"
+      ]
+    }
+  },
+  "artifactsPresent": {
+    "bodyActionForms": {
+      "present": false,
+      "gating": "none"
+    },
+    "profileContract": false,
+    "ariaStructure": false,
+    "ontologyTyping": false
+  },
+  "expectedActionVocabSource": {
+    "acceptable": [],
+    "likelyUnderA1": null,
+    "note": "Floor: the surface names no action and no position token. Any correct move vocabulary is prior knowledge or probing, not discovery."
+  },
+  "expectedArtifactDiscovery": [],
+  "notes": "Factors on: none (floor). A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=0: no describedby Link, /games/{id}/type 404s."
+}
