@@ -83,18 +83,24 @@ else
     #      judge from a 3rd (spectator) jar.
     #   ungated (A=0) -> spectator still gets a form on all 9 squares
     #   gated   (A=1) -> spectator gets none
+    # Count MOVE forms only. An in-progress board ALWAYS carries 2 control forms
+    # (reset/delete — twin-verbatim, handler-enforced 409 under lock), so total form
+    # count is 11 naive / 2 gated, never 9 / 0. Each move form carries a hidden
+    # `position` input; the control forms do not — so count those.
+    # NOTE: the position vocabulary is TopCenter, NOT TopMiddle (an invalid token 400s,
+    # which silently left O unseated and broke this check).
     jarX=$(mktemp); jarO=$(mktemp); jarS=$(mktemp)
     curl -sc "$jarX" -b "$jarX" "$BASE/login" >/dev/null 2>&1
-    curl -s -b "$jarX" -c "$jarX" -X POST "$BASE/games/$gid" -d "player=X&position=TopLeft"    >/dev/null 2>&1
+    curl -s -b "$jarX" -c "$jarX" -X POST "$BASE/games/$gid" -d "player=X&position=TopLeft"   >/dev/null 2>&1
     curl -sc "$jarO" -b "$jarO" "$BASE/login" >/dev/null 2>&1
-    curl -s -b "$jarO" -c "$jarO" -X POST "$BASE/games/$gid" -d "player=O&position=TopMiddle" >/dev/null 2>&1
+    curl -s -b "$jarO" -c "$jarO" -X POST "$BASE/games/$gid" -d "player=O&position=TopCenter" >/dev/null 2>&1
     curl -sc "$jarS" -b "$jarS" "$BASE/login" >/dev/null 2>&1
     pageS=$(curl -s -b "$jarS" -c "$jarS" "$BASE/games/$gid" 2>/dev/null)
-    nforms=$(echo "$pageS" | grep -oiE '<form[^>]*method=["'"'"']?post' | wc -l | tr -d ' ')
+    nforms=$(echo "$pageS" | grep -oiE 'name=["'"'"']?position' | wc -l | tr -d ' ')
     rm -f "$jarX" "$jarO" "$jarS"
     if   [ "$nforms" -eq 0 ]; then gotA=1
     elif [ "$nforms" -ge 9 ]; then gotA=0
-    else gotA="?($nforms forms — neither gated(0) nor naive(9))"; fi
+    else gotA="?($nforms move forms — neither gated(0) nor naive(9))"; fi
     echo "$page" | grep -qiE 'aria-[a-z]+=|role=["'"'"']' && gotC=1 || gotC=0
     [ "$(curl -s -o /dev/null -w '%{http_code}' -b "$jar" "$BASE/profile" 2>/dev/null)" = "200" ] && gotSd=1 || gotSd=0
     grep -qi 'rel="\?describedby' /tmp/003b-hdrs 2>/dev/null && gotSo=1 || gotSo=0
