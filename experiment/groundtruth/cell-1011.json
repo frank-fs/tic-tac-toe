@@ -78,11 +78,11 @@
       "profile"
     ],
     "likelyUnderA1": "profile",
-    "note": "Only the caller's currently-legal squares carry a form; the hidden position field is the sole in-page vocabulary. /profile also enumerates them."
+    "note": "A=1 gates the active form to the caller's legal squares (seat+turn), so an unseated agent is pushed toward /profile; board labels remain a valid source."
   },
   "expectedArtifactDiscovery": [
     "the /profile ALPS contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the game; /.well-known/home",
     "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
   ],
-  "notes": "Factors on: ASdSo. A=1: a move form ONLY on the caller's currently-legal squares (seat+turn-gated); the seat is claimed by submitting. C=0: no ARIA roles, landmarks or live region. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=1: schema.org Game ontology typing."
+  "notes": "Factors on: ASdSo. A=1: move forms ONLY for the caller's currently-legal squares (seat+turn-gated); every other square is a plain, non-interactive cell. C=0: no ARIA roles, landmarks or live region. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=1: schema.org Game ontology typing."
 }

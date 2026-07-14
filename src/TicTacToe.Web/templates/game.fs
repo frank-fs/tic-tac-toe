@@ -109,21 +109,17 @@ let private occupancyOf (state: GameState) (position: SquarePosition) =
     | true, Taken player -> player.ToString()
     | _ -> "empty"
 
-/// Render a clickable square for a valid move.
-/// A=1 only: the move affordance IS the form. Progressive enhancement — a real form so the
-/// move command works as a plain POST without JavaScript; datastar enhances the submit
-/// (preventing the native POST and sending the move as signals) when JS is present.
-/// C=1 names the action ("Play X at TopLeft") and hides the decorative preview glyph.
-let private renderClickableSquare (surface: Surface) gameId (player: Player) (position: SquarePosition) =
-    let posStr = position.ToString()
-    let playerStr = player.ToString()
-    let preview = span(class' = "preview") { playerStr }
-    let button' = button(class' = "square square-clickable", type' = "submit")
-    let square =
-        if surface.C then
-            button'.attr("aria-label", sprintf "Play %s at %s" playerStr posStr) { preview.attr("aria-hidden", "true") }
-        else
-            button' { preview }
+/// C: an accessible cell announces its position and occupancy to assistive tech.
+let private applyCell (surface: Surface) (state: GameState) (position: SquarePosition) (tag: HtmlTag) =
+    if surface.C then
+        tag.attr("role", "gridcell")
+           .attr("aria-label", sprintf "%s, %s" (position.ToString()) (occupancyOf state position))
+    else tag
+
+/// The move form wrapping one square. Progressive enhancement: a real form so the move command
+/// works as a plain POST without JavaScript; datastar enhances the submit (preventing the native
+/// POST and sending the move as signals) when JS is present.
+let private moveForm gameId (playerStr: string) (posStr: string) (square: HtmlElement) =
     form(method = "post", action = sprintf "/games/%s" gameId)
         .attr("rel", "make-move")
         .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
@@ -133,21 +129,58 @@ let private renderClickableSquare (surface: Surface) gameId (player: Player) (po
     }
     :> HtmlElement
 
-/// Render a static square (taken, not the caller's to play, or A=0 — no action affordance).
-/// C=1 makes it a labelled gridcell, so the position vocabulary reaches the a11y tree even
-/// where no form names it.
-let private renderStaticSquare (surface: Surface) (state: GameState) (position: SquarePosition) =
-    let content =
-        match state.TryGetValue(position) with
-        | true, Taken player -> span(class' = "player") { player.ToString() }
-        | _ -> span(class' = "empty") { raw "·" }
-    let cell = div(class' = "square") { content }
-    let cell' =
+/// A submittable square. C=1 names the action ("Play X at TopLeft") and hides the decorative
+/// preview glyph from the a11y tree.
+let private submitSquare (surface: Surface) (state: GameState) (playerStr: string) (position: SquarePosition) =
+    let btn =
         if surface.C then
-            cell.attr("role", "gridcell")
-                .attr("aria-label", sprintf "%s, %s" (position.ToString()) (occupancyOf state position))
-        else cell
-    cell' :> HtmlElement
+            button(class' = "square square-clickable", type' = "submit")
+                .attr("aria-label", sprintf "Play %s at %s" playerStr (position.ToString())) {
+                span(class' = "preview").attr("aria-hidden", "true") { playerStr }
+            }
+        else
+            button(class' = "square square-clickable", type' = "submit") {
+                span(class' = "preview") { playerStr }
+            }
+    (applyCell surface state position btn) :> HtmlElement
+
+/// A0's occupied / out-of-turn square: still inside a form, but the button carries HTML `disabled`
+/// (verbatim from the twin). That is a BROWSER-only guard — an HTTP agent ignores it and sees nine
+/// equally submittable forms, including the illegal ones. That is the point of the ungated design.
+let private disabledSquare (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
+    let btn = button(class' = "square", type' = "submit").attr("disabled", "disabled") { label }
+    (applyCell surface state position btn) :> HtmlElement
+
+/// A1's non-affordance cell: plain, non-interactive, no form.
+let private renderPlainCell (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
+    let btn = button(class' = "square", type' = "button").attr("disabled", "disabled") { label }
+    (applyCell surface state position btn) :> HtmlElement
+
+/// The glyph shown in a square that the caller cannot play into.
+let private squareLabel (state: GameState) (position: SquarePosition) : HtmlElement =
+    match state.TryGetValue(position) with
+    | true, Taken player -> span(class' = "player") { player.ToString() } :> HtmlElement
+    | _ -> span(class' = "empty") { raw "·" } :> HtmlElement
+
+/// Render one square. A is affordance GATING, not presence (the banked Surface instrument):
+///   A=0: ALL 9 squares are form-POST buttons (naive design); occupied/inactive ones are `disabled`
+///        (browser-only — an HTTP agent sees nine equally submittable forms).
+///   A=1: ONLY the caller's currently-legal moves are forms; every other square is a plain cell.
+let private renderSquare
+    (surface: Surface) (legal: Set<SquarePosition>) gameId (playerStr: string)
+    (state: GameState) (isActive: bool) (position: SquarePosition) =
+    let posStr = position.ToString()
+    let isTaken = match state.TryGetValue(position) with | true, Taken _ -> true | _ -> false
+    if surface.A then
+        if Set.contains position legal then
+            moveForm gameId playerStr posStr (submitSquare surface state playerStr position)
+        else
+            renderPlainCell surface state (squareLabel state position) position
+    else
+        let square =
+            if isActive && not isTaken then submitSquare surface state playerStr position
+            else disabledSquare surface state (squareLabel state position) position
+        moveForm gameId playerStr posStr square
 
 /// Render the player legend showing X and O assignments
 let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: Player option) =
@@ -180,12 +213,11 @@ let private controlButton enabled (btnClass: string) (rel: string) (action: stri
         :> HtmlElement
 
 /// Render control buttons (reset/delete) based on viewer assignment and game state.
-/// A=0 withholds the action affordance (disabled buttons, no form); a locked game
-/// (TICTACTOE_LOCK_GAME) offers neither, so an agent cannot reset-and-replay a run.
-let private renderControls (surface: Surface) locked gameId viewerPlayer assignment gameCount activity =
+/// A locked game (TICTACTOE_LOCK_GAME) offers neither, so an agent cannot reset-and-replay a run.
+let private renderControls locked gameId viewerPlayer assignment gameCount activity =
     let resetEnabled, deleteEnabled =
         match viewerPlayer, assignment with
-        | _ when locked || not surface.A -> (false, false)
+        | _ when locked -> (false, false)
         | Some X, Some { PlayerXId = Some _ }
         | Some O, Some { PlayerOId = Some _ } ->
             (activity, true)
@@ -207,28 +239,28 @@ let private renderControls (surface: Surface) locked gameId viewerPlayer assignm
 // ============================================================================
 
 /// Render a complete game board, personalized for the given viewer.
-/// Resolves the viewer's player token internally from assignment + userId — the A=1 self-seat:
-/// an unseated visitor on X's turn sees the claimable board as X and seats X by submitting.
-/// A=0 renders no move form at all: the action still exists on the wire (POST player+position),
-/// but the representation does not afford it.
+/// Resolves the viewer's player token internally from assignment + userId — the self-seat: an
+/// unseated visitor on X's turn sees the claimable board as X and seats X by submitting.
+/// A is affordance GATING: A=1 forms only on the caller's legal squares; A=0 a form on all nine.
 let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
     let (State state) = result
     let viewerPlayer = resolveViewer assignment userId result
     let activity = hasGameActivity result assignment
     let locked = gameLocked ()
-    let staticSquare = renderStaticSquare surface state
-    let renderSquare, currentPlayer, status, canMove =
+    let legal, currentPlayer, status, canMove =
         match (result, viewerPlayer) with
-        | CanMove(player, validMoves, status) when surface.A ->
-            let render pos =
-                if validMoves |> Array.contains pos then
-                    renderClickableSquare surface gameId player pos
-                else
-                    staticSquare pos
-            (render, Some player, status, true)
-        | CanMove(player, _, status) -> (staticSquare, Some player, status, false)
-        | Watching(cp, status) -> (staticSquare, cp, status, false)
-        | Finished status -> (staticSquare, None, status, false)
+        | CanMove(player, validMoves, status) -> (Set.ofArray validMoves, Some player, status, true)
+        | Watching(cp, status) -> (Set.empty, cp, status, false)
+        | Finished status -> (Set.empty, None, status, false)
+    // The player token the form submits: the viewer's own seat, else the seat the current turn
+    // would claim (A=0's ungated squares still have to name a player).
+    let playerStr =
+        match viewerPlayer, currentPlayer with
+        | Some p, _ -> p.ToString()
+        | None, Some p -> p.ToString()
+        | None, None -> "X"
+    let isActive = match result with | XTurn _ | OTurn _ -> true | _ -> false
+    let renderSquare = renderSquare surface legal gameId playerStr state isActive
     // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
     // parsing the display prose; data-can-move says whether THIS viewer may move now.
     let statusToken =
@@ -263,7 +295,7 @@ let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (us
         statusRegion
         boardGrid
         renderLegend assignment currentPlayer
-        renderControls surface locked gameId viewerPlayer assignment gameCount activity
+        renderControls locked gameId viewerPlayer assignment gameCount activity
     }
 
 /// CSS styles for the game board

@@ -65,7 +65,7 @@
   },
   "artifactsPresent": {
     "bodyActionForms": {
-      "present": false,
+      "present": true,
       "gating": "none"
     },
     "profileContract": true,
@@ -78,11 +78,11 @@
       "profile"
     ],
     "likelyUnderA1": "profile",
-    "note": "No move form (A=0): the aria-labels ('{position}, {state}') are the only in-page position vocabulary. /profile also enumerates them."
+    "note": "A=0 puts a form on every square, so the board names the vocabulary; /profile enumerates it too. C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
   },
   "expectedArtifactDiscovery": [
     "ARIA grid/gridcell roles + a live status region; squares accessibly labeled '{position}, {state}' — the position vocabulary (TopLeft..BottomRight) exposed to assistive tech",
     "the /profile ALPS contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the game; /.well-known/home"
   ],
-  "notes": "Factors on: CSd. A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=1: accessible structure; the position vocabulary is announced via aria-labels. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=0: no describedby Link, /games/{id}/type 404s."
+  "notes": "Factors on: CSd. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=1: accessible structure; position vocabulary announced via aria-labels. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=0: no describedby Link, /games/{id}/type 404s."
 }

@@ -77,10 +77,10 @@
       "board"
     ],
     "likelyUnderA1": "board",
-    "note": "Only the caller's currently-legal squares carry a form; the hidden position field is the sole in-page vocabulary."
+    "note": "No /profile; board only. A=1 gates the form to the caller's legal squares (seat+turn)."
   },
   "expectedArtifactDiscovery": [
     "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
   ],
-  "notes": "Factors on: ASo. A=1: a move form ONLY on the caller's currently-legal squares (seat+turn-gated); the seat is claimed by submitting. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
+  "notes": "Factors on: ASo. A=1: move forms ONLY for the caller's currently-legal squares (seat+turn-gated); every other square is a plain, non-interactive cell. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
 }

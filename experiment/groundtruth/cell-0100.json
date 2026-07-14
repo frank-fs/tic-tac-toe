@@ -65,7 +65,7 @@
   },
   "artifactsPresent": {
     "bodyActionForms": {
-      "present": false,
+      "present": true,
       "gating": "none"
     },
     "profileContract": false,
@@ -77,10 +77,10 @@
       "board"
     ],
     "likelyUnderA1": "board",
-    "note": "No move form (A=0): the aria-labels ('{position}, {state}') are the only in-page position vocabulary."
+    "note": "No /profile; board only (a form on every square). C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
   },
   "expectedArtifactDiscovery": [
     "ARIA grid/gridcell roles + a live status region; squares accessibly labeled '{position}, {state}' — the position vocabulary (TopLeft..BottomRight) exposed to assistive tech"
   ],
-  "notes": "Factors on: C. A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=1: accessible structure; the position vocabulary is announced via aria-labels. Sd=0: /profile and /.well-known/home 404. So=0: no describedby Link, /games/{id}/type 404s."
+  "notes": "Factors on: C. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=1: accessible structure; position vocabulary announced via aria-labels. Sd=0: /profile and /.well-known/home 404. So=0: no describedby Link, /games/{id}/type 404s."
 }

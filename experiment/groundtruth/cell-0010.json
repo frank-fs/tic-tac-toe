@@ -65,7 +65,7 @@
   },
   "artifactsPresent": {
     "bodyActionForms": {
-      "present": false,
+      "present": true,
       "gating": "none"
     },
     "profileContract": true,
@@ -74,13 +74,14 @@
   },
   "expectedActionVocabSource": {
     "acceptable": [
+      "board",
       "profile"
     ],
     "likelyUnderA1": "profile",
-    "note": "No move form and no aria labels: /profile is the only place the position tokens are named."
+    "note": "A=0 puts a form on every square, so the board names the vocabulary; /profile enumerates it too."
   },
   "expectedArtifactDiscovery": [
     "the /profile ALPS contract (advertised via Link: rel=profile) enumerating make-move (player X/O + the 9 named positions); Allow/OPTIONS on the game; /.well-known/home"
   ],
-  "notes": "Factors on: Sd. A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=0: no ARIA roles, landmarks or live region. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=0: no describedby Link, /games/{id}/type 404s."
+  "notes": "Factors on: Sd. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=0: no ARIA roles, landmarks or live region. Sd=1: /profile ALPS contract + Link/Allow/OPTIONS headers expose the move format. So=0: no describedby Link, /games/{id}/type 404s."
 }

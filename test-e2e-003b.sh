@@ -10,7 +10,17 @@
 # Cell bit order is MSB->LSB: A C Sd So  (spec 001 §4; e.g. 1010 = A=1 C=0 Sd=1 So=0).
 #
 # Factor markers on the primary app:
-#   A  (affordances)   -> the game page carries POST action form(s)
+#   A  (affordances)   -> AFFORDANCE GATING, per the banked instrument (Surface game.fs:103-104):
+#                           A=0: ALL 9 squares rendered as form-POST buttons (naive design;
+#                                occupied/inactive carry HTML `disabled`, which an HTTP agent IGNORES
+#                                -- it sees 9 equally submittable forms, including illegal ones).
+#                           A=1: ONLY the caller's currently-legal moves rendered as forms.
+#                        This only discriminates from a NON-ACTIVE viewer's page: on an empty board the
+#                        active player has 9 legal moves, so A=0 and A=1 both render 9 forms. We
+#                        therefore assert against the SECOND (non-active) player's view:
+#                           A=0 -> 9 POST forms;  A=1 -> 0 POST forms (they have no legal move).
+#                        Do NOT redefine A as forms present/absent -- that is a DIFFERENT instrument
+#                        and breaks comparability with every banked ttt result.
 #   C  (accessibility) -> the game page carries aria-*/role= structure
 #   Sd (semantic disc) -> GET /profile is 200 (ALPS); 404 when off
 #   So (ontology)      -> game page response carries Link rel="describedby"; absent when off
@@ -63,8 +73,17 @@ else
     if [ -z "$gid" ]; then no "cell $cell: no game discovered (server up?)"; rm -f "$jar"; continue; fi
     page=$(curl -s -b "$jar" -c "$jar" -D /tmp/003b-hdrs "$BASE/games/$gid" 2>/dev/null)
 
-    # observe each factor
-    echo "$page" | grep -qiE '<form[^>]*method=["'"'"']?post' && gotA=1 || gotA=0
+    # observe each factor.
+    # A = GATING: judged from the SECOND (non-active) player's view (see header).
+    #   ungated (A=0) -> that viewer still gets a form on all 9 squares
+    #   gated   (A=1) -> that viewer gets none (no legal move is theirs right now)
+    jar2=$(mktemp); curl -sc "$jar2" -b "$jar2" "$BASE/login" >/dev/null 2>&1
+    page2=$(curl -s -b "$jar2" -c "$jar2" "$BASE/games/$gid" 2>/dev/null)
+    nforms=$(echo "$page2" | grep -ciE '<form[^>]*method=["'"'"']?post' || true)
+    rm -f "$jar2"
+    if   [ "$nforms" -eq 0 ]; then gotA=1
+    elif [ "$nforms" -ge 9 ]; then gotA=0
+    else gotA="?($nforms forms — neither gated(0) nor naive(9))"; fi
     echo "$page" | grep -qiE 'aria-[a-z]+=|role=["'"'"']' && gotC=1 || gotC=0
     [ "$(curl -s -o /dev/null -w '%{http_code}' -b "$jar" "$BASE/profile" 2>/dev/null)" = "200" ] && gotSd=1 || gotSd=0
     grep -qi 'rel="\?describedby' /tmp/003b-hdrs 2>/dev/null && gotSo=1 || gotSo=0

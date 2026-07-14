@@ -65,7 +65,7 @@
   },
   "artifactsPresent": {
     "bodyActionForms": {
-      "present": false,
+      "present": true,
       "gating": "none"
     },
     "profileContract": false,
@@ -73,12 +73,14 @@
     "ontologyTyping": true
   },
   "expectedActionVocabSource": {
-    "acceptable": [],
-    "likelyUnderA1": null,
-    "note": "Floor: the surface names no action and no position token. Any correct move vocabulary is prior knowledge or probing, not discovery."
+    "acceptable": [
+      "board"
+    ],
+    "likelyUnderA1": "board",
+    "note": "No /profile; board only (a form on every square)."
   },
   "expectedArtifactDiscovery": [
     "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
   ],
-  "notes": "Factors on: So. A=0: NO move form anywhere — the POST action still exists on the wire, the representation just does not afford it. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
+  "notes": "Factors on: So. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
 }

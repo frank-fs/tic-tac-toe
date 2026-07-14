@@ -16,8 +16,8 @@ let homePage (surface: Surface) (ctx: HttpContext) (allowCreate: bool) (gameBoar
             h1(class' = "title") { "Tic Tac Toe" }
 
             // New Game button - creates a game via POST /games.
-            // Withheld once the game cap is reached, and by A=0 (no action affordance).
-            if allowCreate && surface.A then
+            // Withheld once the game cap is reached.
+            if allowCreate then
                 div(class' = "new-game-container") {
                     // Real form so a game can be created with no JS; datastar enhances the
                     // submit when present.
