@@ -10,7 +10,8 @@ dotnet test test/TicTacToe.Engine.Tests/
 dotnet test test/TicTacToe.Web.Tests/
 ```
 
-See `test/CLAUDE.md` for integration test setup, and `experiments/test/CLAUDE.md` for comparison-arm (Simple, orchestrator) tests.
+See `test/CLAUDE.md` for integration test setup, and `experiment/README.md` for the harness adapter
+(manifest, ground truth, scorer) and the ERPC/MCP null-hypothesis server.
 
 ## Workflow
 

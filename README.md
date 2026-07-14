@@ -163,13 +163,11 @@ dotnet test
 Playwright tests require live servers. The default `TEST_BASE_URL` is `localhost:5000` — you must set it explicitly:
 
 ```bash
-# Start both servers in background
+# Start the server in background
 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project src/TicTacToe.Web/ --urls http://localhost:5228 &>/tmp/ttt-web.log &
-DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet run --project experiments/src/TicTacToe.Web.Simple/ --urls http://localhost:5328 &>/tmp/ttt-simple.log &
 
 # Wait a few seconds, then run tests
 TEST_BASE_URL=http://localhost:5228 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test test/TicTacToe.Web.Tests/
-TEST_BASE_URL=http://localhost:5328 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotnet test experiments/test/TicTacToe.Web.Simple.Tests/
 ```
 
 `dotnet test TicTacToe.sln` (no `TEST_BASE_URL`) will fail for Playwright tests — they connect to `localhost:5000` by default.

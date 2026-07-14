@@ -24,6 +24,10 @@
     "ontologyTyping": "/type"
   },
   "seats": ["X:1", "O:2", "O:3"],
+  "erpcServer": {
+    "project": "experiment/erpc/TicTacToe.McpRpc.fsproj",
+    "dll": "experiment/erpc/bin/Debug/net10.0/TicTacToe.McpRpc.dll"
+  },
   "scorer": "experiment/scorer/TicTacToe.Quality.fsproj",
   "directedFacts": "experiment/directed-facts.json",
   "groundtruthDir": "experiment/groundtruth"

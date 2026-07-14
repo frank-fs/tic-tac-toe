@@ -14,4 +14,5 @@ TEST_BASE_URL=http://localhost:5228 DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 dotn
 
 `dotnet test TicTacToe.sln` defaults to `localhost:5000` — always set `TEST_BASE_URL`.
 
-Comparison-arm integration tests (Simple) live in `experiments/test/` — see `experiments/test/CLAUDE.md`.
+The Simple comparison arm is retired (spec 003b). The surviving comparison arm is ERPC/MCP —
+see `experiment/README.md`.

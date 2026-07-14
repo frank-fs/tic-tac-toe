@@ -43,11 +43,7 @@ current_board_state*.md
 current_game_state*.md
 game_state*.md
 
-# Orchestrator archived prior runs (kept locally, not versioned)
-experiments/results/archive/
-
-# Python bytecode from experiment scripts
-experiments/scripts/__pycache__/
+# Python bytecode
 __pycache__/
 *.pyc
 
