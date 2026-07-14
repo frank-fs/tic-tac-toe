@@ -74,13 +74,24 @@ else
     page=$(curl -s -b "$jar" -c "$jar" -D /tmp/003b-hdrs "$BASE/games/$gid" 2>/dev/null)
 
     # observe each factor.
-    # A = GATING: judged from the SECOND (non-active) player's view (see header).
-    #   ungated (A=0) -> that viewer still gets a form on all 9 squares
-    #   gated   (A=1) -> that viewer gets none (no legal move is theirs right now)
-    jar2=$(mktemp); curl -sc "$jar2" -b "$jar2" "$BASE/login" >/dev/null 2>&1
-    page2=$(curl -s -b "$jar2" -c "$jar2" "$BASE/games/$gid" 2>/dev/null)
-    nforms=$(echo "$page2" | grep -ciE '<form[^>]*method=["'"'"']?post' || true)
-    rm -f "$jar2"
+    # A = GATING, judged from a NON-ACTIVE viewer.
+    # Two traps (both hit on the first cut of this spec):
+    #  (a) count MATCHES not LINES — the board renders on one line, so `grep -c` is always 1.
+    #  (b) self-seat (resolveViewer/callerRole) makes ANY unseated visitor the claimable
+    #      current-turn player, so on a FRESH board a 2nd jar sees 9 forms even at A=1.
+    #      A viewer is only non-active once BOTH seats are taken. So: seat X, seat O, then
+    #      judge from a 3rd (spectator) jar.
+    #   ungated (A=0) -> spectator still gets a form on all 9 squares
+    #   gated   (A=1) -> spectator gets none
+    jarX=$(mktemp); jarO=$(mktemp); jarS=$(mktemp)
+    curl -sc "$jarX" -b "$jarX" "$BASE/login" >/dev/null 2>&1
+    curl -s -b "$jarX" -c "$jarX" -X POST "$BASE/games/$gid" -d "player=X&position=TopLeft"    >/dev/null 2>&1
+    curl -sc "$jarO" -b "$jarO" "$BASE/login" >/dev/null 2>&1
+    curl -s -b "$jarO" -c "$jarO" -X POST "$BASE/games/$gid" -d "player=O&position=TopMiddle" >/dev/null 2>&1
+    curl -sc "$jarS" -b "$jarS" "$BASE/login" >/dev/null 2>&1
+    pageS=$(curl -s -b "$jarS" -c "$jarS" "$BASE/games/$gid" 2>/dev/null)
+    nforms=$(echo "$pageS" | grep -oiE '<form[^>]*method=["'"'"']?post' | wc -l | tr -d ' ')
+    rm -f "$jarX" "$jarO" "$jarS"
     if   [ "$nforms" -eq 0 ]; then gotA=1
     elif [ "$nforms" -ge 9 ]; then gotA=0
     else gotA="?($nforms forms — neither gated(0) nor naive(9))"; fi

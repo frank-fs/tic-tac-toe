@@ -7,7 +7,7 @@ let alpsProfile = """{
     "doc": { "value": "Tic-tac-toe. m,n,k-game (3,3,3)." },
     "descriptor": [
       { "id": "take-seat", "type": "unsafe", "doc": { "value": "Claim the X or O seat by submitting a move; first mover on each side is seated." } },
-      { "id": "make-move", "type": "unsafe", "rt": "#game", "doc": { "value": "POST player + position to /games/{id}. player must be X or O. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight. Rejected if out of turn or square taken." } },
+      { "id": "make-move", "type": "unsafe", "rt": "#game", "doc": { "value": "POST player + position to /games/{id} (alias: /arenas/{id} — one resource, two names). player must be X or O. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight. Rejected if out of turn or square taken." } },
       { "id": "reset", "type": "idempotent", "doc": { "value": "POST /games/{id}/reset to reset the board and clear seats." } },
       { "id": "delete", "type": "idempotent", "doc": { "value": "DELETE /games/{id} (or POST /games/{id}/delete) to remove the game." } },
       { "id": "game", "type": "semantic", "doc": { "value": "A game resource: the board state plus whose turn it is." } }

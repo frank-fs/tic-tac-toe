@@ -112,8 +112,10 @@ type ProtoPeServerRenderTests() =
         task {
             let! gameId = this.CreateGame()
             use! moveResp = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopLeft" ]
-            Assert.That(int moveResp.StatusCode, Is.EqualTo 303, "no-JS move must Post/Redirect/Get")
-            Assert.That(moveResp.Headers.Location.ToString(), Is.EqualTo $"/games/{gameId}")
+            // An accepted no-JS move answers 200 WITH the new representation (the twin's wire).
+            Assert.That(int moveResp.StatusCode, Is.EqualTo 200, "accepted no-JS move must answer 200 + the board")
+            let! moveBody = moveResp.Content.ReadAsStringAsync()
+            Assert.That(moveBody, Does.Contain "\"player\">X", "the POST response IS the new board")
 
             use! resp = client.GetAsync($"/games/{gameId}")
             let! body = resp.Content.ReadAsStringAsync()
@@ -167,7 +169,7 @@ type ProtoPeServerRenderTests() =
             let! _ = bClient.GetAsync("/login")
             let bMove = new FormUrlEncodedContent([ KeyValuePair("player", "X"); KeyValuePair("position", "TopLeft") ])
             use! bResp = bClient.PostAsync($"/games/{gameId}", bMove)
-            Assert.That(int bResp.StatusCode, Is.EqualTo 303, "opponent's no-JS move must apply")
+            Assert.That(int bResp.StatusCode, Is.EqualTo 200, "opponent's no-JS move must apply (200 + board)")
 
             // Player A (the fixture client) refreshes the dashboard and sees B's mark.
             use! resp = client.GetAsync("/")
@@ -185,14 +187,10 @@ type ProtoPeServerRenderTests() =
             use! _first = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopLeft" ]
             // Second X move is out of turn (now O's turn) -> rejected.
             use! rejected = postForm $"/games/{gameId}" [ "player", "X"; "position", "TopCenter" ]
-            Assert.That(int rejected.StatusCode, Is.EqualTo 303, "rejected no-JS move must Post/Redirect/Get")
-            let loc = rejected.Headers.Location.ToString()
-            Assert.That(loc, Does.Contain $"/games/{gameId}", "redirect back to the game")
-            Assert.That(loc, Does.Contain "error=", "redirect must carry a rejection reason (not silent)")
-
-            use! resp = client.GetAsync(loc)
-            let! body = resp.Content.ReadAsStringAsync()
-            Assert.That(body, Does.Contain "error-banner", "the refreshed page must render the rejection banner")
+            // Out of turn: 403, and the response body IS the board carrying the reason (no redirect).
+            Assert.That(int rejected.StatusCode, Is.EqualTo 403, "out-of-turn move must be 403")
+            let! body = rejected.Content.ReadAsStringAsync()
+            Assert.That(body, Does.Contain "error-banner", "the 403 body must render the rejection banner")
             Assert.That(body, Does.Contain "rejected", "the banner must say the move was rejected")
         }
 

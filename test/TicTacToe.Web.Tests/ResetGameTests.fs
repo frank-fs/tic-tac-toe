@@ -169,40 +169,37 @@ type ResetGameTests() =
 
     [<Test>]
     [<Order(0)>] // Must run before any test that makes moves
-    member this.``Reset button disabled on fresh game with no players``() : Task =
+    member this.``Reset control is a live form on an in-progress game``() : Task =
         task {
             // Create a fresh game to test
             do! this.CreateGame()
 
-            // Check the newly created game's reset button is disabled
+            // An in-progress game always offers the reset control as a real form (the twin's
+            // surface); authorization is enforced by the handler (403 not-a-player / 409 locked),
+            // not by withholding the affordance.
             let game = this.Page.Locator(".game-board").Last
             let resetButton = game.Locator(".reset-game-btn")
 
             let! isDisabled = resetButton.IsDisabledAsync()
-            Assert.That(isDisabled, Is.True, "Reset button should be disabled on fresh game")
+            Assert.That(isDisabled, Is.False, "An in-progress game offers a live reset control")
         }
 
     [<Test>]
     [<Order(1)>] // Must run after disabled test but before other tests
-    member this.``Reset button enabled after first move``() : Task =
+    member this.``Reset works after the first move``() : Task =
         task {
             // Create a fresh game to test
             do! this.CreateGame()
 
             let game = this.Page.Locator(".game-board").Last
-
-            // Verify reset is initially disabled
-            let resetButton = game.Locator(".reset-game-btn")
-            let! initiallyDisabled = resetButton.IsDisabledAsync()
-            Assert.That(initiallyDisabled, Is.True, "Reset should be disabled before any moves")
 
             // Make a move
             do! this.MakeMove(game)
             do! Task.Delay(200)
 
-            // Verify reset is now enabled
-            let! nowEnabled = resetButton.IsEnabledAsync()
-            Assert.That(nowEnabled, Is.True, "Reset should be enabled after making a move")
+            // Verify reset is a live control after making a move
+            let! nowEnabled = game.Locator(".reset-game-btn").IsEnabledAsync()
+            Assert.That(nowEnabled, Is.True, "Reset should be live after making a move")
         }
 
     [<Test>]

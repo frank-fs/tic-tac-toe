@@ -29,6 +29,12 @@ type MoveSignals =
 let private surfaceOf (ctx: HttpContext) =
     ctx.RequestServices.GetRequiredService<Surface>()
 
+/// /games and /arenas are ALIASES of one resource served by one handler stack. A representation
+/// served under one name links and forms under THAT name, so a client that entered through the
+/// banked /arenas surface never gets bounced onto the product's /games name mid-episode.
+let routePrefix (ctx: HttpContext) =
+    if ctx.Request.Path.Value.StartsWith "/arenas" then "/arenas" else "/games"
+
 // ============================================================================
 // Sd: semantic-discovery headers. So: ontology typing (httpRange-14).
 // ============================================================================
@@ -49,7 +55,7 @@ let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: st
 /// (httpRange-14). Advertise it with a describedby Link on the HTML representation. Independent
 /// of Sd's /profile Link — both coexist as separate Link headers when Sd+So.
 let private setDescribedByHeader (ctx: HttpContext) (gameId: string) =
-    ctx.Response.Headers.Append("Link", $"</games/{gameId}/type>; rel=\"describedby\"")
+    ctx.Response.Headers.Append("Link", $"<{routePrefix ctx}/{gameId}/type>; rel=\"describedby\"")
 
 /// So content negotiation: an agent asking for RDF (application/ld+json) is 303-redirected from
 /// the thing (the game) to its describing document (/games/{id}/type).
@@ -106,6 +112,42 @@ let private withBanner (surface: Surface) (ctx: HttpContext) (content: HtmlEleme
     | true, v when v.Count > 0 -> Fragment() { renderErrorBanner surface (string v.[0]); content } :> HtmlElement
     | _ -> content
 
+let private etagOf (s: string) =
+    use sha = System.Security.Cryptography.SHA256.Create()
+    let h = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes s)
+    sprintf "\"%s\"" (h.[..7] |> Array.map (sprintf "%02x") |> String.concat "")
+
+/// Render the game page and answer with it. The ETag is taken over the exact rendered bytes —
+/// view-complete (board, turn, viewer role, surface) — and is baseline HTTP hygiene on ALL cells,
+/// never per-factor (a per-factor ETag would confound cross-cell read friction): it lets a polling
+/// agent skip re-reading unchanged HTML via a 304, the cheap change-signal for its wait loop.
+let private renderGamePage (ctx: HttpContext) (gameId: string) (result: MoveResult) (errorMsg: string option) =
+    task {
+        let surface = surfaceOf ctx
+        let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+        let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
+        let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
+        let assignment = assignmentManager.GetAssignment(gameId)
+        let gameCount = supervisor.GetActiveGameCount()
+        let basePath = routePrefix ctx
+        let board = renderGameBoard surface basePath gameId result userId assignment gameCount
+        let body =
+            match errorMsg with
+            | Some msg -> Fragment() { renderErrorBanner surface msg; board } :> HtmlElement
+            | None -> board |> withBanner surface ctx
+        let element = layout.htmlWithStream ctx (sprintf "%s/%s/sse" basePath gameId) body
+        use sw = new StringWriter()
+        do! Render.toTextWriterAsync sw element
+        let html = sw.ToString()
+        let etag = etagOf html
+        ctx.Response.Headers.ETag <- Microsoft.Extensions.Primitives.StringValues etag
+        if ctx.Request.Method = "GET" && ctx.Request.Headers.IfNoneMatch.ToString() = etag then
+            ctx.Response.StatusCode <- 304
+        else
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync html
+    }
+
 /// Subscribe to a game's state changes and broadcast updates
 let subscribeToGame (surface: Surface) (gameId: string) (game: Game) (assignmentManager: PlayerAssignmentManager) (supervisor: GameSupervisor) =
     if not (gameSubscriptions.ContainsKey(gameId)) then
@@ -117,7 +159,7 @@ let subscribeToGame (surface: Surface) (gameId: string) (game: Game) (assignment
                         let assignment = assignmentManager.GetAssignment(gameId)
                         let gameCount = supervisor.GetActiveGameCount()
                         let renderForRole userId =
-                            let element = renderGameBoard surface gameId result userId assignment gameCount
+                            let element = renderGameBoard surface "/games" gameId result userId assignment gameCount
                             PatchElements (fun tw -> Render.toTextWriterAsync tw element)
                         broadcastPerRoleForGame gameId renderForRole
 
@@ -221,7 +263,7 @@ let home (ctx: HttpContext) =
             snapshot
             |> List.map (fun (gameId, result) ->
                 let assignment = assignmentManager.GetAssignment(gameId)
-                renderGameBoard surface gameId result userId assignment gameCount)
+                renderGameBoard surface "/games" gameId result userId assignment gameCount)
         // Dynamic, per-viewer (role-personalised) representation: never cache, and Vary on
         // Cookie so an intermediary can't serve one user's board to another.
         ctx.Response.Headers.CacheControl <- "no-cache, private"
@@ -249,7 +291,7 @@ let sse (ctx: HttpContext) =
             let gameCount = List.length snapshot
             for (gameId, state) in snapshot do
                 let assignment = assignmentManager.GetAssignment(gameId)
-                let element = renderGameBoard surface gameId state userId assignment gameCount
+                let element = renderGameBoard surface "/games" gameId state userId assignment gameCount
                 do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
 
             // Keep connection open, forwarding all broadcast events
@@ -280,7 +322,7 @@ let private streamGame (ctx: HttpContext) (gameId: string) (userId: string) =
             | Some result ->
                 let assignment = assignmentManager.GetAssignment(gameId)
                 let gameCount = supervisor.GetActiveGameCount()
-                let element = renderGameBoard surface gameId result userId assignment gameCount
+                let element = renderGameBoard surface (routePrefix ctx) gameId result userId assignment gameCount
                 do! Datastar.streamPatchElements (fun tw -> Render.toTextWriterAsync tw element) ctx
             | None -> ()
 
@@ -321,9 +363,10 @@ let createGame (ctx: HttpContext) =
         // so two concurrent POSTs at the boundary can't both pass and exceed MaxGames.
         match supervisor.TryCreateGame(limits.MaxGames) with
         | None when wantsHtml ->
-            // No-JS: redirect to the dashboard with a reason the refreshed page can surface.
-            ctx.Response.StatusCode <- 303
-            ctx.Response.Headers.Location <- "/?error=at-capacity"
+            // Creation is not available at the game cap (the twin's wire: 409, not a redirect).
+            ctx.Response.StatusCode <- 409
+            ctx.Response.ContentType <- "text/html; charset=utf-8"
+            do! ctx.Response.WriteAsync "Max games reached."
         | None ->
             // Uniform interface: creation is not available at the game cap.
             ctx.Response.StatusCode <- 409
@@ -339,7 +382,7 @@ let createGame (ctx: HttpContext) =
                     { new IObserver<MoveResult> with
                         member _.OnNext(result) =
                             let gameCount = supervisor.GetActiveGameCount()
-                            let element = renderGameBoard surface gameId result "" None gameCount
+                            let element = renderGameBoard surface "/games" gameId result "" None gameCount
                             broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                         member _.OnError(_) = ()
@@ -353,7 +396,7 @@ let createGame (ctx: HttpContext) =
             else
                 // Return 201 Created with Location header
                 ctx.Response.StatusCode <- 201
-                ctx.Response.Headers.Location <- $"/games/{gameId}"
+                ctx.Response.Headers.Location <- $"{routePrefix ctx}/{gameId}"
     }
 
 /// GET /games/{id} - Get a specific game
@@ -368,23 +411,18 @@ let getGame (ctx: HttpContext) =
         // broadcasts at creation (createGame / startup / reset), so a read need not register one.
         // Read from the supervisor's cached state (TryGetState): never messages the game actor,
         // so a just-deleted game returns None (404) instead of hanging on a Stopped actor.
+        let basePath = routePrefix ctx
         match supervisor.TryGetState(gameId) with
         | Some _ when surface.So && acceptsLdJson ctx ->
             // httpRange-14: an RDF request on the thing → 303 See Other to its describing document.
             ctx.Response.StatusCode <- 303
-            ctx.Response.Headers.Location <- Microsoft.Extensions.Primitives.StringValues $"/games/{gameId}/type"
+            ctx.Response.Headers.Location <- Microsoft.Extensions.Primitives.StringValues $"{basePath}/{gameId}/type"
         | Some result ->
-            let userId = ctx.User.TryGetUserId() |> Option.defaultValue "anonymous"
-            let assignment = assignmentManager.GetAssignment(gameId)
-            let gameCount = supervisor.GetActiveGameCount()
             ctx.Response.Headers.CacheControl <- "no-cache, private"
             ctx.Response.Headers.Vary <- "Cookie"
-            if surface.Sd then setDiscoveryHeaders ctx $"/games/{gameId}" (Some(gameAllow result))
+            if surface.Sd then setDiscoveryHeaders ctx $"{basePath}/{gameId}" (Some(gameAllow result))
             if surface.So then setDescribedByHeader ctx gameId
-            let body = renderGameBoard surface gameId result userId assignment gameCount |> withBanner surface ctx
-            let element = layout.htmlWithStream ctx (sprintf "/games/%s/sse" gameId) body
-            ctx.Response.ContentType <- "text/html; charset=utf-8"
-            do! Render.toStreamAsync ctx.Response.Body element
+            do! renderGamePage ctx gameId result None
         | None ->
             ctx.Response.StatusCode <- 404
             ctx.Response.Headers.CacheControl <- "no-cache, private"
@@ -445,7 +483,11 @@ let makeMove (ctx: HttpContext) =
                     }
 
             match parsedMove with
-            | None -> ctx.Response.StatusCode <- 400
+            | None ->
+                // Malformed move (bad player/position token, or a non-form body) — a client error.
+                ctx.Response.StatusCode <- 400
+                eventLog.LogEvent("move_rejected", gameId, role = "unassigned", reason = "InvalidMove")
+                if wantsHtml then do! renderGamePage ctx gameId (game.GetState()) (Some "invalid-move")
             | Some moveAction ->
                 // Get current game state to determine whose turn it is
                 let currentState = game.GetState()
@@ -495,25 +537,27 @@ let makeMove (ctx: HttpContext) =
                         | Draw _ ->
                             eventLog.LogEvent("game_over", gameId, outcome = "draw", moveCount = 9)
                         | _ -> ()
+                        // Accepted: the fresh board IS the response (200 + representation). A
+                        // datastar client is updated by its SSE stream instead (202).
+                        if wantsHtml then do! renderGamePage ctx gameId after None
+                        else ctx.Response.StatusCode <- 202
                     else
+                        // The seat and the turn were fine; the ENGINE refused the square. That is an
+                        // unprocessable move, not a routing or authorization error: 422, half of the
+                        // illegalMoves DV (the other half is 403 out-of-turn).
                         eventLog.LogEvent("move_rejected", gameId, role = role, reason = "PositionTaken")
-                    if wantsHtml then
-                        ctx.Response.StatusCode <- 303
-                        ctx.Response.Headers.Location <- $"/games/{gameId}"
-                    else
-                        ctx.Response.StatusCode <- 202
+                        ctx.Response.StatusCode <- 422
+                        if wantsHtml then do! renderGamePage ctx gameId currentState (Some "position-taken")
                 | Rejected reason ->
                     eventLog.LogEvent("move_rejected", gameId, role = role, reason = reason.ToString())
                     let slug = rejectionSlug reason
+                    // Out-of-turn / not-a-player / game-over: the caller may not act here. 403.
+                    ctx.Response.StatusCode <- 403
                     if wantsHtml then
-                        // No-JS: redirect to the game carrying the reason, so the refreshed page
-                        // can tell the player the move was rejected (not silently swallowed).
-                        ctx.Response.StatusCode <- 303
-                        ctx.Response.Headers.Location <- $"/games/{gameId}?error={slug}"
+                        do! renderGamePage ctx gameId currentState (Some slug)
                     else
                         // Move was rejected - broadcast rejection animation
                         broadcast (PatchSignals $"""{{ "rejectionAnimation": "rejection-{slug}" }}""")
-                        ctx.Response.StatusCode <- 403
         | None, _ -> ctx.Response.StatusCode <- 404
         | _, None ->
             // No user ID - cannot make moves without authentication
@@ -614,7 +658,7 @@ let resetGame (ctx: HttpContext) =
                             { new IObserver<MoveResult> with
                                 member _.OnNext(result) =
                                     let gameCount = supervisor.GetActiveGameCount()
-                                    let element = renderGameBoard (surfaceOf ctx) newGameId result "" None gameCount
+                                    let element = renderGameBoard (surfaceOf ctx) "/games" newGameId result "" None gameCount
                                     broadcastToDashboard (PatchElementsAppend("#games-container", fun tw -> Render.toTextWriterAsync tw element))
 
                                 member _.OnError(_) = ()
@@ -624,12 +668,12 @@ let resetGame (ctx: HttpContext) =
                     if wantsHtml then
                         // No-JS form: redirect to the freshly reset game.
                         ctx.Response.StatusCode <- 303
-                        ctx.Response.Headers.Location <- $"/games/{newGameId}"
+                        ctx.Response.Headers.Location <- $"{routePrefix ctx}/{newGameId}"
                     else
                         // Reset creates a new resource; 201 Created with its Location (200 + Location
                         // is undefined for a body-less response).
                         ctx.Response.StatusCode <- 201
-                        ctx.Response.Headers.Location <- $"/games/{newGameId}"
+                        ctx.Response.Headers.Location <- $"{routePrefix ctx}/{newGameId}"
             | _ ->
                 ctx.Response.StatusCode <- 403  // Forbidden - not an assigned player
         | None, _ -> ctx.Response.StatusCode <- 404
@@ -675,7 +719,7 @@ let gameType (ctx: HttpContext) =
         | false, _ | _, None ->
             ctx.Response.StatusCode <- 404
         | true, Some _ ->
-            let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}/games/{gameId}"
+            let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}{routePrefix ctx}/{gameId}"
             ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
             do! ctx.Response.WriteAsync(Discovery.gameJsonLd gameUri)
     }

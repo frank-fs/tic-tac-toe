@@ -85,6 +85,8 @@ let renderErrorBanner (surface: Surface) (error: string) : HtmlElement =
         | "not-a-player" -> "Move rejected: you are not a player in this game."
         | "wrong-player" -> "Move rejected: wrong player."
         | "game-over" -> "Move rejected: the game is over."
+        | "position-taken" -> "That square is already taken."
+        | "invalid-move" -> "Invalid move format."
         | _ -> "That action could not be completed."
     let banner = div(class' = "error-banner") { message }
     (if surface.C then banner.attr("role", "alert") else banner) :> HtmlElement
@@ -103,6 +105,10 @@ let notFoundPage: HtmlElement =
 // Private Rendering
 // ============================================================================
 
+/// One resource, two names: /games is the product route, /arenas the banked experiment route.
+let aliasOf (basePath: string) =
+    if basePath = "/arenas" then "/games" else "/arenas"
+
 /// Occupancy of a square, in the vocabulary C announces to assistive tech.
 let private occupancyOf (state: GameState) (position: SquarePosition) =
     match state.TryGetValue(position) with
@@ -119,10 +125,10 @@ let private applyCell (surface: Surface) (state: GameState) (position: SquarePos
 /// The move form wrapping one square. Progressive enhancement: a real form so the move command
 /// works as a plain POST without JavaScript; datastar enhances the submit (preventing the native
 /// POST and sending the move as signals) when JS is present.
-let private moveForm gameId (playerStr: string) (posStr: string) (square: HtmlElement) =
-    form(method = "post", action = sprintf "/games/%s" gameId)
+let private moveForm (basePath: string) gameId (playerStr: string) (posStr: string) (square: HtmlElement) =
+    form(method = "post", action = sprintf "%s/%s" basePath gameId)
         .attr("rel", "make-move")
-        .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('/games/%s')" gameId playerStr posStr gameId) {
+        .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('%s/%s')" gameId playerStr posStr basePath gameId) {
         input(type' = "hidden", name = "player", value = playerStr)
         input(type' = "hidden", name = "position", value = posStr)
         square
@@ -167,20 +173,20 @@ let private squareLabel (state: GameState) (position: SquarePosition) : HtmlElem
 ///        (browser-only — an HTTP agent sees nine equally submittable forms).
 ///   A=1: ONLY the caller's currently-legal moves are forms; every other square is a plain cell.
 let private renderSquare
-    (surface: Surface) (legal: Set<SquarePosition>) gameId (playerStr: string)
+    (surface: Surface) (legal: Set<SquarePosition>) (basePath: string) gameId (playerStr: string)
     (state: GameState) (isActive: bool) (position: SquarePosition) =
     let posStr = position.ToString()
     let isTaken = match state.TryGetValue(position) with | true, Taken _ -> true | _ -> false
     if surface.A then
         if Set.contains position legal then
-            moveForm gameId playerStr posStr (submitSquare surface state playerStr position)
+            moveForm basePath gameId playerStr posStr (submitSquare surface state playerStr position)
         else
             renderPlainCell surface state (squareLabel state position) position
     else
         let square =
             if isActive && not isTaken then submitSquare surface state playerStr position
             else disabledSquare surface state (squareLabel state position) position
-        moveForm gameId playerStr posStr square
+        moveForm basePath gameId playerStr posStr square
 
 /// Render the player legend showing X and O assignments
 let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: Player option) =
@@ -197,41 +203,27 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
         span(class' = legendClass O) { $"O: {oLabel}" }
     }
 
-/// Render one control as a real no-JS form (enabled) or a disabled button (disabled).
-/// rel types the affordance in the markup (the delete form is the no-JS POST alias for the
-/// DELETE verb on the canonical /games/{id} resource). datastarAction enhances the submit.
-let private controlButton enabled (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) : HtmlElement =
-    if enabled then
-        form(method = "post", action = action)
-            .attr("rel", rel)
-            .attr("data-on:submit__prevent", datastarAction) {
-            button(class' = btnClass, type' = "submit") { label }
-        }
-        :> HtmlElement
-    else
-        button(class' = btnClass, type' = "button").attr("disabled", "disabled") { label }
-        :> HtmlElement
+/// One control, as a real no-JS form. rel types the affordance in the markup (the delete form is
+/// the no-JS POST alias for the DELETE verb on the canonical resource); datastarAction enhances
+/// the submit when JS is present.
+let private controlForm (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) : HtmlElement =
+    form(method = "post", action = action)
+        .attr("rel", rel)
+        .attr("data-on:submit__prevent", datastarAction) {
+        button(class' = btnClass, type' = "submit") { label }
+    }
+    :> HtmlElement
 
-/// Render control buttons (reset/delete) based on viewer assignment and game state.
-/// A locked game (TICTACTOE_LOCK_GAME) offers neither, so an agent cannot reset-and-replay a run.
-let private renderControls locked gameId viewerPlayer assignment gameCount activity =
-    let resetEnabled, deleteEnabled =
-        match viewerPlayer, assignment with
-        | _ when locked -> (false, false)
-        | Some X, Some { PlayerXId = Some _ }
-        | Some O, Some { PlayerOId = Some _ } ->
-            (activity, true)
-        | _ ->
-            // For unassigned games/spectators: only enable if there's activity AND gameCount > 6
-            (activity && gameCount > 6, gameCount > 6)
+/// Reset/delete controls, verbatim from the twin: BOTH are always real forms while the game is in
+/// progress — no viewer/seat/count/lock gating in the markup. Authorization is the HANDLER's job
+/// (403 not-a-player, 409 locked / would-drop-below-minimum). Gating them here would change the
+/// form count an agent sees, which is the surface the banked results were produced against.
+let private renderControls (basePath: string) gameId =
     div(class' = "controls") {
-        // Real forms so reset/delete work with no JS; datastar enhances the submit when
-        // present (reset POSTs; delete uses the DELETE verb via @delete). HTML forms cannot
-        // emit DELETE, so the no-JS path posts to /games/{id}/delete.
-        controlButton resetEnabled "reset-game-btn" "reset-game"
-            (sprintf "/games/%s/reset" gameId) (sprintf "@post('/games/%s/reset')" gameId) "Reset Game"
-        controlButton deleteEnabled "delete-game-btn" "delete-game"
-            (sprintf "/games/%s/delete" gameId) (sprintf "@delete('/games/%s')" gameId) "Delete Game"
+        controlForm "reset-game-btn" "reset-game"
+            (sprintf "%s/%s/reset" basePath gameId) (sprintf "@post('%s/%s/reset')" basePath gameId) "Reset Game"
+        controlForm "delete-game-btn" "delete-game"
+            (sprintf "%s/%s/delete" basePath gameId) (sprintf "@delete('%s/%s')" basePath gameId) "Delete Game"
     }
 
 // ============================================================================
@@ -242,11 +234,10 @@ let private renderControls locked gameId viewerPlayer assignment gameCount activ
 /// Resolves the viewer's player token internally from assignment + userId — the self-seat: an
 /// unseated visitor on X's turn sees the claimable board as X and seats X by submitting.
 /// A is affordance GATING: A=1 forms only on the caller's legal squares; A=0 a form on all nine.
-let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
+let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (result: MoveResult) (userId: string) (assignment: PlayerAssignment option) (gameCount: int) : HtmlElement =
     let (State state) = result
     let viewerPlayer = resolveViewer assignment userId result
     let activity = hasGameActivity result assignment
-    let locked = gameLocked ()
     let legal, currentPlayer, status, canMove =
         match (result, viewerPlayer) with
         | CanMove(player, validMoves, status) -> (Set.ofArray validMoves, Some player, status, true)
@@ -260,7 +251,7 @@ let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (us
         | None, Some p -> p.ToString()
         | None, None -> "X"
     let isActive = match result with | XTurn _ | OTurn _ -> true | _ -> false
-    let renderSquare = renderSquare surface legal gameId playerStr state isActive
+    let renderSquare = renderSquare surface legal basePath gameId playerStr state isActive
     // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
     // parsing the display prose; data-can-move says whether THIS viewer may move now.
     let statusToken =
@@ -287,15 +278,21 @@ let renderGameBoard (surface: Surface) (gameId: string) (result: MoveResult) (us
         // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
         // JS and an agent can transcribe the id from the link text (a truncated label would
         // not be navigable).
+        // Canonical link under the name this representation was served as, plus the alias link
+        // (/games <-> /arenas are one resource under two names), so a client that entered by
+        // either name can navigate the whole trail without ever crossing over.
         div(class' = "game-link") {
-            a(href = sprintf "/games/%s" gameId) { sprintf "Game %s" gameId }
+            a(href = sprintf "%s/%s" basePath gameId) { sprintf "Game %s" gameId }
+            a(class' = "game-alias", rel = "alternate", href = sprintf "%s/%s" (aliasOf basePath) gameId) { "alias" }
         }
         // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
         statusRegion
         boardGrid
         renderLegend assignment currentPlayer
-        renderControls locked gameId viewerPlayer assignment gameCount activity
+        // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
+        // delete-then-create a replacement game and contaminate a run with a second game's moves.
+        if isActive then renderControls basePath gameId else Fragment() { }
     }
 
 /// CSS styles for the game board

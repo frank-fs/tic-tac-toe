@@ -147,6 +147,60 @@ let gameSse =
         datastar Handlers.gameSse
     }
 
+// /arenas is an ALIAS of /games: the SAME handlers, the same representations. It exists so the
+// banked experiment surface (which every archived result was produced against) is reachable under
+// the name it was produced under; /games is the product name for the identical resource.
+let arenas =
+    resource "/arenas" {
+        name "Arenas"
+        requireAuth
+        post Handlers.createGame
+    }
+
+let arenaById =
+    resource "/arenas/{id}" {
+        name "ArenaById"
+        requireAuth
+        get Handlers.getGame
+        post Handlers.makeMove
+        delete Handlers.deleteGame
+    }
+
+let arenaType =
+    resource "/arenas/{id}/type" {
+        name "ArenaType"
+        requireAuth
+        get Handlers.gameType
+    }
+
+// The twin called it `restart`; the product calls it `reset`. Both names, one handler.
+let arenaRestart =
+    resource "/arenas/{id}/restart" {
+        name "ArenaRestart"
+        requireAuth
+        post Handlers.resetGame
+    }
+
+let arenaReset =
+    resource "/arenas/{id}/reset" {
+        name "ArenaReset"
+        requireAuth
+        post Handlers.resetGame
+    }
+
+let arenaDelete =
+    resource "/arenas/{id}/delete" {
+        name "ArenaDelete"
+        requireAuth
+        post Handlers.deleteGame
+    }
+
+let arenaSse =
+    resource "/arenas/{id}/sse" {
+        name "ArenaSse"
+        datastar Handlers.gameSse
+    }
+
 // Sd: the discovery documents. Present on every cell as routes; 404 unless Sd is on, so the
 // factor — not the routing table — decides whether the contract is discoverable.
 let profileResource =
@@ -174,9 +228,9 @@ let gameType =
 let private optionsAllow (path: string) =
     match path with
     | "/" -> Some "GET, OPTIONS"
-    | "/games" -> Some "POST, OPTIONS"
+    | "/games" | "/arenas" -> Some "POST, OPTIONS"
     | "/profile" | "/.well-known/home" -> Some "GET, OPTIONS"
-    | p when p.StartsWith "/games/" -> Some "GET, POST, DELETE, OPTIONS"
+    | p when p.StartsWith "/games/" || p.StartsWith "/arenas/" -> Some "GET, POST, DELETE, OPTIONS"
     | _ -> None
 
 /// Sd: OPTIONS answers "what can I do here?" without a state change. Off entirely when Sd is off.
@@ -276,6 +330,13 @@ let main args =
         resource gameReset
         resource gameDelete
         resource gameSse
+        resource arenas
+        resource arenaById
+        resource arenaType
+        resource arenaRestart
+        resource arenaReset
+        resource arenaDelete
+        resource arenaSse
         resource profileResource
         resource wellKnownHomeResource
     }

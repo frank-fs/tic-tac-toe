@@ -27,6 +27,8 @@
     <Compile Include="ProtoPeServerRenderTests.fs" />
     <Compile Include="SseBroadcastTests.fs" />
     <Compile Include="PerGameStreamTests.fs" />
+    <Compile Include="SurfaceCellTests.fs" />
+    <Compile Include="WireSemanticsTests.fs" />
   </ItemGroup>
 
   <ItemGroup>

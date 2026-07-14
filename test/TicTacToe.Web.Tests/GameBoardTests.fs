@@ -37,12 +37,12 @@ let testGameId = "test-game-123"
 
 /// Render as an unassigned viewer who can play (derives player from whose turn it is)
 let renderGameBoardToString result =
-    let element = renderGameBoard Surface.full testGameId result "" None 6
+    let element = renderGameBoard Surface.full "/games" testGameId result "" None 6
     Render.toString element
 
 /// Render as a spectator (no specific viewer)
 let renderBroadcastToString result assignment =
-    let element = renderGameBoard Surface.full testGameId result "" assignment 6
+    let element = renderGameBoard Surface.full "/games" testGameId result "" assignment 6
     Render.toString element
 
 [<Tests>]
@@ -110,8 +110,10 @@ let tests =
               let html = renderGameBoardToString result
 
               Expect.stringContains html "X wins!" "Should show X win message"
-              Expect.stringContains html "Delete Game" "Should show delete game button"
-              Expect.stringContains html "delete-game-btn" "Should have delete game button class"
+              // Post-game gate: a terminal game offers NO reset/delete controls, so an agent cannot
+              // delete-then-recreate and contaminate a run with a second game's moves.
+              Expect.isFalse (html.Contains "delete-game-btn") "A finished game must offer no delete control"
+              Expect.isFalse (html.Contains "reset-game-btn") "A finished game must offer no reset control"
               // renderGameBoard with empty userId and no assignment uses gameCount<=6, so delete is disabled
               Expect.stringContains html "disabled" "Delete button should be disabled when rendered without user context"
               Expect.isFalse (html.Contains("square-clickable")) "Should not have any clickable squares"
@@ -128,7 +130,7 @@ let tests =
               let html = renderGameBoardToString result
 
               Expect.stringContains html "It&#39;s a draw!" "Should show draw message"
-              Expect.stringContains html "Delete Game" "Should show delete game button"
+              Expect.isFalse (html.Contains "delete-game-btn") "A finished game must offer no delete control"
               Expect.isFalse (html.Contains("square-clickable")) "Should not have any clickable squares"
 
           testCase "Error state renders correctly"
