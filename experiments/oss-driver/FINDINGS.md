@@ -1,6 +1,75 @@
 # SP3 Seating & Conduct — Findings and Apparatus State
 
+## ⚠ ADVERSARIAL REVIEW — verified corrections (2026-07-13) — READ BEFORE THE CAPSTONE
+
+A 4-analyst adversarial panel (methodologist/statistician, hypermedia-HCI, LLM/MCP-systems, causal/
+measurement) reviewed the capstone + arms; every load-bearing critique below was then **re-verified against
+the code/data by hand** (not taken on the analysts' word). The capstone and per-run sections below are KEPT
+as the record, but the following corrections **supersede their headline claims**. Two marquee claims (the
+A-erosion ladder, the ERPC legibility gap) degrade substantially; the core direction effects survive.
+
+**Corrections (each verified):**
+
+1. **"Perfect A=1/A=0 separation" → "A reduces illegal moves, direction-robust per model" (no "perfect").**
+   Zero-overlap holds only over the 8 cell-*means*; at the game level (n=40/arm) A=0 overlaps A=1's max
+   **30–65%**. The *direction* is strong and real (per-game Welch t ≈ 5–9 across all four models) — but
+   "perfect separation" is a unit-of-analysis artifact.
+
+2. **A-erosion-with-capability → DOWNGRADED from finding to HYPOTHESIS.** `illegalMoves` is a per-game
+   **count, not a rate** (`aggregate.sh:201-204`), and 120b had **45 stalls** (0 truncations) → its
+   "lowest unaided A=0" (5.17) is confounded by early game-death (fewer moves ⇒ fewer chances to err), not
+   demonstrated state-tracking. The "3.2 = 3.2 overlap" is a single cell-mean tie within n=5 noise, read
+   across a provider split. Not supportable as stated.
+
+3. **`illegalMoves` was NOT pre-registered** (the 2026-07-10 pre-reg = `firstMoveFormat`/`formatGuesses`;
+   see "Pre-registered predictions" below). On the pre-registered "invalid-total" DV, A looked like *noise*.
+   The illegal-move split is **post-hoc/exploratory** and needs an independent confirmatory run on the now-
+   fixed DV — the runs that defined it cannot also confirm it.
+
+4. **ERPC "MCP lacks legibility not understanding" → walked back to a near-tautology about transport
+   modality.** Verified confounds:
+   - **Prompts are NOT "shared"** (the ERPC section's claim is factually wrong): `coldstart-prompt.md`
+     forces text ("every non-report reply is EXACTLY one line") while `erpc-coldstart-prompt.md` makes it
+     optional ("between actions you **may** write plain text"). HTTP's action channel *is* text; ERPC's is
+     `tool_calls` with optional text. So the emission gap ≈ "chat-completions separates action from
+     narration," not an MCP comprehension property.
+   - **Reported emission "120b 47%" is a GRADER artifact.** Raw assistant-narrated MOMENT reports:
+     flash **2**/15, 9b **4**/15, 20b **13**/15, 120b **13**/15 — 120b narrated as much as 20b; the grader's
+     validity-filter disqualified ~6 of its reports. The "non-monotone (20b 87% > 120b 47%)" claim is FALSE;
+     raw narration is ~monotone with capability. Use raw-narration counts, not `reportsPresent`.
+   - **Quality-when-emitted is n=2 (flash) / n=4 (9b)** — the "ERPC ≥ HTTP every tier" sweep is
+     uninterpretable at the low tiers (drop those two).
+   - Defensible residue only: *a tool-calling agent whose action channel isn't text narrates less often
+     than one whose action IS text.* The "understanding is present" half is plausible but under-powered.
+
+5. **Discovery-dimension construct validity:** `recognize` is keyword-substring matching on self-reports of
+   a memorized game (`Grader.fs:168-178`), and `firstMoveFormat` counts **prior knowledge** as "discovered"
+   (a non-400 first POST needs no contract fetch). These measure verbal compliance + recall, not
+   surface-conferred comprehension. Channel-*specificity* (Sd→/profile, So→/type fetch counts) is clean; the
+   *comprehension* interpretation is not.
+
+6. **The dual-audience thesis is UNTESTED here** — only agents were run; the one human-proxy factor
+   (C = accessibility) is neutral-to-harmful in the data. "Serves humans and agents from one contract" is a
+   framing, not a result, on this specimen.
+
+**Cleared by verification (harness credit — these critiques do NOT hold):** not a `tool_choice` artifact
+(`chatTools` never forces tools) nor a capture bug (content recorded alongside tool_calls); observer-seat
+403s are **already excluded** from the DV (`aggregate.sh:57-59` filters `OutOfTurn` vs `NotAPlayer`) — a
+raw-log recount that includes them (11.8 vs 6.6 at cell 0000) over-counts.
+
+**Survives robust:** A reduces illegal moves (direction, per model); Sd→/profile & So→/type channel
+specificity (near-mechanical); no super-additivity; the provider-quant confound discovery itself.
+
+**Highest-value next steps the panel converged on:** (1) re-express illegalMoves as a per-move-attempt RATE
+with a bootstrap CI, not max<min over cell-means; (2) one independent confirmatory run on the fixed DV;
+(3) same-provider capability points at ≥3 levels before any "capability" gradient; (4) impose symmetric
+text-necessity on both arms and re-run the emission comparison; (5) a non-memorized task to isolate
+discovery from recall.
+
+---
+
 ## ★ CAPSTONE SYNTHESIS — the cross-model ladder (2026-07-13)
+_[SUPERSEDED IN PART by the Adversarial Review above — read it first for which claims degrade.]_
 
 Consolidates the full HTTP 2⁴ factorial ladder (`A`ffordances × `C` accessibility × `Sd` discovery ×
 `So` ontology) + the ERPC (RPC/MCP null-hypothesis) arm, across **4 models / 2 families / both arms**, all
