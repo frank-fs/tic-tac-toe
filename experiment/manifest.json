@@ -13,7 +13,12 @@
       "dll": "experiment/erpc/bin/Debug/net10.0/TicTacToe.McpRpc.dll",
       "port": 5428,
       "readyProbe": "/",
-      "httpArg": "--http"
+      "httpArg": "--http",
+      "identity": {
+        "tool": "authenticate",
+        "tokenField": "token",
+        "requestArg": "identityToken"
+      }
     }
   },
   "requestLogEnv": "TICTACTOE_REQUEST_LOG_PATH",
