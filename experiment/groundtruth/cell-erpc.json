@@ -1,0 +1,81 @@
+{
+  "cell": "erpc",
+  "arm": "erpc",
+  "core": {
+    "appIs": {
+      "value": "tic-tac-toe — a two-player m,n,k (3,3,3) game served as a web arena",
+      "keywords": [
+        "tic",
+        "tac",
+        "toe",
+        "tictactoe"
+      ],
+      "partial": [
+        "game",
+        "board",
+        "grid"
+      ]
+    },
+    "goal": {
+      "value": "place three of your own marks in a row (horizontal, vertical, or diagonal); otherwise draw",
+      "keywords": [
+        "row",
+        "three",
+        "line",
+        "in a row"
+      ],
+      "partial": [
+        "win",
+        "beat",
+        "goal",
+        "draw"
+      ]
+    },
+    "howToJoin": {
+      "value": "authenticate to get an identity token, then submit a move; the server derives your side (X or O) from the token; first to move per side is seated",
+      "keywords": [
+        "authenticate",
+        "token",
+        "identity",
+        "first to move"
+      ],
+      "partial": [
+        "move",
+        "seat",
+        "play",
+        "join"
+      ]
+    },
+    "isMultiplayer": true
+  },
+  "rolesExpected": {
+    "X": {
+      "myRole": "X",
+      "canIMove": true,
+      "myAffordances": [
+        "make a move on X's turn to an empty square"
+      ]
+    }
+  },
+  "artifactsPresent": {
+    "toolSchemas": true,
+    "bodyActionForms": {
+      "present": false,
+      "gating": "n/a"
+    },
+    "profileContract": false,
+    "ariaStructure": false,
+    "ontologyTyping": false
+  },
+  "expectedActionVocabSource": {
+    "acceptable": [
+      "profile",
+      "board"
+    ],
+    "note": "RPC: the move vocabulary lives in the tool schemas (report as 'profile' — the schema IS the contract) or read back from a get_board result ('board'). No HTML, no /profile endpoint."
+  },
+  "expectedArtifactDiscovery": [
+    "the tool schemas enumerate the affordances (make_move: player side from identity, position one of TopLeft..BottomRight) — the RPC contract"
+  ],
+  "notes": "RPC/MCP null hypothesis: typed tools with rich descriptions instead of a HATEOAS surface. The discovery surface IS the tool schema. Bootstrap = authenticate then make_move (side derived from the identity token). No A/C/Sd/So factors, so no `factors` block — the RPC arm is not a cell of the 16-cell factorial. Wire = the sample's MCP server event log (action_accepted/action_rejected/state_read), graded the same as the HTTP arm."
+}
