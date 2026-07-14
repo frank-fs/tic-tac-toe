@@ -60,9 +60,26 @@ raw-log recount that includes them (11.8 vs 6.6 at cell 0000) over-counts.
 **Survives robust:** A reduces illegal moves (direction, per model); Sd→/profile & So→/type channel
 specificity (near-mechanical); no super-additivity; the provider-quant confound discovery itself.
 
-**Highest-value next steps the panel converged on:** (1) re-express illegalMoves as a per-move-attempt RATE
-with a bootstrap CI, not max<min over cell-means; (2) one independent confirmatory run on the fixed DV;
-(3) same-provider capability points at ≥3 levels before any "capability" gradient; (4) impose symmetric
+**RATE REANALYSIS DONE (2026-07-13, next-step #1 — free, no re-runs).** Recomputed the gameplay DV as a
+per-move-attempt **rate** = illegal / (illegal + accepted well-formed move POSTs), from the SERVER logs
+(`log-*.jsonl`, `status_code`+`rejection_reason`; `OutOfTurn`+`PositionTaken` over `200/303`+those),
+per-game (n=39–40 per A-level per model), bootstrap 95% CI on the A-effect. Result:
+- **A reduces the illegal-move RATE — significant at EVERY tier** (gap A0−A1, 95% CI excludes 0): flash
+  **+0.442** [.35,.53], 9b **+0.410** [.35,.47], 20b **+0.304** [.25,.36], 120b **+0.233** [.17,.29].
+  The core A effect survives normalization and is now a properly-quantified mean effect.
+- **"Perfect separation" CONFIRMED DEAD:** at the game level, A=0 games fall at/below A=1's max rate
+  18–100% of the time (flash 100%, 9b 18%, 20b 70%, 120b 85%) — a mean effect with heavy overlap, not
+  zero-overlap separation.
+- **A-erosion PARTLY RECOVERED (correction #2's downgrade was too harsh).** Rate-normalizing removes the
+  game-length/stall confound the causal analyst raised — yet the A-effect gap still shrinks **monotonically**
+  with capability (0.442→0.410→0.304→0.233), *and* shrinks within the confound-free same-provider WandB pair
+  (20b 0.304 → 120b 0.233). So A-erosion is a **supported trend**, not a pure stall artifact — but the
+  single 20b→120b step's CIs overlap ([.25,.36] vs [.17,.29]), so it is "trend-supported," not
+  individually significant. Net: the methodologist's "no perfect separation" hit STANDS; the causal
+  analyst's "erosion = stall artifact" hit does NOT survive the rate.
+
+**Remaining next steps (unchanged, need re-runs / new specimen):** (2) one independent confirmatory run on
+the fixed DV; (3) same-provider capability points at ≥3 levels; (4) impose symmetric
 text-necessity on both arms and re-run the emission comparison; (5) a non-memorized task to isolate
 discovery from recall.
 
