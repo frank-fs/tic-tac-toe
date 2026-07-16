@@ -6,9 +6,12 @@ open Microsoft.AspNetCore.Authentication.Cookies
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.ResponseCompression
+open Microsoft.AspNetCore.Routing
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Microsoft.Extensions.Logging
+open ModelContextProtocol.Protocol
+open ModelContextProtocol.Server
 open Frank.Builder
 open Frank.Auth
 open Frank.Datastar
@@ -16,9 +19,17 @@ open Frank.OpenApi
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Web.EventLog
+open TicTacToe.Web.Mcp
 open TicTacToe.Web.Surface
 open TicTacToe.Engine
 open TicTacToe.Web.Extensions
+
+/// MCP endpoints are opt-in at startup (this app's default identity is the Frank/Datastar demo;
+/// MCP is a research addition the harness turns on explicitly, never a production default).
+let private mcpEnabled () =
+    match Environment.GetEnvironmentVariable("TICTACTOE_MCP_ENABLED") with
+    | "1" | "true" -> true
+    | _ -> false
 
 let private initialGames () =
     match Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
@@ -57,6 +68,7 @@ let configureServices (services: IServiceCollection) =
             | null | "" -> EventLog()
             | path -> EventLog(path))
         .AddSingleton<IClaimsTransformation, GameUserClaimsTransformation>()
+        .AddSingleton<Mcp.ToolState>(fun _ -> Mcp.ToolState())
         .AddResponseCompression(fun opts ->
             opts.EnableForHttps <- true
 
@@ -75,6 +87,10 @@ let configureServices (services: IServiceCollection) =
     services.Configure<GzipCompressionProviderOptions>(fun (opts: GzipCompressionProviderOptions) ->
         opts.Level <- CompressionLevel.SmallestSize)
     |> ignore
+
+    // Registered unconditionally (cheap DI wiring); whether the endpoints are actually MOUNTED
+    // is the mcpEnabled() gate on the `plug` below — a single opt-in switch, not a build-time split.
+    services.AddMcpServer().WithHttpTransport().WithTools<Mcp.TicTacToeTools>() |> ignore
 
     services
 
@@ -318,6 +334,16 @@ let main args =
         plugBeforeRouting createInitialGames
         plugBeforeRouting useOptionsDiscovery
         plugBeforeRouting useStreamGuard
+
+        // MCP mounts alongside Frank's own resources — same DI container, same GameSupervisor,
+        // same PlayerAssignmentManager, same EventLog (see Mcp.fs). Opt-in only (mcpEnabled).
+        // UseEndpoints (not a direct IEndpointRouteBuilder cast): the referenced Frank build runs its
+        // classic-host branch here, where `app` is a plain ApplicationBuilder, not WebApplication —
+        // UseEndpoints works on either, verified by runtime cast failure when this was a direct cast.
+        plug (fun app ->
+            if mcpEnabled () then
+                app.UseEndpoints(fun endpoints -> endpoints.MapMcp() |> ignore)
+            else app)
 
         resource login
         resource logout

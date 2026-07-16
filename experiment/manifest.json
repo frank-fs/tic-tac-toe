@@ -1,24 +1,16 @@
 {
   "sample": "tic-tac-toe",
-  "surfaces": {
-    "http": {
-      "project": "src/TicTacToe.Web",
-      "port": 5328,
-      "readyProbe": "/login",
-      "route": "games",
-      "gameIdPattern": "games/[0-9a-f-]{36}"
-    },
-    "mcp": {
-      "project": "experiment/erpc/TicTacToe.McpRpc.fsproj",
-      "dll": "experiment/erpc/bin/Debug/net10.0/TicTacToe.McpRpc.dll",
-      "port": 5428,
-      "readyProbe": "/",
-      "httpArg": "--http",
-      "identity": {
-        "tool": "authenticate",
-        "tokenField": "token",
-        "requestArg": "identityToken"
-      }
+  "surface": {
+    "project": "src/TicTacToe.Web",
+    "port": 5328,
+    "readyProbe": "/login",
+    "route": "games",
+    "gameIdPattern": "games/[0-9a-f-]{36}",
+    "mcpEnabledEnv": "TICTACTOE_MCP_ENABLED",
+    "identity": {
+      "tool": "authenticate",
+      "tokenField": "token",
+      "requestArg": "identityToken"
     }
   },
   "requestLogEnv": "TICTACTOE_REQUEST_LOG_PATH",
