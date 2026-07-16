@@ -12,7 +12,7 @@ open System.Threading
 /// (InitialGames/MaxGames via the same env vars the orchestrator uses), on a free port.
 /// Runs the already-built dll (the test project references TicTacToe.Web, so it is built
 /// alongside the tests) to avoid `dotnet run` rebuild/file-lock issues. Disposing kills it.
-type ConfiguredServer(initialGames: int, ?maxGames: int, ?cell: string, ?lockGame: bool) =
+type ConfiguredServer(initialGames: int, ?maxGames: int, ?cell: string, ?lockGame: bool, ?mcpEnabled: bool, ?requestLogPath: string) =
 
     static let repoRoot () =
         let rec up (dir: DirectoryInfo) =
@@ -28,7 +28,7 @@ type ConfiguredServer(initialGames: int, ?maxGames: int, ?cell: string, ?lockGam
         listener.Stop()
         port
 
-    static let startProcess (baseUrl: string) (initialGames: int) (maxGames: int option) (cell: string option) (lockGame: bool option) =
+    static let startProcess (baseUrl: string) (initialGames: int) (maxGames: int option) (cell: string option) (lockGame: bool option) (mcpEnabled: bool option) (requestLogPath: string option) =
         let baseDir = DirectoryInfo(AppContext.BaseDirectory)   // .../bin/<Config>/<tfm>
         let tfm = baseDir.Name
         let config = baseDir.Parent.Name
@@ -44,6 +44,10 @@ type ConfiguredServer(initialGames: int, ?maxGames: int, ?cell: string, ?lockGam
         // The surface cell + the experiment lock: unset = the full surface, unlocked (the product).
         cell |> Option.iter (fun c -> psi.Environment.["TICTACTOE_CELL"] <- c)
         lockGame |> Option.iter (fun l -> psi.Environment.["TICTACTOE_LOCK_GAME"] <- (if l then "1" else "0"))
+        // MCP stays off unless a test explicitly asks for it — the app's default identity is the
+        // Frank/Datastar demo; MCP is this opt-in research addition (see TicTacToe.Web/Program.fs).
+        mcpEnabled |> Option.iter (fun m -> psi.Environment.["TICTACTOE_MCP_ENABLED"] <- (if m then "1" else "0"))
+        requestLogPath |> Option.iter (fun p -> psi.Environment.["TICTACTOE_REQUEST_LOG_PATH"] <- p)
         psi.Environment.["DOTNET_SYSTEM_GLOBALIZATION_INVARIANT"] <- "1"
         psi.Environment.["ASPNETCORE_ENVIRONMENT"] <- "Development"
         psi.RedirectStandardOutput <- true
@@ -60,7 +64,7 @@ type ConfiguredServer(initialGames: int, ?maxGames: int, ?cell: string, ?lockGam
 
     let port = freePort ()
     let baseUrl = sprintf "http://localhost:%d" port
-    let proc = startProcess baseUrl initialGames maxGames cell lockGame
+    let proc = startProcess baseUrl initialGames maxGames cell lockGame mcpEnabled requestLogPath
 
     do
         // Wait until the server answers (any HTTP status) or time out.

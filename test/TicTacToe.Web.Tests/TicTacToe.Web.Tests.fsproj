@@ -29,6 +29,7 @@
     <Compile Include="PerGameStreamTests.fs" />
     <Compile Include="SurfaceCellTests.fs" />
     <Compile Include="WireSemanticsTests.fs" />
+    <Compile Include="McpTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
