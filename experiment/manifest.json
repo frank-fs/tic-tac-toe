@@ -7,6 +7,7 @@
     "route": "games",
     "gameIdPattern": "games/[0-9a-f-]{36}",
     "mcpEnabledEnv": "TICTACTOE_MCP_ENABLED",
+    "mcpPath": "/mcp",
     "identity": {
       "tool": "authenticate",
       "tokenField": "token",

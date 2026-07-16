@@ -340,9 +340,11 @@ let main args =
         // UseEndpoints (not a direct IEndpointRouteBuilder cast): the referenced Frank build runs its
         // classic-host branch here, where `app` is a plain ApplicationBuilder, not WebApplication —
         // UseEndpoints works on either, verified by runtime cast failure when this was a direct cast.
+        // Mounted at "/mcp", NOT root: MapMcp()'s bare-root default collides with Frank's own GET "/"
+        // home resource (AmbiguousMatchException — verified live, both endpoints claim GET /).
         plug (fun app ->
             if mcpEnabled () then
-                app.UseEndpoints(fun endpoints -> endpoints.MapMcp() |> ignore)
+                app.UseEndpoints(fun endpoints -> endpoints.MapMcp("/mcp") |> ignore)
             else app)
 
         resource login
