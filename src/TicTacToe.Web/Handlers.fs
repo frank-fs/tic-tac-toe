@@ -464,6 +464,10 @@ let makeMove (ctx: HttpContext) =
             // The move is a command. Progressive enhancement: a plain form POST
             // (no JS) carries it as form fields; datastar sends it as signals.
             // Branch on content type to avoid double-reading the request body.
+            // Two distinct client errors, previously conflated under one reason: a body that
+            // never parsed into {player, position} at all (InvalidFormat) vs a well-shaped body
+            // naming a token that isn't a real player/square (InvalidMove, e.g. a hallucinated
+            // position like "TopMiddle").
             let! parsedMove =
                 if isForm then
                     task {
@@ -471,24 +475,34 @@ let makeMove (ctx: HttpContext) =
                             match ctx.Request.Form.TryGetValue(name) with
                             | true, v -> string v
                             | _ -> ""
-                        return Move.TryParse(field "player", field "position")
+                        let playerStr, positionStr = field "player", field "position"
+                        return
+                            if playerStr = "" || positionStr = "" then Result.Error "InvalidFormat"
+                            else
+                                match Move.TryParse(playerStr, positionStr) with
+                                | Some m -> Ok m
+                                | None -> Result.Error "InvalidMove"
                     }
                 else
                     task {
                         let! signals = Datastar.tryReadSignals<MoveSignals> ctx
                         return
                             match signals with
-                            | ValueSome s -> Move.TryParse(s.player, s.position)
-                            | ValueNone -> None
+                            | ValueNone -> Result.Error "InvalidFormat"
+                            | ValueSome s ->
+                                match Move.TryParse(s.player, s.position) with
+                                | Some m -> Ok m
+                                | None -> Result.Error "InvalidMove"
                     }
 
             match parsedMove with
-            | None ->
-                // Malformed move (bad player/position token, or a non-form body) — a client error.
+            | Result.Error reason ->
+                // Malformed or unrecognized move — a client error either way.
                 ctx.Response.StatusCode <- 400
-                eventLog.LogEvent("move_rejected", gameId, role = "unassigned", reason = "InvalidMove")
+                ctx.Items.["rejectionReason"] <- reason
+                eventLog.LogEvent("move_rejected", gameId, role = "unassigned", reason = reason)
                 if wantsHtml then do! renderGamePage ctx gameId (game.GetState()) (Some "invalid-move")
-            | Some moveAction ->
+            | Ok moveAction ->
                 // Get current game state to determine whose turn it is
                 let currentState = game.GetState()
                 let xTurn = isXTurn currentState
@@ -546,10 +560,12 @@ let makeMove (ctx: HttpContext) =
                         // unprocessable move, not a routing or authorization error: 422, half of the
                         // illegalMoves DV (the other half is 403 out-of-turn).
                         eventLog.LogEvent("move_rejected", gameId, role = role, reason = "PositionTaken")
+                        ctx.Items.["rejectionReason"] <- "PositionTaken"
                         ctx.Response.StatusCode <- 422
                         if wantsHtml then do! renderGamePage ctx gameId currentState (Some "position-taken")
                 | Rejected reason ->
                     eventLog.LogEvent("move_rejected", gameId, role = role, reason = reason.ToString())
+                    ctx.Items.["rejectionReason"] <- reason.ToString()
                     let slug = rejectionSlug reason
                     // Out-of-turn / not-a-player / game-over: the caller may not act here. 403.
                     ctx.Response.StatusCode <- 403

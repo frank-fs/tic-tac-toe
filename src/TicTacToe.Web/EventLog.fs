@@ -51,3 +51,17 @@ type EventLog(?logPath: string) =
         reason |> Option.iter (fun r -> payload["reason"] <- JsonValue.Create(r))
         obj["payload"] <- payload
         writeJson obj
+
+    /// One line per HTTP request/response, emitted by request-logging middleware — cross-cutting,
+    /// so a new route can't forget to wire it up (unlike LogEvent, which only domain handlers call).
+    /// `reason`, when present, echoes the exact string the matching LogEvent call already wrote
+    /// (via HttpContext.Items) — one vocabulary, not a second one to drift out of sync.
+    member _.LogRequest(method: string, path: string, statusCode: int, ?reason: string) =
+        let obj = JsonObject()
+        obj["event_type"] <- JsonValue.Create("http_request")
+        obj["timestamp"] <- JsonValue.Create(DateTimeOffset.UtcNow.ToString("o"))
+        obj["method"] <- JsonValue.Create(method)
+        obj["path"] <- JsonValue.Create(path)
+        obj["status_code"] <- JsonValue.Create(statusCode)
+        reason |> Option.iter (fun r -> obj["reason"] <- JsonValue.Create(r))
+        writeJson obj

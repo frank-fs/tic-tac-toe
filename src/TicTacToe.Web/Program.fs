@@ -249,6 +249,24 @@ let private optionsAllow (path: string) =
     | p when p.StartsWith "/games/" || p.StartsWith "/arenas/" -> Some "GET, POST, DELETE, OPTIONS"
     | _ -> None
 
+/// Cross-cutting request log: every response's method/path/status_code. Restored after the
+/// Surface-twin retirement (9644722) silently dropped the app's only source of this — the twin's
+/// own Logger.fs died with it, and nobody re-checked the harness against the merged app's log.
+/// Wraps the ENTIRE downstream pipeline (registered first) so it sees the true final status,
+/// including auth/404 short-circuits a domain handler never runs for.
+let useRequestLog (app: IApplicationBuilder) =
+    app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+        task {
+            do! next.Invoke ctx
+            let eventLog = ctx.RequestServices.GetRequiredService<EventLog.EventLog>()
+            match ctx.Items.TryGetValue("rejectionReason") with
+            | true, (:? string as r) ->
+                eventLog.LogRequest(ctx.Request.Method, ctx.Request.Path.Value, ctx.Response.StatusCode, reason = r)
+            | _ ->
+                eventLog.LogRequest(ctx.Request.Method, ctx.Request.Path.Value, ctx.Response.StatusCode)
+        }
+        :> Task)
+
 /// Sd: OPTIONS answers "what can I do here?" without a state change. Off entirely when Sd is off.
 let useOptionsDiscovery (app: IApplicationBuilder) =
     let surface = app.ApplicationServices.GetRequiredService<Surface>()
@@ -313,6 +331,8 @@ let main args =
         service configureServices
 
         logging configureLogging
+
+        plugBeforeRouting useRequestLog
 
         plugBeforeRoutingWhen isDevelopment DeveloperExceptionPageExtensions.UseDeveloperExceptionPage
 

@@ -175,6 +175,24 @@ let resolveMove
     | Ok(board, whoseTurn, status, side, newlySeated) -> Moved(board, whoseTurn, status, side, newlySeated)
     | Result.Error code -> MoveOutcome.Rejected code
 
+/// Maps this module's agent-facing error codes to the SAME reason vocabulary Handlers.fs logs for
+/// the HTTP arm (its RejectionReason DU case names), so aggregate.sh can classify illegal moves
+/// identically across arms. Log-only: the agent-facing `error` string (what the tool call returns)
+/// is untouched — changing that would alter the actual wire behavior under test, not just telemetry.
+/// Codes with no HTTP-arm equivalent (never logged as move_rejected there either) canonicalize to a
+/// distinct, uncounted name rather than colliding with a real bucket.
+let private canonicalReason (code: string) : string =
+    match code with
+    | "invalid_input" -> "InvalidMove"
+    | "position_taken" -> "PositionTaken"
+    | "not_your_turn" -> "NotYourTurn"
+    | "game_full" -> "NotAPlayer"
+    | "game_over" -> "GameOver"
+    | "invalid_move" -> "EngineError"
+    | "unauthenticated" -> "Unauthenticated"
+    | "game_not_found" -> "GameNotFound"
+    | other -> other
+
 /// Read-only: which seat (if any) this token already holds, for attributing rejected moves to a role.
 let private seatOf (assignments: PlayerAssignmentManager) (gameId: string) (token: string) : string option =
     match assignments.GetAssignment(gameId) with
@@ -249,7 +267,7 @@ type TicTacToeTools
             box {| board = board; whoseTurn = turn; status = status |}
         | MoveOutcome.Rejected code ->
             let role = token |> Option.bind (seatOf assignments gameId) |> Option.defaultValue "unassigned"
-            eventLog.LogEvent("move_rejected", gameId, role = role, reason = code)
+            eventLog.LogEvent("move_rejected", gameId, role = role, reason = canonicalReason code)
             box {| error = code; position = position |}
 
     [<McpServerTool>]
