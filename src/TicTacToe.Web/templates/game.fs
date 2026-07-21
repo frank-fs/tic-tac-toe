@@ -170,20 +170,28 @@ let private submitSquare (surface: Surface) (state: GameState) (playerStr: strin
             }
     (applyGridCellRole surface btn) :> HtmlElement
 
-/// A0's occupied / out-of-turn square: still inside a form, but the button carries HTML `disabled`
-/// (verbatim from the twin). That is a BROWSER-only guard — an HTTP agent ignores it and sees nine
-/// equally submittable forms, including the illegal ones. That is the point of the ungated design.
-/// The label states the real location and occupancy either way -- a non-actionable square is
-/// still a real place on the board worth knowing about.
+/// A0's occupied / out-of-turn square: still a real, live form -- no HTML `disabled`. The native
+/// `disabled` attribute was here before (a BROWSER-only guard, ignored by an HTTP agent), but it
+/// also silently removes an element from the accessibility tree and tab order regardless of
+/// whatever role/aria-label also sits on it -- confirmed live (Chrome), on a fresh page load,
+/// nothing SSE/morph-related about it. `disabled` was never the real legality boundary anyway
+/// (the server validates and rejects an illegal move independent of it); removing it makes a
+/// browser click behave the same way an HTTP agent's POST already does -- submit, then a real
+/// server-side accept/reject -- and makes A=0 genuinely ungated for every client, not just
+/// HTTP ones. The label states the real location and occupancy either way -- a non-actionable
+/// square is still a real place on the board worth knowing about.
 let private disabledSquare (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
-    let btn = button(class' = "square", type' = "submit").attr("disabled", "disabled") { label }
+    let btn = button(class' = "square", type' = "submit") { label }
     let btn = if surface.C then btn.attr("aria-label", sprintf "%s square, %s" (humanPosition position) (occupancyPhrase state position)) else btn
     (applyGridCellRole surface btn) :> HtmlElement
 
-/// A1's non-affordance cell: plain, non-interactive, no form. Same location+occupancy label as
-/// disabledSquare -- a non-legal square is still a real place on the board to know about.
+/// A1's non-affordance cell: plain, non-interactive, no form (still true without `disabled` --
+/// type="button" outside any form was never submittable regardless of that attribute; removing
+/// it here is a pure accessibility-tree-exposure fix, no behavior change). Same location+
+/// occupancy label as disabledSquare -- a non-legal square is still a real place on the board
+/// to know about.
 let private renderPlainCell (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
-    let btn = button(class' = "square", type' = "button").attr("disabled", "disabled") { label }
+    let btn = button(class' = "square", type' = "button") { label }
     let btn = if surface.C then btn.attr("aria-label", sprintf "%s square, %s" (humanPosition position) (occupancyPhrase state position)) else btn
     (applyGridCellRole surface btn) :> HtmlElement
 
@@ -194,8 +202,9 @@ let private squareLabel (state: GameState) (position: SquarePosition) : HtmlElem
     | _ -> span(class' = "empty") { raw "·" } :> HtmlElement
 
 /// Render one square. A is affordance GATING, not presence (the banked Surface instrument):
-///   A=0: ALL 9 squares are form-POST buttons (naive design); occupied/inactive ones are `disabled`
-///        (browser-only — an HTTP agent sees nine equally submittable forms).
+///   A=0: ALL 9 squares are form-POST buttons (naive design), every one genuinely submittable --
+///        occupied/inactive ones aren't client-side disabled; the server rejects an illegal move
+///        the same way for a browser click as it already does for an HTTP agent's raw POST.
 ///   A=1: ONLY the caller's currently-legal moves are forms; every other square is a plain cell.
 let private renderSquare
     (surface: Surface) (legal: Set<SquarePosition>) (basePath: string) gameId (playerStr: string)

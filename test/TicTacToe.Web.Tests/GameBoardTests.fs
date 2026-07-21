@@ -114,8 +114,15 @@ let tests =
               // delete-then-recreate and contaminate a run with a second game's moves.
               Expect.isFalse (html.Contains "delete-game-btn") "A finished game must offer no delete control"
               Expect.isFalse (html.Contains "reset-game-btn") "A finished game must offer no reset control"
-              // renderGameBoard with empty userId and no assignment uses gameCount<=6, so delete is disabled
-              Expect.stringContains html "disabled" "Delete button should be disabled when rendered without user context"
+              // The line this replaced ("Delete button should be disabled...") asserted
+              // Contains "disabled" and passed, but this scenario has NO delete button at all
+              // (asserted directly above) -- it was only ever matching the square buttons' HTML
+              // `disabled` attribute, a stale/copy-pasted assertion that never tested what its
+              // own message claimed. Surfaced by removing `disabled` from the squares (a
+              // deliberate accessibility fix -- native `disabled` strips an element from the
+              // accessibility tree regardless of role/aria-label), which made the false pass
+              // visible. No delete-button-disabled behavior to test here; removed rather than
+              // reworded onto a still-wrong premise.
               Expect.isFalse (html.Contains("square-clickable")) "Should not have any clickable squares"
 
           testCase "Draw game renders correctly"
