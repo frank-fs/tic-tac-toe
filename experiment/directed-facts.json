@@ -5,6 +5,7 @@
   "isMultiplayer": true,
   "howToJoin": "Submit your first move to claim your seat; X moves first, then O.",
   "howToAct": "Submit a move by POSTing to the game path a url-encoded body: player=<your role, X or O>&position=<square>. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.",
+  "howToActErpc": "Call authenticate() once to get an identityToken, then call make_move with gameId, position, and identityToken. The server derives your side (X or O) from your identityToken by move order — you never state your role yourself. position must be one of: TopLeft, TopCenter, TopRight, MiddleLeft, MiddleCenter, MiddleRight, BottomLeft, BottomCenter, BottomRight.",
   "roles": {
     "X": { "myRole": "X", "canIMove": true },
     "O": { "myRole": "O", "canIMove": true }
