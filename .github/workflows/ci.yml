@@ -123,10 +123,18 @@ jobs:
           dotnet restore
           dotnet build --no-restore
 
+      # Direct DLL invocation, not `dotnet run --project` -- this job restarts the server twice
+      # on the same port (C=1 then C=0), and `dotnet run` forks a child process that `pkill -f
+      # "TicTacToe.Web.dll"` below doesn't reliably match, so the SECOND start never actually
+      # took over the port: caught live in CI (not locally, where I always ran the DLL directly)
+      # -- the "C=0" run kept getting the first (C=1) server's answers, wrongly reporting a leak
+      # that was a script bug, not a real one (the app's C-toggle itself was already independently
+      # verified correct). Single directly-matched process, reliably killable.
       - name: Start app (C=1, cell 0100 -- accessibility only, isolates the factor)
         run: |
           TICTACTOE_CELL=0100 TICTACTOE_INITIAL_GAMES=1 TICTACTOE_MAX_GAMES=1 TICTACTOE_LOCK_GAME=1 \
-            dotnet run --project src/TicTacToe.Web/ --no-build --urls "http://localhost:5000" &
+            ASPNETCORE_URLS="http://localhost:5000" \
+            dotnet src/TicTacToe.Web/bin/Debug/net10.0/TicTacToe.Web.dll &
           for i in {1..30}; do
             curl -s http://localhost:5000 > /dev/null 2>&1 && break
             sleep 1
@@ -151,12 +159,21 @@ jobs:
 
       - name: Stop app
         if: always()
-        run: pkill -f "TicTacToe.Web.dll" || true
+        run: |
+          pkill -f "TicTacToe.Web.dll" || true
+          # Wait for the port to actually be released, not just the process signalled -- a
+          # racing bind on the next start step is the same class of "looks fine, silently isn't"
+          # failure the direct-DLL-invocation fix above addresses.
+          for i in {1..10}; do
+            curl -s http://localhost:5000 > /dev/null 2>&1 || break
+            sleep 1
+          done
 
       - name: Start app (C=0 -- accessibility factor off)
         run: |
           TICTACTOE_CELL=0000 TICTACTOE_INITIAL_GAMES=1 TICTACTOE_MAX_GAMES=1 TICTACTOE_LOCK_GAME=1 \
-            dotnet run --project src/TicTacToe.Web/ --no-build --urls "http://localhost:5000" &
+            ASPNETCORE_URLS="http://localhost:5000" \
+            dotnet src/TicTacToe.Web/bin/Debug/net10.0/TicTacToe.Web.dll &
           for i in {1..30}; do
             curl -s http://localhost:5000 > /dev/null 2>&1 && break
             sleep 1
