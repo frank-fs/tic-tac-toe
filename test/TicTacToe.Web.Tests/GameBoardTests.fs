@@ -314,8 +314,9 @@ let tests =
               // Active X player, one X placed. The move-preview "X" in empty cells is
               // decorative — it must be aria-hidden so the accessibility tree (which the
               // discovery agents read) shows exactly one placed X, not nine. Empty cells'
-              // affordance is named for the action an agent takes ("Play X at <pos>"), so
-              // the control is unambiguous in the accessibility tree.
+              // affordance names the location, its emptiness, and the claim action ("<pos>
+              // square, empty, claim it for X"), so the control is unambiguous in the
+              // accessibility tree.
               let gameState = createGameStateWith [ (TopLeft, X) ]
               let remainingMoves =
                   [| TopCenter; TopRight; MiddleLeft; MiddleCenter
@@ -326,5 +327,5 @@ let tests =
               Expect.stringContains html "<span class=\"player\">X</span>" "Taken cell shows the placed X"
               Expect.isFalse (html.Contains("<span class=\"preview\">")) "Preview span must not be bare — it must carry aria-hidden"
               Expect.stringContains html "<span class=\"preview\" aria-hidden=\"true\">X</span>" "Move-preview is decorative and hidden from a11y tree"
-              Expect.stringContains html "aria-label=\"Play X at TopCenter\"" "Empty clickable cell names the action + position"
-              Expect.stringContains html "aria-label=\"Play X at MiddleCenter\"" "Empty clickable cell names the action + position" ]
+              Expect.stringContains html "aria-label=\"top center square, empty, claim it for X\"" "Empty clickable cell names the location, emptiness, and claim action"
+              Expect.stringContains html "aria-label=\"middle center square, empty, claim it for X\"" "Empty clickable cell names the location, emptiness, and claim action" ]

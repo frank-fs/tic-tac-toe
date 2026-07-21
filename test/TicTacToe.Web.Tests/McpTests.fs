@@ -90,7 +90,7 @@ type McpTests() =
             use http = new HttpClient(handler, BaseAddress = Uri(this.BaseUrl))
             let! _ = http.GetAsync("/login")
             let! page = http.GetStringAsync(sprintf "/games/%s" gameId)
-            Assert.That(page, Does.Contain "TopLeft, X", "the MCP-made move must render through the HTTP surface")
+            Assert.That(page, Does.Contain "claimed by X", "the MCP-made move must render through the HTTP surface")
         }
 
     [<Test>]

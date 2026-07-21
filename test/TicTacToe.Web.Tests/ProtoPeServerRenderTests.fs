@@ -131,7 +131,7 @@ type ProtoPeServerRenderTests() =
             let! body = resp.Content.ReadAsStringAsync()
             Assert.That(body, Does.Contain "aria-live", "boards must carry an aria-live region")
             Assert.That(body, Does.Contain "role=\"status\"", "status must be a role=status live region (works no-JS too)")
-            Assert.That(body, Does.Contain "aria-label=\"Play X at", "controls must name the action, not just the position")
+            Assert.That(body, Does.Contain "square, empty, claim it for X", "controls must name the location, occupancy, and the claim action, not just the position")
         }
 
     // ── Dynamic, per-viewer responses must not be cached ───────────────────────

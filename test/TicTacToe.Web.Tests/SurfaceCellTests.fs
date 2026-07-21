@@ -105,8 +105,8 @@ let tests =
                   let html = render "0100" "" None (xTurn [ TopLeft, X ])
                   Expect.stringContains html "role=\"grid\"" "the board is a grid"
                   Expect.stringContains html "role=\"gridcell\"" "squares are gridcells"
-                  Expect.stringContains html "aria-label=\"TopLeft, X\"" "a taken square announces position + occupancy"
-                  Expect.stringContains html "aria-label=\"TopCenter, empty\"" "an empty square announces position + empty"
+                  Expect.stringContains html "aria-label=\"top left square, claimed by X\"" "a taken square announces the location + who claimed it"
+                  Expect.stringContains html "aria-label=\"top center square, empty, claim it for X\"" "an empty, actionable square announces the location, emptiness, and the claim action"
                   Expect.stringContains html "role=\"status\"" "turn/outcome is a live region"
 
               testCase "C=0 strips EVERY aria-* and role= from the representation"

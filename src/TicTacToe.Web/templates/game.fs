@@ -16,6 +16,10 @@ let private allPositions =
       BottomCenter
       BottomRight ]
 
+/// The 3 rows a real tic-tac-toe board has, in allPositions' existing fixed order (Top* then
+/// Middle* then Bottom*) -- needed for the ARIA grid pattern's required role="row" grouping.
+let private boardRows = [ allPositions.[0..2]; allPositions.[3..5]; allPositions.[6..8] ]
+
 // ============================================================================
 // Active Patterns
 // ============================================================================
@@ -109,18 +113,32 @@ let notFoundPage: HtmlElement =
 let aliasOf (basePath: string) =
     if basePath = "/arenas" then "/games" else "/arenas"
 
-/// Occupancy of a square, in the vocabulary C announces to assistive tech.
-let private occupancyOf (state: GameState) (position: SquarePosition) =
+/// Natural-language position name, for accessible labels only -- the wire-format position
+/// value the move form submits always stays SquarePosition.ToString()'s spelling ("TopLeft"
+/// etc, the protocol vocabulary Mcp.fs's tool description also uses), completely unchanged;
+/// this is prose meant to be heard, never parsed.
+let private humanPosition (position: SquarePosition) : string =
+    match position with
+    | TopLeft -> "top left" | TopCenter -> "top center" | TopRight -> "top right"
+    | MiddleLeft -> "middle left" | MiddleCenter -> "middle center" | MiddleRight -> "middle right"
+    | BottomLeft -> "bottom left" | BottomCenter -> "bottom center" | BottomRight -> "bottom right"
+
+/// Occupancy, in the prose C announces to assistive tech: what a screen-reader user needs to
+/// know about a square isn't just "X" -- it's that the square is CLAIMED BY X, versus empty
+/// and (elsewhere) actionable. Distinct from the machine-readable token elsewhere in this file
+/// (statusToken, occupancyOf-shaped values other code may still want the bare "X"/"O"/"empty" for).
+let private occupancyPhrase (state: GameState) (position: SquarePosition) =
     match state.TryGetValue(position) with
-    | true, Taken player -> player.ToString()
+    | true, Taken player -> sprintf "claimed by %s" (player.ToString())
     | _ -> "empty"
 
-/// C: an accessible cell announces its position and occupancy to assistive tech.
-let private applyCell (surface: Surface) (state: GameState) (position: SquarePosition) (tag: HtmlTag) =
-    if surface.C then
-        tag.attr("role", "gridcell")
-           .attr("aria-label", sprintf "%s, %s" (position.ToString()) (occupancyOf state position))
-    else tag
+/// C: mark a square as a grid cell for assistive tech. The accessible NAME (aria-label) is set
+/// by each specific renderer below (submitSquare/disabledSquare/renderPlainCell), never here --
+/// each needs different phrasing (actionable vs not), and setting a second, generic aria-label
+/// on top of an already-labeled button used to silently produce a duplicate attribute (HTML
+/// keeps only the first; the second, more informative one was always dead on arrival).
+let private applyGridCellRole (surface: Surface) (tag: HtmlTag) =
+    if surface.C then tag.attr("role", "gridcell") else tag
 
 /// The move form wrapping one square. Progressive enhancement: a real form so the move command
 /// works as a plain POST without JavaScript; datastar enhances the submit (preventing the native
@@ -135,32 +153,39 @@ let private moveForm (basePath: string) gameId (playerStr: string) (posStr: stri
     }
     :> HtmlElement
 
-/// A submittable square. C=1 names the action ("Play X at TopLeft") and hides the decorative
-/// preview glyph from the a11y tree.
+/// A submittable, empty square: the label names the LOCATION, its occupancy, and the claim
+/// action in one phrase ("top left square, empty, claim it for X") -- a screen-reader user
+/// hears what the square IS and what it does, not just a bare button name. Hides the decorative
+/// X/O preview glyph from the a11y tree (its meaning is already in the label).
 let private submitSquare (surface: Surface) (state: GameState) (playerStr: string) (position: SquarePosition) =
     let btn =
         if surface.C then
             button(class' = "square square-clickable", type' = "submit")
-                .attr("aria-label", sprintf "Play %s at %s" playerStr (position.ToString())) {
+                .attr("aria-label", sprintf "%s square, empty, claim it for %s" (humanPosition position) playerStr) {
                 span(class' = "preview").attr("aria-hidden", "true") { playerStr }
             }
         else
             button(class' = "square square-clickable", type' = "submit") {
                 span(class' = "preview") { playerStr }
             }
-    (applyCell surface state position btn) :> HtmlElement
+    (applyGridCellRole surface btn) :> HtmlElement
 
 /// A0's occupied / out-of-turn square: still inside a form, but the button carries HTML `disabled`
 /// (verbatim from the twin). That is a BROWSER-only guard — an HTTP agent ignores it and sees nine
 /// equally submittable forms, including the illegal ones. That is the point of the ungated design.
+/// The label states the real location and occupancy either way -- a non-actionable square is
+/// still a real place on the board worth knowing about.
 let private disabledSquare (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
     let btn = button(class' = "square", type' = "submit").attr("disabled", "disabled") { label }
-    (applyCell surface state position btn) :> HtmlElement
+    let btn = if surface.C then btn.attr("aria-label", sprintf "%s square, %s" (humanPosition position) (occupancyPhrase state position)) else btn
+    (applyGridCellRole surface btn) :> HtmlElement
 
-/// A1's non-affordance cell: plain, non-interactive, no form.
+/// A1's non-affordance cell: plain, non-interactive, no form. Same location+occupancy label as
+/// disabledSquare -- a non-legal square is still a real place on the board to know about.
 let private renderPlainCell (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
     let btn = button(class' = "square", type' = "button").attr("disabled", "disabled") { label }
-    (applyCell surface state position btn) :> HtmlElement
+    let btn = if surface.C then btn.attr("aria-label", sprintf "%s square, %s" (humanPosition position) (occupancyPhrase state position)) else btn
+    (applyGridCellRole surface btn) :> HtmlElement
 
 /// The glyph shown in a square that the caller cannot play into.
 let private squareLabel (state: GameState) (position: SquarePosition) : HtmlElement =
@@ -205,12 +230,15 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
 
 /// One control, as a real no-JS form. rel types the affordance in the markup (the delete form is
 /// the no-JS POST alias for the DELETE verb on the canonical resource); datastarAction enhances
-/// the submit when JS is present.
-let private controlForm (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) : HtmlElement =
+/// the submit when JS is present. C: a11yLabel names WHICH game this control acts on -- in a
+/// multi-game dashboard a screen reader's button list shows "Reset Game" x N indistinguishably
+/// without it.
+let private controlForm (surface: Surface) (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) (a11yLabel: string) : HtmlElement =
     form(method = "post", action = action)
         .attr("rel", rel)
         .attr("data-on:submit__prevent", datastarAction) {
-        button(class' = btnClass, type' = "submit") { label }
+        let btn = button(class' = btnClass, type' = "submit") { label }
+        if surface.C then btn.attr("aria-label", a11yLabel) else btn
     }
     :> HtmlElement
 
@@ -218,12 +246,15 @@ let private controlForm (btnClass: string) (rel: string) (action: string) (datas
 /// progress — no viewer/seat/count/lock gating in the markup. Authorization is the HANDLER's job
 /// (403 not-a-player, 409 locked / would-drop-below-minimum). Gating them here would change the
 /// form count an agent sees, which is the surface the banked results were produced against.
-let private renderControls (basePath: string) gameId =
+let private renderControls (surface: Surface) (basePath: string) gameId =
+    let shortId = prefix8 gameId
     div(class' = "controls") {
-        controlForm "reset-game-btn" "reset-game"
-            (sprintf "%s/%s/reset" basePath gameId) (sprintf "@post('%s/%s/reset')" basePath gameId) "Reset Game"
-        controlForm "delete-game-btn" "delete-game"
-            (sprintf "%s/%s/delete" basePath gameId) (sprintf "@delete('%s/%s')" basePath gameId) "Delete Game"
+        controlForm surface "reset-game-btn" "reset-game"
+            (sprintf "%s/%s/reset" basePath gameId) (sprintf "@post('%s/%s/reset')" basePath gameId)
+            "Reset Game" (sprintf "Reset game %s" shortId)
+        controlForm surface "delete-game-btn" "delete-game"
+            (sprintf "%s/%s/delete" basePath gameId) (sprintf "@delete('%s/%s')" basePath gameId)
+            "Delete Game" (sprintf "Delete game %s" shortId)
     }
 
 // ============================================================================
@@ -262,15 +293,27 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         | Draw _ -> "draw"
         | Error _ -> "error"
     let statusRegion =
+        // aria-atomic: the whole region re-reads on change, not just whatever an AT implementation
+        // decides is the "changed part" of a datastar-morphed live region -- needed because this
+        // status text (not just one word) is what says whose turn it is.
         let d = div(class' = "status") { h2() { status } }
-        if surface.C then d.attr("role", "status").attr("aria-live", "polite") else d
+        if surface.C then d.attr("role", "status").attr("aria-live", "polite").attr("aria-atomic", "true") else d
+    // Grid > row > gridcell: a bare role="grid" with role="gridcell" children and no row grouping
+    // is an incomplete ARIA grid per the APG pattern (axe: aria-required-children/-parent) --
+    // screen readers can't announce cell position or navigate the grid correctly without it.
+    // display:contents (gameStyles below) keeps the CSS grid layout unaffected by the wrapper.
     let boardGrid =
-        let d =
-            div(class' = "board") {
-                for position in allPositions do
-                    renderSquare position
-            }
-        if surface.C then d.attr("role", "grid") else d
+        let rowOf (positions: SquarePosition list) =
+            let r = div(class' = "board-row") { for position in positions do renderSquare position }
+            if surface.C then r.attr("role", "row") else r
+        let d = div(class' = "board") { for row in boardRows do rowOf row }
+        if surface.C then d.attr("role", "grid").attr("aria-label", "Tic-tac-toe board") else d
+    let aliasLink =
+        let a' = a(class' = "game-alias", rel = "alternate", href = sprintf "%s/%s" (aliasOf basePath) gameId) { "alias" }
+        // WCAG 2.5.3 Label in Name: the accessible name must contain the visible text ("alias")
+        // verbatim, so voice-control users saying what they see can still find the control --
+        // caught live by Lighthouse's label-content-name-mismatch audit.
+        if surface.C then a'.attr("aria-label", "alias, alternate URL for this game") else a'
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-game-status", statusToken)
         .attr("data-can-move", (if canMove then "true" else "false"))
@@ -283,7 +326,7 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // either name can navigate the whole trail without ever crossing over.
         div(class' = "game-link") {
             a(href = sprintf "%s/%s" basePath gameId) { sprintf "Game %s" gameId }
-            a(class' = "game-alias", rel = "alternate", href = sprintf "%s/%s" (aliasOf basePath) gameId) { "alias" }
+            aliasLink
         }
         // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
@@ -292,7 +335,7 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         renderLegend assignment currentPlayer
         // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
         // delete-then-create a replacement game and contaminate a run with a second game's moves.
-        if isActive then renderControls basePath gameId else Fragment() { }
+        if isActive then renderControls surface basePath gameId else Fragment() { }
     }
 
 /// CSS styles for the game board
@@ -356,6 +399,10 @@ let gameStyles =
 
         /* Move forms wrap each clickable square; let the button be the grid item. */
         .board form { display: contents; }
+
+        /* role="row" wrapper (ARIA grid pattern) stays invisible to the CSS grid layout --
+           its children lay out as if it were not there, same technique as .board form above. */
+        .board-row { display: contents; }
 
         .square {
             width: 60px;
@@ -448,7 +495,11 @@ let gameStyles =
         }
 
         .reset-game-btn {
-            background-color: #2196F3;
+            /* #2196F3 (Material Blue 500) failed WCAG AA at this 12px size, ~3.1:1 against
+               white (axe/Lighthouse color-contrast, confirmed live). #1565C0 (Blue 800)
+               passes at ~5.6:1; the existing hover shade (#1976D2, Blue 700, ~4.6:1) also
+               already passed and is unchanged. */
+            background-color: #1565C0;
             color: white;
             padding: 8px 16px;
             font-size: 12px;
@@ -470,7 +521,10 @@ let gameStyles =
         }
 
         .delete-game-btn {
-            background-color: #f44336;
+            /* #f44336 (Material Red 500) also failed WCAG AA (~4.0:1). #C62828 (Red 800)
+               passes at ~7.0:1; the existing hover shade (#d32f2f, Red 700, ~5.0:1) also
+               already passed and is unchanged. */
+            background-color: #C62828;
             color: white;
             padding: 8px 16px;
             font-size: 12px;
