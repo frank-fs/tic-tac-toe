@@ -314,10 +314,27 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // verbatim, so voice-control users saying what they see can still find the control --
         // caught live by Lighthouse's label-content-name-mismatch audit.
         if surface.C then a'.attr("aria-label", "alias, alternate URL for this game") else a'
+    // C: orientation for a non-visual arrival -- WHAT this is and HOW it's interacted with,
+    // stated up front rather than left to be pieced together from 9 separate cell labels.
+    // Visible (not screen-reader-only hidden text): this is real, shared content, not an
+    // assistive-tech-only aside -- the dual-audience thesis this factor is supposed to test.
+    // aria-describedby links it to the grid so it is ALSO announced at the point of
+    // interaction (entering the grid), not only once at the top of the page.
+    // NOT "game-intro-..." -- the test suite (and any other consumer) uses [id^=game-] to find
+    // the board container; a second id sharing that prefix silently collides with it.
+    let introId = $"intro-{gameId}"
+    let gameIntro =
+        p(id = introId, class' = "game-intro") {
+            "Tic-tac-toe: a 3-by-3 grid game for two players, X and O. On your turn, select an "
+            "empty square to claim it. Align three of your marks in a row, column, or diagonal to win."
+        }
+        :> HtmlElement
+    let boardGrid = if surface.C then boardGrid.attr("aria-describedby", introId) else boardGrid
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-game-status", statusToken)
         .attr("data-can-move", (if canMove then "true" else "false"))
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
+        if surface.C then gameIntro else Fragment() { }
         // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
         // JS and an agent can transcribe the id from the link text (a truncated label would
         // not be navigable).
@@ -466,6 +483,13 @@ let gameStyles =
             text-align: center;
             margin-bottom: 8px;
             font-size: 0.85em;
+        }
+
+        .game-intro {
+            text-align: center;
+            margin: 0 0 10px 0;
+            font-size: 0.85em;
+            color: #666;
         }
 
         .error-banner {

@@ -87,3 +87,126 @@ jobs:
           path: test/TicTacToe.Web.Tests/playwright-traces/
           if-no-files-found: ignore
           retention-days: 7
+
+  # Lighthouse's accessibility category mostly scores ABSENCE of violations, not presence of
+  # helpful content -- a C=0 page with no role=/aria-* at all can still score well (its buttons
+  # still get an implicit accessible name from visible "X"/"O" text), so a score alone can't
+  # prove C=1 is meaningfully better. Two things run instead: the C=1 score is asserted against
+  # a floor (catches structural regressions -- missing role="row", contrast, duplicate
+  # aria-label, the defects this project already found and fixed); C=0 is asserted to carry NO
+  # role=/aria-* markup at all via grep, the actual "did the toggle leak" question, independent
+  # of whatever Lighthouse's scoring happens to reward.
+  accessibility-lighthouse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10.0 Preview
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+          dotnet-quality: 'preview'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/*.fsproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore and build
+        run: |
+          dotnet restore
+          dotnet build --no-restore
+
+      - name: Start app (C=1, cell 0100 -- accessibility only, isolates the factor)
+        run: |
+          TICTACTOE_CELL=0100 TICTACTOE_INITIAL_GAMES=1 TICTACTOE_MAX_GAMES=1 TICTACTOE_LOCK_GAME=1 \
+            dotnet run --project src/TicTacToe.Web/ --no-build --urls "http://localhost:5000" &
+          for i in {1..30}; do
+            curl -s http://localhost:5000 > /dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Lighthouse accessibility audit (C=1)
+        run: |
+          COOKIES=$(mktemp)
+          curl -s -c "$COOKIES" http://localhost:5000/login -o /dev/null
+          COOKIE_HEADER=$(awk -F'\t' '/TicTacToe.User/{print $6"="$7}' "$COOKIES")
+          npx --yes lighthouse@latest "http://localhost:5000/" \
+            --only-categories=accessibility --output=json --output-path=./lighthouse-c1.json \
+            --chrome-flags="--headless --no-sandbox" \
+            --extra-headers="{\"Cookie\":\"$COOKIE_HEADER\"}"
+          SCORE=$(jq '.categories.accessibility.score * 100' lighthouse-c1.json)
+          echo "C=1 accessibility score: $SCORE"
+          echo "c1_score=$SCORE" >> "$GITHUB_ENV"
+          # Floor, not exact-100 pin: catches a real structural regression (missing row
+          # grouping, dead-on-arrival duplicate aria-label, contrast) without failing CI on
+          # every unrelated single-point Lighthouse scoring wobble.
+          awk -v s="$SCORE" 'BEGIN { exit !(s >= 95) }'
+
+      - name: Stop app
+        if: always()
+        run: pkill -f "TicTacToe.Web.dll" || true
+
+      - name: Start app (C=0 -- accessibility factor off)
+        run: |
+          TICTACTOE_CELL=0000 TICTACTOE_INITIAL_GAMES=1 TICTACTOE_MAX_GAMES=1 TICTACTOE_LOCK_GAME=1 \
+            dotnet run --project src/TicTacToe.Web/ --no-build --urls "http://localhost:5000" &
+          for i in {1..30}; do
+            curl -s http://localhost:5000 > /dev/null 2>&1 && break
+            sleep 1
+          done
+
+      - name: Lighthouse accessibility audit (C=0, for visibility only)
+        run: |
+          COOKIES=$(mktemp)
+          curl -s -c "$COOKIES" http://localhost:5000/login -o /dev/null
+          COOKIE_HEADER=$(awk -F'\t' '/TicTacToe.User/{print $6"="$7}' "$COOKIES")
+          npx --yes lighthouse@latest "http://localhost:5000/" \
+            --only-categories=accessibility --output=json --output-path=./lighthouse-c0.json \
+            --chrome-flags="--headless --no-sandbox" \
+            --extra-headers="{\"Cookie\":\"$COOKIE_HEADER\"}"
+          SCORE=$(jq '.categories.accessibility.score * 100' lighthouse-c0.json)
+          echo "C=0 accessibility score: $SCORE (reported only -- see job docs: a Lighthouse score alone can't prove the C toggle actually did anything, since fewer roles means fewer ways to violate a rule)"
+
+      - name: Assert C=0 carries no role=/aria-* markup (the actual "did it leak" check)
+        run: |
+          COOKIES=$(mktemp)
+          curl -s -c "$COOKIES" -b "$COOKIES" http://localhost:5000/login -o /dev/null
+          curl -s -b "$COOKIES" http://localhost:5000/ > /tmp/c0-body.html
+          # Strip <style>...</style> first -- gameStyles is unconditional (not C-gated) and its
+          # own comments discuss role="row"/aria-* in prose, which a plain grep can't tell apart
+          # from a real attribute. python3 (not sed): the response comes back as HTML where
+          # </style> and the rest of the document share one physical line, so sed's line-based
+          # range delete wipes the ENTIRE body, not just the style block -- caught live locally
+          # (a real false-negative bug in an earlier version of this exact check) before trusting
+          # it in CI. re.sub with DOTALL removes the substring regardless of line structure.
+          python3 -c "
+          import re, sys
+          body = open('/tmp/c0-body.html').read()
+          stripped = re.sub(r'<style>.*?</style>', '', body, flags=re.S)
+          leaks = sorted(set(re.findall(r'role=\"[^\"]*\"|aria-[a-z]+=\"[^\"]*\"', stripped)))
+          if leaks:
+              print('C=0 markup leaked role=/aria-* attributes -- the toggle is not gating correctly:')
+              print('\n'.join(leaks))
+              sys.exit(1)
+          print('C=0 confirmed clean: no role=/aria-* anywhere in the representation')
+          "
+
+      - name: Stop app
+        if: always()
+        run: pkill -f "TicTacToe.Web.dll" || true
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-reports
+          path: lighthouse-c*.json
+          if-no-files-found: ignore
+          retention-days: 7
