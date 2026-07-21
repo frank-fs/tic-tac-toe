@@ -142,11 +142,15 @@ let private applyGridCellRole (surface: Surface) (tag: HtmlTag) =
 
 /// The move form wrapping one square. Progressive enhancement: a real form so the move command
 /// works as a plain POST without JavaScript; datastar enhances the submit (preventing the native
-/// POST and sending the move as signals) when JS is present.
+/// POST and sending the move as signals) when JS is present. No `$gameId = '...'` assignment here
+/// (was here before) -- $gameId is never read anywhere in this app (grepped); the @post URL below
+/// is a literal string, not built from the signal, and the board container's own data-signals
+/// already initializes it once. Repeating a 36-char UUID assignment across all 9 squares was pure
+/// dead weight pushing the page toward Driver.fs's read-size cap for no functional reason.
 let private moveForm (basePath: string) gameId (playerStr: string) (posStr: string) (square: HtmlElement) =
     form(method = "post", action = sprintf "%s/%s" basePath gameId)
         .attr("rel", "make-move")
-        .attr("data-on:submit__prevent", sprintf "$gameId = '%s'; $player = '%s'; $position = '%s'; @post('%s/%s')" gameId playerStr posStr basePath gameId) {
+        .attr("data-on:submit__prevent", sprintf "$player = '%s'; $position = '%s'; @post('%s/%s')" playerStr posStr basePath gameId) {
         input(type' = "hidden", name = "player", value = playerStr)
         input(type' = "hidden", name = "position", value = posStr)
         square
