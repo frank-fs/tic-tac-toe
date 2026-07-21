@@ -505,11 +505,6 @@ let gameStyles =
             text-align: center;
         }
 
-        /* Reset/Delete are real forms now; keep them inline like the old buttons. */
-        .controls form {
-            display: inline;
-        }
-
         .game-link {
             text-align: center;
             margin-bottom: 8px;
