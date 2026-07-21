@@ -37,10 +37,11 @@ let private render (cell: string) userId assignment result =
     renderGameBoard (Surface.parse cell) "/games" gameId result userId assignment 1
     |> Render.toString
 
-/// Count the MOVE forms — the affordance an HTTP agent can actually act on. (The page also
-/// carries the reset/delete control forms while the game is in progress; they are not moves.)
+/// Count the submittable move squares — the affordance an HTTP agent can actually act on. One
+/// <form rel="make-move"> now wraps the whole board; each submittable square is its own
+/// name="position" submit button inside it (see game.fs's submitSquare/disabledSquare).
 let private moveFormCount (html: string) =
-    System.Text.RegularExpressions.Regex.Matches(html, "rel=\"make-move\"").Count
+    System.Text.RegularExpressions.Regex.Matches(html, "name=\"position\"").Count
 
 [<Tests>]
 let tests =

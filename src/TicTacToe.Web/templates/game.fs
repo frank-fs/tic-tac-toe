@@ -140,36 +140,27 @@ let private occupancyPhrase (state: GameState) (position: SquarePosition) =
 let private applyGridCellRole (surface: Surface) (tag: HtmlTag) =
     if surface.C then tag.attr("role", "gridcell") else tag
 
-/// The move form wrapping one square. Progressive enhancement: a real form so the move command
-/// works as a plain POST without JavaScript; datastar enhances the submit (preventing the native
-/// POST and sending the move as signals) when JS is present. No `$gameId = '...'` assignment here
-/// (was here before) -- $gameId is never read anywhere in this app (grepped); the @post URL below
-/// is a literal string, not built from the signal, and the board container's own data-signals
-/// already initializes it once. Repeating a 36-char UUID assignment across all 9 squares was pure
-/// dead weight pushing the page toward Driver.fs's read-size cap for no functional reason.
-let private moveForm (basePath: string) gameId (playerStr: string) (posStr: string) (square: HtmlElement) =
-    form(method = "post", action = sprintf "%s/%s" basePath gameId)
-        .attr("rel", "make-move")
-        .attr("data-on:submit__prevent", sprintf "$player = '%s'; $position = '%s'; @post('%s/%s')" playerStr posStr basePath gameId) {
-        input(type' = "hidden", name = "player", value = playerStr)
-        input(type' = "hidden", name = "position", value = posStr)
-        square
-    }
-    :> HtmlElement
+/// One <form> now wraps the whole board (see `renderGameBoard`) instead of one per square --
+/// each submit button below carries its own `name="position" value="TopLeft"`, standard HTML
+/// submit-button behavior: a no-JS POST includes it as a form field via the submitter, and
+/// datastar's submit handler reads it off `evt.submitter.value` (a native SubmitEvent property,
+/// not datastar-specific) to know which square fired. Was 9 forms + 18 hidden inputs; now 1
+/// form + 1 hidden `player` field, since player is the same for every square in a render.
 
 /// A submittable, empty square: the label names the LOCATION, its occupancy, and the claim
 /// action in one phrase ("top left square, empty, claim it for X") -- a screen-reader user
 /// hears what the square IS and what it does, not just a bare button name. Hides the decorative
 /// X/O preview glyph from the a11y tree (its meaning is already in the label).
 let private submitSquare (surface: Surface) (state: GameState) (playerStr: string) (position: SquarePosition) =
+    let posStr = position.ToString()
     let btn =
         if surface.C then
-            button(class' = "square square-clickable", type' = "submit")
+            button(class' = "square square-clickable", type' = "submit", name = "position", value = posStr)
                 .attr("aria-label", sprintf "%s square, empty, claim it for %s" (humanPosition position) playerStr) {
                 span(class' = "preview").attr("aria-hidden", "true") { playerStr }
             }
         else
-            button(class' = "square square-clickable", type' = "submit") {
+            button(class' = "square square-clickable", type' = "submit", name = "position", value = posStr) {
                 span(class' = "preview") { playerStr }
             }
     (applyGridCellRole surface btn) :> HtmlElement
@@ -185,7 +176,7 @@ let private submitSquare (surface: Surface) (state: GameState) (playerStr: strin
 /// HTTP ones. The label states the real location and occupancy either way -- a non-actionable
 /// square is still a real place on the board worth knowing about.
 let private disabledSquare (surface: Surface) (state: GameState) (label: HtmlElement) (position: SquarePosition) =
-    let btn = button(class' = "square", type' = "submit") { label }
+    let btn = button(class' = "square", type' = "submit", name = "position", value = position.ToString()) { label }
     let btn = if surface.C then btn.attr("aria-label", sprintf "%s square, %s" (humanPosition position) (occupancyPhrase state position)) else btn
     (applyGridCellRole surface btn) :> HtmlElement
 
@@ -206,25 +197,24 @@ let private squareLabel (state: GameState) (position: SquarePosition) : HtmlElem
     | _ -> span(class' = "empty") { raw "·" } :> HtmlElement
 
 /// Render one square. A is affordance GATING, not presence (the banked Surface instrument):
-///   A=0: ALL 9 squares are form-POST buttons (naive design), every one genuinely submittable --
+///   A=0: ALL 9 squares are submit buttons (naive design), every one genuinely submittable --
 ///        occupied/inactive ones aren't client-side disabled; the server rejects an illegal move
 ///        the same way for a browser click as it already does for an HTTP agent's raw POST.
-///   A=1: ONLY the caller's currently-legal moves are forms; every other square is a plain cell.
+///   A=1: ONLY the caller's currently-legal moves are submit buttons; every other square is a
+///        plain cell. Submittable squares are named `position` buttons inside the one board-wide
+///        form `renderGameBoard` wraps around all nine -- see the note above `submitSquare`.
 let private renderSquare
-    (surface: Surface) (legal: Set<SquarePosition>) (basePath: string) gameId (playerStr: string)
+    (surface: Surface) (legal: Set<SquarePosition>) (playerStr: string)
     (state: GameState) (isActive: bool) (position: SquarePosition) =
-    let posStr = position.ToString()
     let isTaken = match state.TryGetValue(position) with | true, Taken _ -> true | _ -> false
     if surface.A then
         if Set.contains position legal then
-            moveForm basePath gameId playerStr posStr (submitSquare surface state playerStr position)
+            submitSquare surface state playerStr position
         else
             renderPlainCell surface state (squareLabel state position) position
     else
-        let square =
-            if isActive && not isTaken then submitSquare surface state playerStr position
-            else disabledSquare surface state (squareLabel state position) position
-        moveForm basePath gameId playerStr posStr square
+        if isActive && not isTaken then submitSquare surface state playerStr position
+        else disabledSquare surface state (squareLabel state position) position
 
 /// Render the player legend showing X and O assignments
 let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: Player option) =
@@ -241,38 +231,46 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
         span(class' = legendClass O) { $"O: {oLabel}" }
     }
 
-/// One control, as a real no-JS form. rel types the affordance in the markup (the delete form is
-/// the no-JS POST alias for the DELETE verb on the canonical resource); datastarAction enhances
-/// the submit when JS is present. C: a11yLabel names WHICH game this control acts on -- in a
-/// multi-game dashboard a screen reader's button list shows "Reset Game" x N indistinguishably
-/// without it.
-let private controlForm (surface: Surface) (btnClass: string) (rel: string) (action: string) (datastarAction: string) (label: string) (a11yLabel: string) : HtmlElement =
-    form(method = "post", action = action)
-        .attr("rel", rel)
-        .attr("data-on:submit__prevent", datastarAction) {
-        let btn = button(class' = btnClass, type' = "submit") { label }
-        if surface.C then btn.attr("aria-label", a11yLabel) else btn
-    }
-    :> HtmlElement
+/// One control, now a submit BUTTON living inside the one board-wide form (see `renderGameBoard`)
+/// rather than its own form -- `formaction` routes its native no-JS POST (the delete button's
+/// formaction is the no-JS POST alias for the DELETE verb on the canonical resource); the shared
+/// form's single submit-dispatch expression (`boardSubmitExpr`) branches on `evt.submitter.name`
+/// to run the right datastar action when JS is present. `rel` keeps typing the affordance in the
+/// markup, same vocabulary as before, just relocated from the (now-gone) wrapping form onto the
+/// button. C: a11yLabel names WHICH game this control acts on -- in a multi-game dashboard a
+/// screen reader's button list shows "Reset Game" x N indistinguishably without it.
+let private controlButton (surface: Surface) (btnClass: string) (rel: string) (name: string) (formaction: string) (label: string) (a11yLabel: string) : HtmlElement =
+    let btn = button(class' = btnClass, type' = "submit", name = name, formaction = formaction).attr("rel", rel) { label }
+    (if surface.C then btn.attr("aria-label", a11yLabel) else btn) :> HtmlElement
 
-/// Reset/delete controls, verbatim from the twin: BOTH are always real forms while the game is in
-/// progress — no viewer/seat/count/lock gating in the markup. Authorization is the HANDLER's job
-/// (403 not-a-player, 409 locked / would-drop-below-minimum). Gating them here would change the
-/// form count an agent sees, which is the surface the banked results were produced against.
-let private renderControls (surface: Surface) (basePath: string) gameId =
+/// Reset/delete controls, verbatim from the twin: BOTH are always real, live submit buttons while
+/// the game is in progress — no viewer/seat/count/lock gating in the markup. Authorization is the
+/// HANDLER's job (403 not-a-player, 409 locked / would-drop-below-minimum). Gating them here would
+/// change the affordance count an agent sees, which is the surface the banked results were
+/// produced against.
+let private renderControlButtons (surface: Surface) (basePath: string) gameId =
     let shortId = prefix8 gameId
     div(class' = "controls") {
-        controlForm surface "reset-game-btn" "reset-game"
-            (sprintf "%s/%s/reset" basePath gameId) (sprintf "@post('%s/%s/reset')" basePath gameId)
-            "Reset Game" (sprintf "Reset game %s" shortId)
-        controlForm surface "delete-game-btn" "delete-game"
-            (sprintf "%s/%s/delete" basePath gameId) (sprintf "@delete('%s/%s')" basePath gameId)
-            "Delete Game" (sprintf "Delete game %s" shortId)
+        controlButton surface "reset-game-btn" "reset-game" "reset"
+            (sprintf "%s/%s/reset" basePath gameId) "Reset Game" (sprintf "Reset game %s" shortId)
+        controlButton surface "delete-game-btn" "delete-game" "delete"
+            (sprintf "%s/%s/delete" basePath gameId) "Delete Game" (sprintf "Delete game %s" shortId)
     }
 
 // ============================================================================
 // Main Render Function
 // ============================================================================
+
+/// The one board-wide form's submit dispatch. Move squares fall through to the default (last)
+/// branch -- they carry `name="position"`, never "reset"/"delete" -- and read their target square
+/// off `evt.submitter.value`. Reset/delete buttons are told apart by `evt.submitter.name` (a
+/// native SubmitEvent property, not datastar-specific) since one shared expression now covers all
+/// three actions instead of each control's own form carrying its own.
+let private boardSubmitExpr (basePath: string) gameId (playerStr: string) =
+    let url = sprintf "%s/%s" basePath gameId
+    sprintf
+        "evt.submitter.name === 'reset' ? @post('%s/reset') : evt.submitter.name === 'delete' ? @delete('%s') : ($player = '%s', $position = evt.submitter.value, @post('%s'))"
+        url url playerStr url
 
 /// Render a complete game board, personalized for the given viewer.
 /// Resolves the viewer's player token internally from assignment + userId — the self-seat: an
@@ -295,7 +293,7 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         | None, Some p -> p.ToString()
         | None, None -> "X"
     let isActive = match result with | XTurn _ | OTurn _ -> true | _ -> false
-    let renderSquare = renderSquare surface legal basePath gameId playerStr state isActive
+    let renderSquare = renderSquare surface legal playerStr state isActive
     // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
     // parsing the display prose; data-can-move says whether THIS viewer may move now.
     let statusToken =
@@ -343,6 +341,33 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         }
         :> HtmlElement
     let boardGrid = if surface.C then boardGrid.attr("aria-describedby", introId) else boardGrid
+    // A=0 always wraps the board in a form (every square, including occupied/finished ones, is a
+    // real submit target -- the naive-design thesis this factor tests). A=1 only wraps it when at
+    // least one square is actually legal. Either way, once the game is in progress (isActive) the
+    // reset/delete controls need the same wrapping form too -- there is exactly one form per game
+    // board now, covering moves and controls alike; `boardSubmitExpr`'s dispatch (below) decides
+    // which datastar action a given submit actually runs.
+    let hasMoveForm = not surface.A || not (Set.isEmpty legal)
+    let hasForm = hasMoveForm || isActive
+    let boardContent =
+        Fragment() {
+            if hasMoveForm then input(type' = "hidden", name = "player", value = playerStr)
+            boardGrid
+            renderLegend assignment currentPlayer
+            // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
+            // delete-then-create a replacement game and contaminate a run with a second game's moves.
+            if isActive then renderControlButtons surface basePath gameId else Fragment() { }
+        }
+    let boardSection =
+        if hasForm then
+            form(method = "post", action = sprintf "%s/%s" basePath gameId)
+                .attr("rel", "make-move")
+                .attr("data-on:submit__prevent", boardSubmitExpr basePath gameId playerStr) {
+                boardContent
+            }
+            :> HtmlElement
+        else
+            boardContent :> HtmlElement
     div(id = $"game-{gameId}", class' = "game-board")
         .attr("data-game-status", statusToken)
         .attr("data-can-move", (if canMove then "true" else "false"))
@@ -361,11 +386,7 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
         statusRegion
-        boardGrid
-        renderLegend assignment currentPlayer
-        // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
-        // delete-then-create a replacement game and contaminate a run with a second game's moves.
-        if isActive then renderControls surface basePath gameId else Fragment() { }
+        boardSection
     }
 
 /// CSS styles for the game board
@@ -426,9 +447,6 @@ let gameStyles =
             background-color: #333;
             padding: 4px;
         }
-
-        /* Move forms wrap each clickable square; let the button be the grid item. */
-        .board form { display: contents; }
 
         /* role="row" wrapper (ARIA grid pattern) stays invisible to the CSS grid layout --
            its children lay out as if it were not there, same technique as .board form above. */

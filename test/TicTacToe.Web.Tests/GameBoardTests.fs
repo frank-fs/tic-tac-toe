@@ -176,7 +176,8 @@ let tests =
 
               Expect.stringContains html $"@post(&#39;/games/{testGameId}&#39;)" "Should have POST to game resource"
               Expect.stringContains html "$player = &#39;O&#39;" "Should set player signal in click handler"
-              Expect.stringContains html "$position = &#39;TopCenter&#39;" "Should set position signal in click handler"
+              Expect.stringContains html "$position = evt.submitter.value" "Should read position from the submitting button"
+              Expect.stringContains html "name=\"position\" value=\"TopCenter\"" "Clickable square should carry its own position as a submit value"
 
           testCase "Board shows correct turn alternation"
           <| fun _ ->

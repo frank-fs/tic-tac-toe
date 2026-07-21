@@ -270,12 +270,14 @@ type FloorSurfaceWireTests() =
         }
 
     [<Test>]
-    member this.``the floor page carries no aria/role and nine ungated forms``() : Task =
+    member this.``the floor page carries no aria/role and nine ungated squares``() : Task =
         task {
             let! id = this.GameId()
             let! board = this.Client.GetStringAsync $"/games/{id}"
             Assert.That(board, Does.Not.Contain "aria-", "C=0 -> no aria anywhere")
             Assert.That(board, Does.Not.Contain "role=\"", "C=0 -> no role anywhere")
             let forms = Text.RegularExpressions.Regex.Matches(board, "<form[^>]*method=\"post\"").Count
-            Assert.That(forms, Is.EqualTo 11, "A=0 -> 9 square forms + reset + delete (the twin's surface)")
+            Assert.That(forms, Is.EqualTo 1, "one form per game board -- moves, reset, and delete all live inside it")
+            let squares = Text.RegularExpressions.Regex.Matches(board, "name=\"position\"").Count
+            Assert.That(squares, Is.EqualTo 9, "A=0 -> 9 ungated submit squares inside that one form (the twin's surface)")
         }
