@@ -131,16 +131,4 @@ let tests =
               <| fun _ ->
                   let html = render "1111" "" None (xTurn [])
                   Expect.stringContains html "rel=\"reset-game\"" "reset is a real form"
-                  Expect.stringContains html "rel=\"delete-game\"" "delete is a real form" ]
-
-          testList
-            "route aliasing"
-            [ testCase "the representation links and forms under the name it was served as"
-              <| fun _ ->
-                  let arenas =
-                      renderGameBoard Surface.full "/arenas" gameId (xTurn []) "" None 1 |> Render.toString
-                  Expect.stringContains arenas $"action=\"/arenas/{gameId}\"" "move forms post to /arenas"
-                  Expect.stringContains arenas $"href=\"/games/{gameId}\"" "and advertise the /games alias"
-                  let games = render "1111" "" None (xTurn [])
-                  Expect.stringContains games $"action=\"/games/{gameId}\"" "move forms post to /games"
-                  Expect.stringContains games $"href=\"/arenas/{gameId}\"" "and advertise the /arenas alias" ] ]
+                  Expect.stringContains html "rel=\"delete-game\"" "delete is a real form" ] ]

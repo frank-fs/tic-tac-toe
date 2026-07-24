@@ -29,11 +29,8 @@ type MoveSignals =
 let private surfaceOf (ctx: HttpContext) =
     ctx.RequestServices.GetRequiredService<Surface>()
 
-/// /games and /arenas are ALIASES of one resource served by one handler stack. A representation
-/// served under one name links and forms under THAT name, so a client that entered through the
-/// banked /arenas surface never gets bounced onto the product's /games name mid-episode.
-let routePrefix (ctx: HttpContext) =
-    if ctx.Request.Path.Value.StartsWith "/arenas" then "/arenas" else "/games"
+/// The one name games are served under (the /arenas alias was removed -- one resource, one name).
+let routePrefix (_ctx: HttpContext) = "/games"
 
 // ============================================================================
 // Sd: semantic-discovery headers. So: ontology typing (httpRange-14).

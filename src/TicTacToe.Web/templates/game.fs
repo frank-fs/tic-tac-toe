@@ -109,9 +109,6 @@ let notFoundPage: HtmlElement =
 // Private Rendering
 // ============================================================================
 
-/// One resource, two names: /games is the product route, /arenas the banked experiment route.
-let aliasOf (basePath: string) =
-    if basePath = "/arenas" then "/games" else "/arenas"
 
 /// Natural-language position name, for accessible labels only -- the wire-format position
 /// value the move form submits always stays SquarePosition.ToString()'s spelling ("TopLeft"
@@ -319,12 +316,6 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
             if surface.C then r.attr("role", "row") else r
         let d = div(class' = "board") { for row in boardRows do rowOf row }
         if surface.C then d.attr("role", "grid").attr("aria-label", "Tic-tac-toe board") else d
-    let aliasLink =
-        let a' = a(class' = "game-alias", rel = "alternate", href = sprintf "%s/%s" (aliasOf basePath) gameId) { "alias" }
-        // WCAG 2.5.3 Label in Name: the accessible name must contain the visible text ("alias")
-        // verbatim, so voice-control users saying what they see can still find the control --
-        // caught live by Lighthouse's label-content-name-mismatch audit.
-        if surface.C then a'.attr("aria-label", "alias, alternate URL for this game") else a'
     // C: orientation for a non-visual arrival -- WHAT this is and HOW it's interacted with,
     // stated up front rather than left to be pieced together from 9 separate cell labels.
     // Visible (not screen-reader-only hidden text): this is real, shared content, not an
@@ -376,12 +367,8 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
         // JS and an agent can transcribe the id from the link text (a truncated label would
         // not be navigable).
-        // Canonical link under the name this representation was served as, plus the alias link
-        // (/games <-> /arenas are one resource under two names), so a client that entered by
-        // either name can navigate the whole trail without ever crossing over.
         div(class' = "game-link") {
             a(href = sprintf "%s/%s" basePath gameId) { sprintf "Game %s" gameId }
-            aliasLink
         }
         // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
         // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.

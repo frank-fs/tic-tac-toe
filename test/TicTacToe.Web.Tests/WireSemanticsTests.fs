@@ -8,8 +8,6 @@ namespace TicTacToe.Web.Tests
 //   formatErrors = 400 (malformed move)
 //   read friction = ETag + 304
 //   Sd = /profile + Link rel=profile + /.well-known/home;  So = Link rel=describedby + ld+json 303
-//
-// Plus the alias invariant: /games and /arenas are ONE resource under two names.
 
 open System
 open System.Collections.Generic
@@ -185,27 +183,6 @@ type FullSurfaceWireTests() =
             Assert.That(links, Does.Contain $"/games/{id}", "and is pointed at the resource that answers a GET")
         }
 
-    [<Test>]
-    member this.``/arenas is the same resource under another name``() : Task =
-        task {
-            let! id = this.GameId()
-            let! p = this.NewPlayer()
-            // The banked surface: play through /arenas, read back through /games.
-            use! move = this.Move p $"/arenas/{id}" "X" "BottomRight"
-            Assert.That(int move.StatusCode, Is.EqualTo 200, "/arenas accepts the move")
-            let! body = move.Content.ReadAsStringAsync()
-            // The representation stays on the name it was served as: links and control forms too.
-            Assert.That(body, Does.Contain $"href=\"/arenas/{id}\"", "the canonical link stays on /arenas")
-            Assert.That(body, Does.Contain $"action=\"/arenas/{id}/reset\"", "and so do its forms")
-            Assert.That(body, Does.Contain $"href=\"/games/{id}\"", "with the /games alias advertised")
-
-            use! viaGames = this.Client.GetAsync $"/games/{id}"
-            let! gamesBody = viaGames.Content.ReadAsStringAsync()
-            Assert.That(gamesBody, Does.Contain "\"player\">X", "the move is visible through the alias")
-
-            use! typed = this.Client.GetAsync $"/arenas/{id}/type"
-            Assert.That(int typed.StatusCode, Is.EqualTo 200, "/arenas/{id}/type serves the ontology too")
-        }
 
 
 /// The discovery floor (0000): the wire is identical, the SURFACE is bare.
