@@ -20,7 +20,7 @@ let jsonHome = """{
   "resources": {
     "tag:tictactoe,2026:home": { "href": "/" },
     "tag:tictactoe,2026:game": { "href-template": "/games/{id}", "href-vars": { "id": "tag:tictactoe,2026:param;id" } },
-    "tag:tictactoe,2026:profile": { "href": "/profile" }
+    "tag:tictactoe,2026:profile": { "href": "/.well-known/alps.json" }
   }
 }"""
 
