@@ -7,7 +7,8 @@ namespace TicTacToe.Web.Tests
 //   illegalMoves = 403 (out-of-turn / not-a-player) + 422 (position taken)
 //   formatErrors = 400 (malformed move)
 //   read friction = ETag + 304
-//   Sd = /profile + Link rel=profile + /.well-known/home;  So = Link rel=describedby + ld+json 303
+//   Sd = /.well-known/alps.json + Link rel=profile + /.well-known/home.json + Link rel=home;
+//        So = Link rel=describedby + ld+json 303
 
 open System
 open System.Collections.Generic
@@ -126,17 +127,18 @@ type FullSurfaceWireTests() =
         }
 
     [<Test>]
-    member this.``Sd serves the ALPS profile and advertises it with a Link``() : Task =
+    member this.``Sd serves the ALPS profile and JSON Home at their well-known locations, both advertised with a Link``() : Task =
         task {
             let! id = this.GameId()
-            use! profile = this.Client.GetAsync "/profile"
-            Assert.That(int profile.StatusCode, Is.EqualTo 200, "Sd=1 -> /profile 200")
-            use! home = this.Client.GetAsync "/.well-known/home"
+            use! profile = this.Client.GetAsync "/.well-known/alps.json"
+            Assert.That(int profile.StatusCode, Is.EqualTo 200, "Sd=1 -> /.well-known/alps.json 200")
+            use! home = this.Client.GetAsync "/.well-known/home.json"
             Assert.That(int home.StatusCode, Is.EqualTo 200, "Sd=1 -> JSON Home 200")
 
             use! board = this.Client.GetAsync $"/games/{id}"
             let links = board.Headers.GetValues("Link") |> String.concat ", "
-            Assert.That(links, Does.Contain "rel=\"profile\"", "the board must advertise the contract")
+            Assert.That(links, Does.Contain "rel=\"profile\"", "the board must advertise the ALPS contract")
+            Assert.That(links, Does.Contain "rel=\"home\"", "the board must also advertise the JSON Home index")
             // Allow is a CONTENT header in HttpClient's split of the header bag.
             Assert.That(board.Content.Headers.Allow.Count, Is.GreaterThan 0, "Sd=1 -> state-dependent Allow")
         }
@@ -191,11 +193,11 @@ type FloorSurfaceWireTests() =
     inherit CellServerFixture("0000")
 
     [<Test>]
-    member this.``Sd=0 hides the contract: /profile and JSON Home 404``() : Task =
+    member this.``Sd=0 hides the contract: /.well-known/alps.json and JSON Home 404``() : Task =
         task {
-            use! profile = this.Client.GetAsync "/profile"
+            use! profile = this.Client.GetAsync "/.well-known/alps.json"
             Assert.That(int profile.StatusCode, Is.EqualTo 404, "Sd=0 -> no contract to fetch")
-            use! home = this.Client.GetAsync "/.well-known/home"
+            use! home = this.Client.GetAsync "/.well-known/home.json"
             Assert.That(int home.StatusCode, Is.EqualTo 404, "Sd=0 -> no JSON Home")
         }
 

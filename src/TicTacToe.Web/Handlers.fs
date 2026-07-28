@@ -43,14 +43,14 @@ let private gameAllow (result: MoveResult) =
     | _ -> "GET, DELETE, OPTIONS"   // terminal: no further moves
 
 let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: string option) =
-    ctx.Response.Headers.Append("Link", $"</profile>; rel=\"profile\", <{selfPath}>; rel=\"self\"")
+    ctx.Response.Headers.Append("Link", $"</.well-known/alps.json>; rel=\"profile\", </.well-known/home.json>; rel=\"home\", <{selfPath}>; rel=\"self\"")
     match allow with
     | Some a -> ctx.Response.Headers.Append("Allow", a)
     | None -> ()
 
 /// So: the game URI names the Game (the thing); its RDF description is a distinct document
 /// (httpRange-14). Advertise it with a describedby Link on the HTML representation. Independent
-/// of Sd's /profile Link — both coexist as separate Link headers when Sd+So.
+/// of Sd's profile/home Links — both coexist as separate Link headers when Sd+So.
 let private setDescribedByHeader (ctx: HttpContext) (gameId: string) =
     ctx.Response.Headers.Append("Link", $"<{routePrefix ctx}/{gameId}/type>; rel=\"describedby\"")
 
@@ -697,26 +697,26 @@ let resetGame (ctx: HttpContext) =
 // Sd / So: discovery documents (404 when the factor is off — the surface is the toggle)
 // ============================================================================
 
-/// GET /profile — ALPS profile of the app's affordances (Sd only).
+/// GET /.well-known/alps.json — ALPS profile of the app's affordances (Sd only).
 let profile (ctx: HttpContext) =
     task {
         let surface = surfaceOf ctx
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
-            setDiscoveryHeaders ctx "/profile" (Some "GET, OPTIONS")
+            setDiscoveryHeaders ctx "/.well-known/alps.json" (Some "GET, OPTIONS")
             ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
             do! ctx.Response.WriteAsync Discovery.alpsProfile
     }
 
-/// GET /.well-known/home — JSON Home document (Sd only).
+/// GET /.well-known/home.json — JSON Home document (Sd only).
 let wellKnownHome (ctx: HttpContext) =
     task {
         let surface = surfaceOf ctx
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
-            setDiscoveryHeaders ctx "/.well-known/home" (Some "GET, OPTIONS")
+            setDiscoveryHeaders ctx "/.well-known/home.json" (Some "GET, OPTIONS")
             ctx.Response.ContentType <- "application/json-home; charset=utf-8"
             do! ctx.Response.WriteAsync Discovery.jsonHome
     }

@@ -77,11 +77,11 @@
       "board"
     ],
     "likelyUnderA1": "board",
-    "note": "No /profile; board only (a form on every square). C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
+    "note": "No /.well-known/alps.json; board only (a form on every square). C makes the vocabulary explicit on the board via aria-labels ('{position}, {state}')."
   },
   "expectedArtifactDiscovery": [
     "ARIA grid/gridcell roles + a live status region; squares accessibly labeled '{position}, {state}' — the position vocabulary (TopLeft..BottomRight) exposed to assistive tech",
     "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
   ],
-  "notes": "Factors on: CSo. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=1: accessible structure; position vocabulary announced via aria-labels. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
+  "notes": "Factors on: CSo. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=1: accessible structure; position vocabulary announced via aria-labels. Sd=0: /.well-known/alps.json and /.well-known/home.json 404. So=1: schema.org Game ontology typing."
 }

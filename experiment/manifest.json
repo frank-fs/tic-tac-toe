@@ -27,7 +27,8 @@
     "factors": ["A", "C", "Sd", "So"]
   },
   "artifactPaths": {
-    "profileContract": "/profile",
+    "profileContract": "/.well-known/alps.json",
+    "resourceIndex": "/.well-known/home.json",
     "ontologyTyping": "/type"
   },
   "seats": ["X:1", "O:2", "O:3"],

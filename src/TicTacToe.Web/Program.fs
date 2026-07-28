@@ -166,14 +166,14 @@ let gameSse =
 // Sd: the discovery documents. Present on every cell as routes; 404 unless Sd is on, so the
 // factor — not the routing table — decides whether the contract is discoverable.
 let profileResource =
-    resource "/profile" {
+    resource "/.well-known/alps.json" {
         name "Profile"
         requireAuth
         get Handlers.profile
     }
 
 let wellKnownHomeResource =
-    resource "/.well-known/home" {
+    resource "/.well-known/home.json" {
         name "WellKnownHome"
         requireAuth
         get Handlers.wellKnownHome
@@ -191,7 +191,7 @@ let private optionsAllow (path: string) =
     match path with
     | "/" -> Some "GET, OPTIONS"
     | "/games" -> Some "POST, OPTIONS"
-    | "/profile" | "/.well-known/home" -> Some "GET, OPTIONS"
+    | "/.well-known/alps.json" | "/.well-known/home.json" -> Some "GET, OPTIONS"
     | p when p.StartsWith "/games/" -> Some "GET, POST, DELETE, OPTIONS"
     | _ -> None
 

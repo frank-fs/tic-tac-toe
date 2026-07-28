@@ -77,10 +77,10 @@
       "board"
     ],
     "likelyUnderA1": "board",
-    "note": "No /profile; board only (a form on every square)."
+    "note": "No /.well-known/alps.json; board only (a form on every square)."
   },
   "expectedArtifactDiscovery": [
     "schema.org Game JSON-LD typing (Link: rel=describedby → /games/{id}/type; ld+json conneg 303s the game to its describing document)"
   ],
-  "notes": "Factors on: So. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=0: no ARIA roles, landmarks or live region. Sd=0: /profile and /.well-known/home 404. So=1: schema.org Game ontology typing."
+  "notes": "Factors on: So. A=0: a live move form on EVERY square (naive design) — occupied and out-of-turn squares included, none disabled; the affordance is ungated. C=0: no ARIA roles, landmarks or live region. Sd=0: /.well-known/alps.json and /.well-known/home.json 404. So=1: schema.org Game ontology typing."
 }

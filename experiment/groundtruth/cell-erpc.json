@@ -72,7 +72,7 @@
       "profile",
       "board"
     ],
-    "note": "RPC: the move vocabulary lives in the tool schemas (report as 'profile' — the schema IS the contract) or read back from a get_board result ('board'). No HTML, no /profile endpoint."
+    "note": "RPC: the move vocabulary lives in the tool schemas (report as 'profile' — the schema IS the contract) or read back from a get_board result ('board'). No HTML, no /.well-known/alps.json endpoint."
   },
   "expectedArtifactDiscovery": [
     "the tool schemas enumerate the affordances (make_move: player side from identity, position one of TopLeft..BottomRight) — the RPC contract"

@@ -5,7 +5,7 @@ module TicTacToe.Web.Surface
 type Surface =
     { A: bool   // affordances: action forms in the representation (seat/turn-gated)
       C: bool   // accessibility: ARIA roles / landmarks / live region
-      Sd: bool  // semantic discovery: Link/Allow/OPTIONS, /profile, /.well-known/home
+      Sd: bool  // semantic discovery: Link/Allow/OPTIONS, /.well-known/alps.json, /.well-known/home.json
       So: bool } // semantic ontology: schema.org Game JSON-LD typing
 
 /// All factors on — the real app a human uses. This is the DEFAULT: the primary app is
