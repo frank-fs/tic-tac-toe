@@ -122,7 +122,14 @@ type McpTests() =
             let! _ = callText "make_move" [ "gameId", box gameId; "position", box "TopLeft"; "identityToken", box token ]
             let! _ = callText "make_move" [ "gameId", box gameId; "position", box "TopCenter"; "identityToken", box token ]
 
-            let lines = File.ReadAllLines path
+            // The log is still open for writing by the OTHER process (ConfiguredServer's child):
+            // its StreamWriter holds the file with FileAccess.Write/FileShare.Read, so File.ReadAllLines
+            // (FileShare.Read only) always loses the sharing check while that handle is live. Opening
+            // with FileShare.ReadWrite is what actually lets a concurrent reader in.
+            let lines =
+                use fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)
+                use sr = new StreamReader(fs)
+                sr.ReadToEnd().Split([| "\r\n"; "\n" |], StringSplitOptions.RemoveEmptyEntries)
             let assignedCount =
                 lines
                 |> Array.filter (fun l -> l.Contains "\"event_type\":\"player_assigned\"")
