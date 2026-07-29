@@ -31,6 +31,16 @@ let private mcpEnabled () =
     | "1" | "true" -> true
     | _ -> false
 
+/// Frank.OpenApi's `useOpenApi` mounts the OpenAPI document and Scalar UI unconditionally, on every
+/// surface -- verified live: even at TICTACTOE_CELL=0000 both /openapi/v1.json and /scalar/v1
+/// returned 200, unauthenticated. That's a discovery-surface leak an HTTP-arm test run needs to be
+/// able to shut off; default stays on (matches current behavior for a human using the app),
+/// TICTACTOE_OPENAPI_ENABLED=0 turns it off for a run.
+let private openApiEnabled () =
+    match Environment.GetEnvironmentVariable("TICTACTOE_OPENAPI_ENABLED") with
+    | "0" | "false" -> false
+    | _ -> true
+
 let private initialGames () =
     match Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
     | null | "" -> 6
@@ -228,6 +238,25 @@ let useOptionsDiscovery (app: IApplicationBuilder) =
             }
             :> Task)
 
+/// Blocks the OpenAPI document and Scalar UI when openApiEnabled() says no. Frank.OpenApi's
+/// `useOpenApi` CE operation has no on/off switch of its own (services + endpoint mounting happen
+/// unconditionally), so this intercepts the two routes it mounts before routing ever sees them --
+/// same "present in the routing table, 404 unless the toggle is on" shape as useOptionsDiscovery.
+let useOpenApiGuard (app: IApplicationBuilder) =
+    app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+        task {
+            let path = ctx.Request.Path.Value
+            let isOpenApiPath =
+                path.StartsWith("/openapi", StringComparison.Ordinal)
+                || path.StartsWith("/scalar", StringComparison.Ordinal)
+
+            if not (openApiEnabled ()) && isOpenApiPath then
+                ctx.Response.StatusCode <- 404
+            else
+                do! next.Invoke ctx
+        }
+        :> Task)
+
 /// The resource a stream endpoint streams ABOUT — None when the path is not a stream endpoint.
 let private streamCanonical (path: string) =
     match path with
@@ -299,6 +328,7 @@ let main args =
         // which blocks the cross-site requests an antiforgery token would otherwise guard.
         plugBeforeRouting createInitialGames
         plugBeforeRouting useOptionsDiscovery
+        plugBeforeRouting useOpenApiGuard
         plugBeforeRouting useStreamGuard
 
         // MCP mounts alongside Frank's own resources — same DI container, same GameSupervisor,

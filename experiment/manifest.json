@@ -19,7 +19,8 @@
     "TICTACTOE_LOCK_GAME": "1",
     "TICTACTOE_INITIAL_GAMES": "1",
     "TICTACTOE_MAX_GAMES": "1",
-    "TICTACTOE_DISABLE_JS": "1"
+    "TICTACTOE_DISABLE_JS": "1",
+    "TICTACTOE_OPENAPI_ENABLED": "0"
   },
   "toggle": {
     "convention": "bitstring",
