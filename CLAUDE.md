@@ -22,7 +22,7 @@ git worktree add .claude/worktrees/<name> -b <branch>
 git merge --ff-only <branch>   # back in main worktree
 ```
 
-Push: `TIC_TAC_TOE_ALLOW_PUSH=1 git push origin master`
+Push: `TIC_TAC_TOE_ALLOW_PUSH=1 git push origin main`
 
 ### Before Claiming Complete
 
