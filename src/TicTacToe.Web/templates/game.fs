@@ -213,7 +213,11 @@ let private renderSquare
         if isActive && not isTaken then submitSquare surface state playerStr position
         else disabledSquare surface state (squareLabel state position) position
 
-/// Render the player legend showing X and O assignments
+/// Render the player legend showing X and O assignments.
+/// LAYOUT NOTE: the dense grid has no room for two seat ids per tile, so `.legend` is now
+/// visually hidden in gameStyles (position/clip, NOT display:none) -- the markup, the
+/// legend-active class and the seat prose are all unchanged and still announced, so
+/// 007-player-identity-legend's assertions on the rendered HTML still hold.
 let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: Player option) =
     let xLabel =
         assignment |> Option.bind (fun a -> a.PlayerXId) |> fun id -> shortUserId id "Waiting for player..."
@@ -236,9 +240,15 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
 /// markup, same vocabulary as before, just relocated from the (now-gone) wrapping form onto the
 /// button. C: a11yLabel names WHICH game this control acts on -- in a multi-game dashboard a
 /// screen reader's button list shows "Reset Game" x N indistinguishably without it.
+///
+/// LAYOUT NOTE: `label` is now a GLYPH ("↺"/"✕"), which is not an accessible name, so the
+/// aria-label is emitted UNCONDITIONALLY here -- not gated on surface.C as it was when the
+/// visible label was the prose "Reset Game". Without that, C=0 would ship two unnamed buttons
+/// per board. The visible glyph carries no other information: `rel`, `name` and `formaction`
+/// still type the affordance for an agent exactly as before.
 let private controlButton (surface: Surface) (btnClass: string) (rel: string) (name: string) (formaction: string) (label: string) (a11yLabel: string) : HtmlElement =
     let btn = button(class' = btnClass, type' = "submit", name = name, formaction = formaction).attr("rel", rel) { label }
-    (if surface.C then btn.attr("aria-label", a11yLabel) else btn) :> HtmlElement
+    btn.attr("aria-label", a11yLabel).attr("title", a11yLabel) :> HtmlElement
 
 /// Reset/delete controls, verbatim from the twin: BOTH are always real, live submit buttons while
 /// the game is in progress — no viewer/seat/count/lock gating in the markup. Authorization is the
@@ -249,9 +259,9 @@ let private renderControlButtons (surface: Surface) (basePath: string) gameId =
     let shortId = prefix8 gameId
     div(class' = "controls") {
         controlButton surface "reset-game-btn" "reset-game" "reset"
-            (sprintf "%s/%s/reset" basePath gameId) "Reset Game" (sprintf "Reset game %s" shortId)
+            (sprintf "%s/%s/reset" basePath gameId) "↺" (sprintf "Reset game %s" shortId)
         controlButton surface "delete-game-btn" "delete-game" "delete"
-            (sprintf "%s/%s/delete" basePath gameId) "Delete Game" (sprintf "Delete game %s" shortId)
+            (sprintf "%s/%s/delete" basePath gameId) "✕" (sprintf "Delete game %s" shortId)
     }
 
 // ============================================================================
@@ -293,6 +303,8 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
     let renderSquare = renderSquare surface legal playerStr state isActive
     // Stable, machine-readable status token so a no-JS agent can decide turn/outcome without
     // parsing the display prose; data-can-move says whether THIS viewer may move now.
+    // LAYOUT NOTE: this token is now also the styling hook for "finished games recede" --
+    // gameStyles selects on [data-game-status^="won-"] / ="draw". No new attribute needed.
     let statusToken =
         match result with
         | XTurn _ -> "x-turn"
@@ -304,7 +316,13 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // aria-atomic: the whole region re-reads on change, not just whatever an AT implementation
         // decides is the "changed part" of a datastar-morphed live region -- needed because this
         // status text (not just one word) is what says whose turn it is.
-        let d = div(class' = "status") { h2() { status } }
+        // LAYOUT NOTE: the dot is a purely decorative colour restatement of statusToken, so it is
+        // aria-hidden and lives INSIDE the atomic region (one live region per board, as before).
+        let d =
+            div(class' = "status") {
+                span(class' = "status-dot").attr("aria-hidden", "true")
+                h2() { status }
+            }
         if surface.C then d.attr("role", "status").attr("aria-live", "polite").attr("aria-atomic", "true") else d
     // Grid > row > gridcell: a bare role="grid" with role="gridcell" children and no row grouping
     // is an incomplete ARIA grid per the APG pattern (axe: aria-required-children/-parent) --
@@ -318,12 +336,16 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         if surface.C then d.attr("role", "grid").attr("aria-label", "Tic-tac-toe board") else d
     // C: orientation for a non-visual arrival -- WHAT this is and HOW it's interacted with,
     // stated up front rather than left to be pieced together from 9 separate cell labels.
-    // Visible (not screen-reader-only hidden text): this is real, shared content, not an
-    // assistive-tech-only aside -- the dual-audience thesis this factor is supposed to test.
     // aria-describedby links it to the grid so it is ALSO announced at the point of
     // interaction (entering the grid), not only once at the top of the page.
     // NOT "game-intro-..." -- the test suite (and any other consumer) uses [id^=game-] to find
     // the board container; a second id sharing that prefix silently collides with it.
+    //
+    // LAYOUT NOTE: this used to be VISIBLE prose (the dual-audience thesis). It is now visually
+    // hidden by `.game-intro` in gameStyles -- position/clip, so it stays in the accessibility
+    // tree, stays a real aria-describedby target, and is still announced on entering the grid.
+    // What changed is only that 15+ boards no longer repeat the same 40 words on screen; the
+    // sighted-visitor equivalent now lives once per page (see home.fs's `.game-info`).
     let introId = $"intro-{gameId}"
     let gameIntro =
         p(id = introId, class' = "game-intro") {
@@ -332,6 +354,16 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         }
         :> HtmlElement
     let boardGrid = if surface.C then boardGrid.attr("aria-describedby", introId) else boardGrid
+    // Canonical link + the id as text so the / -> /games/{id} trail is navigable without JS.
+    // LAYOUT NOTE: the visible text is now the 8-char prefix instead of the full id, with the
+    // full id kept in href (still transcribable, still navigable) and named in aria-label.
+    // Moved from the board container into `.game-footer` below so it shares a row with the
+    // controls; the `.game-link` class an existing consumer may select on is unchanged.
+    let gameLink =
+        let link = a(href = sprintf "%s/%s" basePath gameId) { prefix8 gameId }
+        div(class' = "game-link") {
+            if surface.C then link.attr("aria-label", sprintf "Open game %s" gameId) else link
+        }
     // A=0 always wraps the board in a form (every square, including occupied/finished ones, is a
     // real submit target -- the naive-design thesis this factor tests). A=1 only wraps it when at
     // least one square is actually legal. Either way, once the game is in progress (isActive) the
@@ -340,14 +372,22 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
     // which datastar action a given submit actually runs.
     let hasMoveForm = not surface.A || not (Set.isEmpty legal)
     let hasForm = hasMoveForm || isActive
+    // LAYOUT NOTE: tile order is board -> status -> (hidden legend) -> footer, so the board is the
+    // first thing in every cell of the grid and the rows read as a floor of boards. The footer's
+    // min-height keeps a finished tile (no controls) exactly as tall as an active one, which is
+    // what keeps the grid rows regular.
     let boardContent =
         Fragment() {
             if hasMoveForm then input(type' = "hidden", name = "player", value = playerStr)
             boardGrid
+            statusRegion
             renderLegend assignment currentPlayer
-            // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
-            // delete-then-create a replacement game and contaminate a run with a second game's moves.
-            if isActive then renderControlButtons surface basePath gameId else Fragment() { }
+            div(class' = "game-footer") {
+                gameLink
+                // Post-game gate (twin): a terminal game offers no controls, so an agent cannot
+                // delete-then-create a replacement game and contaminate a run with a second game's moves.
+                if isActive then renderControlButtons surface basePath gameId else Fragment() { }
+            }
         }
     let boardSection =
         if hasForm then
@@ -364,15 +404,6 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         .attr("data-can-move", (if canMove then "true" else "false"))
         .attr("data-signals", sprintf "{gameId: '%s', player: '', position: ''}" gameId) {
         if surface.C then gameIntro else Fragment() { }
-        // Canonical link + full id as text so the / -> /games/{id} trail is navigable without
-        // JS and an agent can transcribe the id from the link text (a truncated label would
-        // not be navigable).
-        div(class' = "game-link") {
-            a(href = sprintf "%s/%s" basePath gameId) { sprintf "Game %s" gameId }
-        }
-        // C: role="status" announces turn/win/draw to assistive tech on both the JS-morph and
-        // the no-JS refresh paths; aria-live polite keeps the JS-morph announcement.
-        statusRegion
         boardSection
     }
 
@@ -381,128 +412,357 @@ let gameStyles =
     style() {
         raw
             """
+        /* ====================================================================
+           A park of boards: uniform tiles in a regular, auto-filling grid.
+           Every tile is a fixed 110x110 box, so the column count follows from
+           the container width with no per-tile measurement, and the pitch is a
+           constant 134px (110 + 24 gap) -- which is what makes a windowed /
+           virtualised renderer possible later without reflowing anything.
+           ==================================================================== */
+
         .game-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+            /* was max-width: 800px + centered: the floor now uses the viewport */
+            max-width: none;
+            margin: 0;
+            padding: 0;
             font-family: Arial, sans-serif;
         }
 
+        /* ---- toolbar ---- */
+        .app-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            padding: 14px 24px;
+            border-bottom: 1px solid #e6e4e1;
+        }
+
+        .app-bar-titles {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+        }
+
         .title {
-            text-align: center;
-            font-size: 2em;
-            margin-bottom: 20px;
+            /* was 2em, centered */
+            margin: 0;
+            font-size: 16px;
+            font-weight: 600;
             color: #333;
+            text-align: left;
+        }
+
+        .board-count {
+            font-size: 12px;
+            color: #666;
         }
 
         .new-game-container {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .games-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
-        }
-
-        .game-board {
-            background-color: #f5f5f5;
-            border-radius: 8px;
-            padding: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .status {
-            text-align: center;
-            margin-bottom: 15px;
-        }
-
-        .status h2 {
-            font-size: 1.2em;
-            color: #555;
             margin: 0;
+            text-align: initial;
         }
 
+        /* The right-aligned identity chip stays in layout.fs; only its padding changes
+           so it lines up with the toolbar and the grid below it. */
+        .page-header {
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px 24px 0 24px;
+        }
+
+        .user-identity {
+            font-family: monospace;
+            font-size: 0.85em;
+            color: #666;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 120px;
+        }
+
+        /* ---- the floor ---- */
+        .games-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, 110px);
+            gap: 28px 24px;
+            justify-content: center;
+            padding: 28px 24px;
+        }
+
+        /* ---- one table ---- */
+        .game-board {
+            width: 110px;
+            box-sizing: border-box;
+            padding: 7px;
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            background-color: #fff;
+            border-radius: 4px;
+            /* was #f5f5f5 + 15px padding + box-shadow -- the card frame is what stopped
+               this layout scaling past a dozen boards */
+            box-shadow: none;
+        }
+
+        /* Finished games recede so games in play read first. Hook is the existing
+           machine-readable status token, not a new attribute. */
+        .game-board[data-game-status="draw"],
+        .game-board[data-game-status^="won-"] {
+            background-color: #fbfbfa;
+        }
+
+        /* ---- crosshatch board: no outer frame, uniform 2px interior lines ---- */
         .board {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 4px;
-            max-width: 200px;
-            margin: 0 auto 15px auto;
-            background-color: #333;
-            padding: 4px;
+            grid-template-columns: repeat(3, 32px);
+            width: 96px;
+            margin: 0 auto;
+            /* removed: background-color #333 + 4px padding + 4px grid-gap. That drew an
+               outer border and doubled every interior line. */
         }
 
         /* role="row" wrapper (ARIA grid pattern) stays invisible to the CSS grid layout --
-           its children lay out as if it were not there, same technique as .board form above. */
+           its children lay out as if it were not there. */
         .board-row { display: contents; }
 
         .square {
-            width: 60px;
-            height: 60px;
+            width: 32px;
+            height: 32px;
+            box-sizing: border-box;
+            padding: 0;
             background-color: #fff;
-            border: none;
+            border-style: solid;
+            border-color: #333;
+            border-width: 0;              /* set per cell below */
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 1.5em;
+            font-size: 15px;
             font-weight: bold;
+            line-height: 1;
             cursor: default;
+            transition: background-color 0.15s;
         }
+
+        /* Collapsed borders: each interior line is drawn exactly once, and no cell on the
+           outside edge draws one -- that is the whole crosshatch. .board-row is
+           display:contents, so :nth-child still addresses the squares within a row. */
+        .board-row .square:nth-child(-n+2) { border-right-width: 2px; }
+        .board-row:nth-child(-n+2) .square { border-bottom-width: 2px; }
 
         .square-clickable {
             cursor: pointer;
             background-color: #f0f8ff;
-            transition: background-color 0.2s;
         }
 
         .square-clickable:hover {
             background-color: #e6f3ff;
         }
 
-        .square .player {
-            color: #333;
-        }
+        .square .player { color: #333; }
+        .square .preview { color: #999; }
+        .square .empty { color: #ccc; font-size: 13px; }
 
-        .square .preview {
-            color: #999;
-        }
-
-        .square .empty {
-            color: #ccc;
-            font-size: 1em;
-        }
-
-        .legend {
+        /* ---- status: dot + text, inside one atomic live region ---- */
+        .status {
             display: flex;
-            justify-content: center;
-            gap: 16px;
-            margin: 8px 0;
-            font-size: 0.9em;
+            align-items: center;
+            gap: 6px;
+            margin: 0;
+            text-align: left;
+        }
+
+        .status h2 {
+            margin: 0;
+            font-size: 11px;
+            font-weight: 400;
+            line-height: 1.2;
             color: #555;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .legend-active {
-            font-weight: bold;
+        .game-board[data-game-status="draw"] .status h2,
+        .game-board[data-game-status^="won-"] .status h2 {
+            font-weight: 700;
+            color: #666;
         }
 
-        .controls {
-            text-align: center;
+        .status-dot {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            flex: none;
+            background-color: #4CAF50;
+        }
+
+        .game-board[data-game-status^="won-"] .status-dot { background-color: #1565C0; }
+        .game-board[data-game-status="draw"] .status-dot { background-color: #a8a29a; }
+
+        /* ---- footer: short id + controls, flush with the board's edges ----
+           96px available == 48px (8 monospace chars) + 46px (2x22px buttons + 2px gap),
+           so there is no flex `gap` here: space-between already separates the two groups
+           and a gap would overflow the row by 2px. */
+        .game-footer {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-height: 20px;
         }
 
         .game-link {
-            text-align: center;
-            margin-bottom: 8px;
-            font-size: 0.85em;
+            margin: 0;
+            font-size: 11px;
+            text-align: left;
         }
 
-        .game-intro {
-            text-align: center;
-            margin: 0 0 10px 0;
-            font-size: 0.85em;
+        .game-link a {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            /* #666 is ~5.7:1 on white -- the value .user-identity already uses. The
+               greys this design first reached for (#a8a29a, #8a8580) are 2.5:1 and
+               3.6:1 and would fail AA at this size, same trap as the old #2196F3. */
             color: #666;
+            text-decoration: none;
+            white-space: nowrap;
+            flex: none;
+        }
+
+        .game-link a:hover { color: #1565C0; text-decoration: underline; }
+
+        /* ---- controls: 22px ghost icon buttons, accent on hover ---- */
+        .controls {
+            display: flex;
+            gap: 2px;
+            flex: none;
+            text-align: initial;
+        }
+
+        .reset-game-btn,
+        .delete-game-btn {
+            width: 22px;
+            height: 22px;
+            padding: 0;
+            margin: 0;
+            font-size: 12px;
+            line-height: 1;
+            background-color: #fff;
+            color: #666;
+            border: 1px solid #c9c5bf;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: color 0.15s, border-color 0.15s;
+        }
+
+        /* #1565C0 / #C62828 are the AA-passing shades this file already settled on
+           (#2196F3 was ~3.1:1 and #f44336 ~4.0:1 at small sizes). */
+        .reset-game-btn:hover:not(:disabled) {
+            color: #1565C0;
+            border-color: #1565C0;
+        }
+
+        .delete-game-btn:hover:not(:disabled) {
+            color: #C62828;
+            border-color: #C62828;
+        }
+
+        .reset-game-btn:disabled,
+        .delete-game-btn:disabled {
+            color: #a8a29a;
+            border-color: #e6e4e1;
+            cursor: not-allowed;
+        }
+
+        /* ---- the open table, and the empty floor ----
+           `order: 1` pins the open table to the END of the grid no matter where it sits in
+           the DOM: a datastar morph that inserts a new board after it, or any future change
+           to render order, cannot push it into the middle of the floor. Everything else in
+           the grid keeps the default `order: 0`, so boards stay in creation order.
+           The slot is withheld entirely at capacity (see home.fs) -- an affordance that
+           cannot succeed should not be offered -- and `.at-capacity-slot` takes its place. */
+        .add-game-slot {
+            order: 1;
+            width: 110px;
+            height: 110px;
+            background-color: #fff;
+            border: 1px dashed #c9c5bf;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 22px;
+            color: #666;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: border-color 0.2s, color 0.2s;
+        }
+
+        .add-game-slot:hover {
+            border-color: #4CAF50;
+            color: #4CAF50;
+        }
+
+        /* The form wrapper is a grid item too, so it carries the pin as well. */
+        .add-game-form { order: 1; display: contents; }
+
+        .at-capacity-slot {
+            order: 1;
+            width: 110px;
+            height: 110px;
+            box-sizing: border-box;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-size: 11px;
+            line-height: 1.3;
+            color: #666;
+            border: 1px dashed #ebe9e5;
+            border-radius: 4px;
+        }
+
+        .empty-slot {
+            width: 110px;
+            height: 110px;
+            border: 1px dashed #ebe9e5;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        /* ---- visually hidden, still in the accessibility tree ----
+           Not display:none: these must stay announced and stay valid
+           aria-describedby targets. */
+        .game-intro,
+        .legend {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: 0;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            clip-path: inset(50%);
+            white-space: nowrap;
+            border: 0;
+        }
+
+        .legend-active { font-weight: bold; }
+
+        /* ---- unchanged ---- */
+        .new-game-btn {
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 18px;
+            font-size: 13px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .new-game-btn:hover {
+            background-color: #45a049;
         }
 
         .error-banner {
@@ -516,71 +776,6 @@ let gameStyles =
             text-align: center;
         }
 
-        .new-game-btn {
-            background-color: #4CAF50;
-            color: white;
-            padding: 12px 24px;
-            font-size: 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .new-game-btn:hover {
-            background-color: #45a049;
-        }
-
-        .reset-game-btn {
-            /* #2196F3 (Material Blue 500) failed WCAG AA at this 12px size, ~3.1:1 against
-               white (axe/Lighthouse color-contrast, confirmed live). #1565C0 (Blue 800)
-               passes at ~5.6:1; the existing hover shade (#1976D2, Blue 700, ~4.6:1) also
-               already passed and is unchanged. */
-            background-color: #1565C0;
-            color: white;
-            padding: 8px 16px;
-            font-size: 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-            margin-right: 8px;
-        }
-
-        .reset-game-btn:hover:not(:disabled) {
-            background-color: #1976D2;
-        }
-
-        .reset-game-btn:disabled {
-            background-color: #90CAF9;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
-        .delete-game-btn {
-            /* #f44336 (Material Red 500) also failed WCAG AA (~4.0:1). #C62828 (Red 800)
-               passes at ~7.0:1; the existing hover shade (#d32f2f, Red 700, ~5.0:1) also
-               already passed and is unchanged. */
-            background-color: #C62828;
-            color: white;
-            padding: 8px 16px;
-            font-size: 12px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .delete-game-btn:hover:not(:disabled) {
-            background-color: #d32f2f;
-        }
-
-        .delete-game-btn:disabled {
-            background-color: #EF9A9A;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
         .loading {
             text-align: center;
             color: #666;
@@ -590,23 +785,10 @@ let gameStyles =
 
         .game-info {
             text-align: center;
-            margin-top: 20px;
+            margin: 0;
+            padding: 4px 24px 24px 24px;
             color: #666;
-        }
-
-        .page-header {
-            display: flex;
-            justify-content: flex-end;
-            padding: 8px 20px;
-        }
-
-        .user-identity {
-            font-family: monospace;
-            font-size: 0.85em;
-            color: #666;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 120px;
+            font-size: 12px;
         }
         """
     }
