@@ -27,12 +27,13 @@ type AffordanceTests() =
             Assert.That(count, Is.GreaterThan(0), "Player X should see clickable squares on their turn")
 
             // Verify reset button is visible and enabled
-            let resetBtn = this.Page.Locator($"#{id} button:has-text('Reset')")
+            // (glyph label "↺", not text "Reset" -- select on the stable class instead)
+            let resetBtn = this.Page.Locator($"#{id} .reset-game-btn")
             let! isVisible = resetBtn.IsVisibleAsync()
             Assert.That(isVisible, Is.True, "Reset button should be visible for assigned player")
 
             // Verify delete button is visible and enabled
-            let deleteBtn = this.Page.Locator($"#{id} button:has-text('Delete')")
+            let deleteBtn = this.Page.Locator($"#{id} .delete-game-btn")
             let! isVisible = deleteBtn.IsVisibleAsync()
             Assert.That(isVisible, Is.True, "Delete button should be visible for assigned player")
         }

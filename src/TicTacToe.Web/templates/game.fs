@@ -241,14 +241,16 @@ let private renderLegend (assignment: PlayerAssignment option) (currentPlayer: P
 /// button. C: a11yLabel names WHICH game this control acts on -- in a multi-game dashboard a
 /// screen reader's button list shows "Reset Game" x N indistinguishably without it.
 ///
-/// LAYOUT NOTE: `label` is now a GLYPH ("↺"/"✕"), which is not an accessible name, so the
-/// aria-label is emitted UNCONDITIONALLY here -- not gated on surface.C as it was when the
-/// visible label was the prose "Reset Game". Without that, C=0 would ship two unnamed buttons
-/// per board. The visible glyph carries no other information: `rel`, `name` and `formaction`
-/// still type the affordance for an agent exactly as before.
+/// LAYOUT NOTE: `label` is now a GLYPH ("↺"/"✕"), which is not an accessible name. `title` (not
+/// an aria-*/role attribute, so it doesn't leak into the C factor) is emitted unconditionally as
+/// a plain-HTML tooltip fallback; aria-label stays gated on surface.C like every other aria-*
+/// attribute in this file -- C=0 is the floor cell and must stay at zero aria-* markup (see
+/// SurfaceCellTests "C=0 strips EVERY aria-*" / WireSemanticsTests "the floor page carries no
+/// aria/role"). `rel`, `name` and `formaction` still type the affordance for an agent regardless.
 let private controlButton (surface: Surface) (btnClass: string) (rel: string) (name: string) (formaction: string) (label: string) (a11yLabel: string) : HtmlElement =
     let btn = button(class' = btnClass, type' = "submit", name = name, formaction = formaction).attr("rel", rel) { label }
-    btn.attr("aria-label", a11yLabel).attr("title", a11yLabel) :> HtmlElement
+    let btn = btn.attr("title", a11yLabel)
+    (if surface.C then btn.attr("aria-label", a11yLabel) else btn) :> HtmlElement
 
 /// Reset/delete controls, verbatim from the twin: BOTH are always real, live submit buttons while
 /// the game is in progress — no viewer/seat/count/lock gating in the markup. Authorization is the
@@ -316,11 +318,16 @@ let renderGameBoard (surface: Surface) (basePath: string) (gameId: string) (resu
         // aria-atomic: the whole region re-reads on change, not just whatever an AT implementation
         // decides is the "changed part" of a datastar-morphed live region -- needed because this
         // status text (not just one word) is what says whose turn it is.
-        // LAYOUT NOTE: the dot is a purely decorative colour restatement of statusToken, so it is
-        // aria-hidden and lives INSIDE the atomic region (one live region per board, as before).
+        // LAYOUT NOTE: the dot is a purely decorative colour restatement of statusToken and lives
+        // INSIDE the atomic region (one live region per board, as before). aria-hidden stays
+        // gated on surface.C like every other aria-* attribute -- C=0 is the floor cell and must
+        // stay at zero aria-* markup.
+        let dot =
+            let s = span(class' = "status-dot")
+            if surface.C then s.attr("aria-hidden", "true") else s
         let d =
             div(class' = "status") {
-                span(class' = "status-dot").attr("aria-hidden", "true")
+                dot
                 h2() { status }
             }
         if surface.C then d.attr("role", "status").attr("aria-live", "polite").attr("aria-atomic", "true") else d
