@@ -24,8 +24,35 @@ type DiscoveryContentTests() =
 
     let hrefsOf (d: JsonElement) =
         match d.TryGetProperty("descriptor") with
-        | true, nested -> nested.EnumerateArray() |> Seq.map (fun n -> n.GetProperty("href").GetString()) |> List.ofSeq
+        | true, nested ->
+            nested.EnumerateArray()
+            |> Seq.choose (fun n -> match n.TryGetProperty("href") with | true, v -> Some(v.GetString()) | false, _ -> None)
+            |> List.ofSeq
         | false, _ -> []
+
+    let nestedIdsOf (d: JsonElement) =
+        match d.TryGetProperty("descriptor") with
+        | true, nested ->
+            nested.EnumerateArray()
+            |> Seq.choose (fun n -> match n.TryGetProperty("id") with | true, v -> Some(v.GetString()) | false, _ -> None)
+            |> List.ofSeq
+        | false, _ -> []
+
+    let rec allIdsOf (d: JsonElement) : string list =
+        let ownId = match d.TryGetProperty("id") with | true, v -> [ v.GetString() ] | false, _ -> []
+        let childIds =
+            match d.TryGetProperty("descriptor") with
+            | true, nested -> nested.EnumerateArray() |> Seq.collect allIdsOf |> List.ofSeq
+            | false, _ -> []
+        ownId @ childIds
+
+    let rec allHrefsOf (d: JsonElement) : string list =
+        let ownHref = match d.TryGetProperty("href") with | true, v -> [ v.GetString() ] | false, _ -> []
+        let childHrefs =
+            match d.TryGetProperty("descriptor") with
+            | true, nested -> nested.EnumerateArray() |> Seq.collect allHrefsOf |> List.ofSeq
+            | false, _ -> []
+        ownHref @ childHrefs
 
     [<Test>]
     member _.``alpsProfile is valid JSON with a top-level alps.version``() =
@@ -76,3 +103,39 @@ type DiscoveryContentTests() =
     [<Test>]
     member _.``the removed /arenas alias is not mentioned anywhere in the profile``() =
         Assert.That(Discovery.alpsProfile, Does.Not.Contain "/arenas", "the /arenas alias route was removed; the profile must not describe it")
+
+    [<Test>]
+    member _.``player enumerates X and O as nested descriptors, not just prose``() =
+        let ds = alps () |> descriptorsOf
+        let player = ds |> byId "player" |> Option.get
+        Assert.That(nestedIdsOf player, Is.EquivalentTo [ "X"; "O" ])
+
+    [<Test>]
+    member _.``square-state references player for the Taken case and names the Empty case``() =
+        let ds = alps () |> descriptorsOf
+        let squareState = ds |> byId "square-state" |> Option.get
+        Assert.That(hrefsOf squareState, Is.EquivalentTo [ "#player" ])
+        Assert.That(nestedIdsOf squareState, Is.EquivalentTo [ "empty" ])
+
+    [<Test>]
+    member _.``turn composes player (whose move) and outcome (terminal result) by href``() =
+        let ds = alps () |> descriptorsOf
+        Assert.That(hrefsOf (ds |> byId "turn" |> Option.get), Is.EquivalentTo [ "#player"; "#outcome" ])
+        let outcome = ds |> byId "outcome" |> Option.get
+        Assert.That(hrefsOf outcome, Is.EquivalentTo [ "#player" ], "outcome must reference player by href to name the winner, not prose")
+        Assert.That(nestedIdsOf outcome, Is.EquivalentTo [ "draw" ])
+
+    [<Test>]
+    member _.``reset and delete take no body, so reference no fields``() =
+        let ds = alps () |> descriptorsOf
+        Assert.That(hrefsOf (ds |> byId "reset" |> Option.get), Is.Empty)
+        Assert.That(hrefsOf (ds |> byId "delete" |> Option.get), Is.Empty)
+
+    [<Test>]
+    member _.``every href in the profile resolves to a real descriptor id somewhere in the document``() =
+        let ds = alps () |> descriptorsOf
+        let allIds = ds |> List.collect allIdsOf |> Set.ofList
+        let allHrefs = ds |> List.collect allHrefsOf
+        for href in allHrefs do
+            let target = href.TrimStart('#')
+            Assert.That(allIds.Contains target, Is.True, sprintf "dangling href '%s' does not resolve to any descriptor id" href)
