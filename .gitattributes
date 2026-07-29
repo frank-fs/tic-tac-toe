@@ -1,0 +1,7 @@
+# Force LF for all tracked text, regardless of core.autocrlf. The sibling agent-hypothesis repo
+# hit two bugs traced to autocrlf=true converting checked-out bytes to CRLF: a SHA-256-locked
+# prompt file whose hash check broke on CRLF checkout, and an .fs test whose embedded
+# expected-output string literal picked up the source file's own CRLF and stopped byte-matching
+# LF-generated actual output. This repo's blobs are already stored as pure LF, so this file adds
+# no renormalization churn -- it just locks in that behavior for every future clone/checkout.
+* text=auto eol=lf
