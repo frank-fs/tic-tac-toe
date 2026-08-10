@@ -4,6 +4,7 @@ open System.Threading.Tasks
 open Microsoft.AspNetCore.Authentication
 open Microsoft.AspNetCore.Authentication.Cookies
 open Microsoft.AspNetCore.Builder
+open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.ResponseCompression
 open Microsoft.AspNetCore.Routing
@@ -32,14 +33,55 @@ let private mcpEnabled () =
     | _ -> false
 
 /// Frank.OpenApi's `useOpenApi` mounts the OpenAPI document and Scalar UI unconditionally, on every
-/// surface -- verified live: even at TICTACTOE_CELL=0000 both /openapi/v1.json and /scalar/v1
-/// returned 200, unauthenticated. That's a discovery-surface leak an HTTP-arm test run needs to be
-/// able to shut off; default stays on (matches current behavior for a human using the app),
-/// TICTACTOE_OPENAPI_ENABLED=0 turns it off for a run.
+/// surface -- verified live under 7.2.0: even at TICTACTOE_CELL=0000 both /openapi/v1.json and
+/// /scalar/v1 returned 200, unauthenticated. 7.3.2 moved the document to /.well-known/openapi.json
+/// (src/Frank.OpenApi/WebHostBuilderExtensions.fs:16 in the Frank repo); Scalar's own UI route is
+/// unaffected. That's a discovery-surface leak an HTTP-arm test run needs to be able to shut off;
+/// default stays on (matches current behavior for a human using the app), TICTACTOE_OPENAPI_ENABLED=0
+/// turns it off for a run.
 let private openApiEnabled () =
     match Environment.GetEnvironmentVariable("TICTACTOE_OPENAPI_ENABLED") with
     | "0" | "false" -> false
     | _ -> true
+
+/// Strips Link-header rel values that Frank 7.3.2's useX operations register as unconditional,
+/// app-wide contributions with no per-request hook of their own -- one rel per flag that's
+/// supposed to gate that discovery signal: "service-desc" (useOpenApi) when
+/// TICTACTOE_OPENAPI_ENABLED is off; "home" (useJsonHome, wired in a later task) and "profile"
+/// (useAlps, wired in a later task) when Sd is off. See the doc comment on useOpenApiGuard/Step 4
+/// above for why this must be an IStartupFilter and not a plugBeforeRouting middleware.
+type private DiscoveryLinkScrubStartupFilter(surface: Surface) =
+    interface IStartupFilter with
+        member _.Configure(next: Action<IApplicationBuilder>) =
+            Action<IApplicationBuilder>(fun app ->
+                let markers =
+                    [ if not (openApiEnabled ()) then yield "rel=\"service-desc\""
+                      if not surface.Sd then
+                          yield "rel=\"profile\""
+                          yield "rel=\"home\"" ]
+
+                if not (List.isEmpty markers) then
+                    app.Use(fun (ctx: HttpContext) (next2: RequestDelegate) ->
+                        task {
+                            ctx.Response.OnStarting(fun () ->
+                                match ctx.Response.Headers.TryGetValue("Link") with
+                                | true, values ->
+                                    let kept =
+                                        values
+                                        |> Seq.filter (fun v -> not (markers |> List.exists v.Contains))
+                                        |> Array.ofSeq
+                                    if kept.Length = 0 then
+                                        ctx.Response.Headers.Remove("Link") |> ignore
+                                    else
+                                        ctx.Response.Headers.["Link"] <- Microsoft.Extensions.Primitives.StringValues kept
+                                | false, _ -> ()
+                                Task.CompletedTask)
+                            |> ignore
+                            do! next2.Invoke ctx
+                        }
+                        :> Task)
+                    |> ignore
+                next.Invoke app)
 
 let private initialGames () =
     match Environment.GetEnvironmentVariable("TICTACTOE_INITIAL_GAMES") with
@@ -70,6 +112,8 @@ let configureServices (services: IServiceCollection) =
 
     services
         .AddSingleton<Surface>(Surface.fromEnvironment ())
+        .AddSingleton<IStartupFilter>(fun sp ->
+            DiscoveryLinkScrubStartupFilter(sp.GetRequiredService<Surface>()) :> IStartupFilter)
         .AddSingleton<GameSupervisor>(fun _ -> createGameSupervisor ())
         .AddSingleton<GameLimits>(fun _ -> gameLimits ())
         .AddSingleton<PlayerAssignmentManager>(fun _ -> PlayerAssignmentManager())
@@ -247,7 +291,7 @@ let useOpenApiGuard (app: IApplicationBuilder) =
         task {
             let path = ctx.Request.Path.Value
             let isOpenApiPath =
-                path.StartsWith("/openapi", StringComparison.Ordinal)
+                path = "/.well-known/openapi.json"
                 || path.StartsWith("/scalar", StringComparison.Ordinal)
 
             if not (openApiEnabled ()) && isOpenApiPath then
