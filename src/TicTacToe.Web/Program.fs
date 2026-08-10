@@ -18,6 +18,7 @@ open Frank.Auth
 open Frank.Datastar
 open Frank.OpenApi
 open Frank.JsonHome
+open Frank.Alps
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Web.EventLog
@@ -49,7 +50,7 @@ let private openApiEnabled () =
 /// app-wide contributions with no per-request hook of their own -- one rel per flag that's
 /// supposed to gate that discovery signal: "service-desc" (useOpenApi) when
 /// TICTACTOE_OPENAPI_ENABLED is off; "home" (useJsonHome, wired in a later task) and "profile"
-/// (useAlps, wired in a later task) when Sd is off. See the doc comment on useOpenApiGuard/Step 4
+/// (useAlps, wired below) when Sd is off. See the doc comment on useOpenApiGuard/Step 4
 /// above for why this must be an IStartupFilter and not a plugBeforeRouting middleware.
 type private DiscoveryLinkScrubStartupFilter(surface: Surface) =
     interface IStartupFilter with
@@ -149,22 +150,9 @@ let configureServices (services: IServiceCollection) =
 
     services
 
-/// Sd: profile + self. "home" is no longer emitted here -- useJsonHome (below) contributes
-/// rel="home" app-wide on its own, unconditionally; DiscoveryLinkScrubStartupFilter suppresses it
-/// when Sd is off so the floor cell still hides it.
-let private discoveryLinks : HttpContext -> WebLink seq =
-    fun ctx ->
-        let surface = ctx.RequestServices.GetRequiredService<Surface>()
-        if not surface.Sd then Seq.empty
-        else
-            seq {
-                { Target = "/.well-known/alps.json"; Rel = "profile"; Params = [] }
-                { Target = string ctx.Request.Path; Rel = "self"; Params = [] }
-            }
-
 /// So: the game URI names the Game (the thing); its RDF description is a distinct document
-/// (httpRange-14). Independent of discoveryLinks -- both coexist as separate Link entries on
-/// gameById's GET when Sd+So.
+/// (httpRange-14). `useAlps` (below) contributes rel="profile" app-wide independently -- both
+/// coexist as separate Link entries on gameById's GET when Sd+So.
 let private describedByLink : HttpContext -> WebLink seq =
     fun ctx ->
         let surface = ctx.RequestServices.GetRequiredService<Surface>()
@@ -219,7 +207,6 @@ let gameById =
         rel "tag:tictactoe,2026:game"
         hrefVar "id" "tag:tictactoe,2026:param;id"
         requireAuth
-        link discoveryLinks
         link describedByLink
         get (
             negotiate {
@@ -249,18 +236,25 @@ let gameById =
                 accepts "*/*" (RequestDelegate(Handlers.getGameHtml))
             }
         )
-        post Handlers.makeMove
-        delete Handlers.deleteGame
+        // take-seat and make-move are the same wire action (Discovery.takeSeat's own doc text says
+        // so) -- both bind cleanly to this one POST handler. HandlerDefinition.Metadata is a list
+        // (binds appends, doesn't replace) and EndpointSurface reads it via
+        // GetOrderedMetadata<Descriptor>(), so both descriptors are validated and served.
+        post (handler { handle Handlers.makeMove; binds Discovery.makeMove; binds Discovery.takeSeat })
+        delete (handler { handle Handlers.deleteGame; binds Discovery.delete })
     }
 
 let gameReset =
     resource "/games/{id}/reset" {
         name "GameReset"
         requireAuth
-        post Handlers.resetGame
+        post (handler { handle Handlers.resetGame; binds Discovery.reset })
     }
 
 // No-JS delete: HTML forms cannot emit DELETE, so a POST alias drives the same handler.
+// gameDelete stays unbound: Discovery.delete is `idempotent` (valid HTTP methods PUT/DELETE per
+// AlpsDocument.validate), and this alias is a POST -- binding it here would fail host startup.
+// The real binding lives on gameById's DELETE above.
 let gameDelete =
     resource "/games/{id}/delete" {
         name "GameDelete"
@@ -272,17 +266,6 @@ let gameSse =
     resource "/games/{id}/sse" {
         name "GameSse"
         datastar Handlers.gameSse
-    }
-
-// Sd: the discovery documents. Present on every cell as routes; 404 unless Sd is on, so the
-// factor — not the routing table — decides whether the contract is discoverable.
-let profileResource =
-    resource "/.well-known/alps.json" {
-        name "Profile"
-        rel "tag:tictactoe,2026:profile"
-        requireAuth
-        link discoveryLinks
-        get Handlers.profile
     }
 
 // So: the describing document the game URI dereferences to under ld+json conneg.
@@ -369,6 +352,22 @@ let useJsonHomeGuard (app: IApplicationBuilder) =
             }
             :> Task)
 
+/// Blocks the ALPS document when Sd is off. Frank.Alps's `useAlps` operation has no on/off switch
+/// of its own (mounts unconditionally, same as useOpenApi/useJsonHome) -- same "present in the
+/// routing table, 404 unless the toggle is on" shape as useOpenApiGuard/useJsonHomeGuard.
+let useAlpsGuard (app: IApplicationBuilder) =
+    let surface = app.ApplicationServices.GetRequiredService<Surface>()
+    if surface.Sd then app
+    else
+        app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+            task {
+                if ctx.Request.Path.Value = "/.well-known/alps.json" then
+                    ctx.Response.StatusCode <- 404
+                else
+                    do! next.Invoke ctx
+            }
+            :> Task)
+
 /// The resource a stream endpoint streams ABOUT — None when the path is not a stream endpoint.
 let private streamCanonical (path: string) =
     match path with
@@ -431,6 +430,7 @@ let main args =
 
         useOpenApi
         useJsonHome
+        useAlps Discovery.alpsProfile
 
         plugBeforeRouting ResponseCompressionBuilderExtensions.UseResponseCompression
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
@@ -443,6 +443,7 @@ let main args =
         plugBeforeRouting useOptionsDiscovery
         plugBeforeRouting useOpenApiGuard
         plugBeforeRouting useJsonHomeGuard
+        plugBeforeRouting useAlpsGuard
         plugBeforeRouting useStreamGuard
 
         // MCP mounts alongside Frank's own resources — same DI container, same GameSupervisor,
@@ -468,7 +469,6 @@ let main args =
         resource gameReset
         resource gameDelete
         resource gameSse
-        resource profileResource
     }
 
     0

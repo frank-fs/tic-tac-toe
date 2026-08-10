@@ -33,6 +33,7 @@
     <PackageReference Include="Frank.Auth" Version="7.3.2" />
     <PackageReference Include="Frank.OpenApi" Version="7.3.2" />
     <PackageReference Include="Frank.JsonHome" Version="7.3.2" />
+    <PackageReference Include="Frank.Alps" Version="7.3.2" />
     <PackageReference Include="Oxpecker.ViewEngine" Version="2.*" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.2.0" />

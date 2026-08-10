@@ -702,18 +702,6 @@ let resetGame (ctx: HttpContext) =
 // Sd / So: discovery documents (404 when the factor is off — the surface is the toggle)
 // ============================================================================
 
-/// GET /.well-known/alps.json — ALPS profile of the app's affordances (Sd only).
-let profile (ctx: HttpContext) =
-    task {
-        let surface = surfaceOf ctx
-        if not surface.Sd then
-            ctx.Response.StatusCode <- 404
-        else
-            ctx.Response.Headers.Append("Allow", "GET, OPTIONS")
-            ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
-            do! ctx.Response.WriteAsync Discovery.alpsProfile
-    }
-
 /// GET /games/{id}/type — the game's RDF description as schema.org/Game JSON-LD (So only).
 /// The document the game URI (the thing) dereferences to under content negotiation.
 let gameType (ctx: HttpContext) =

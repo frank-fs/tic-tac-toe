@@ -1,43 +1,107 @@
 module TicTacToe.Web.Discovery
 
+open Frank.Alps
+
 /// ALPS profile describing the app's affordances and their semantics (Sd). Fields are decomposed
 /// into their own semantic descriptors and referenced by `href` from the action/game descriptors --
 /// not just named in prose -- so a client can enumerate the vocabulary structurally instead of
 /// parsing English out of a doc string.
-let alpsProfile = """{
-  "alps": {
-    "version": "1.0",
-    "doc": { "value": "Tic-tac-toe. m,n,k-game (3,3,3)." },
-    "descriptor": [
-      { "id": "player", "type": "semantic", "doc": { "value": "Which side is acting." },
-        "descriptor": [ { "id": "X" }, { "id": "O" } ] },
-      { "id": "position", "type": "semantic", "doc": { "value": "One of the nine named squares." },
-        "descriptor": [
-          { "id": "TopLeft" }, { "id": "TopCenter" }, { "id": "TopRight" },
-          { "id": "MiddleLeft" }, { "id": "MiddleCenter" }, { "id": "MiddleRight" },
-          { "id": "BottomLeft" }, { "id": "BottomCenter" }, { "id": "BottomRight" }
-        ] },
-      { "id": "square-state", "type": "semantic", "doc": { "value": "A square's contents: taken by a player, or empty." },
-        "descriptor": [ { "href": "#player" }, { "id": "empty" } ] },
-      { "id": "board", "type": "semantic", "doc": { "value": "The nine squares, each named by position, holding a square-state." },
-        "descriptor": [ { "href": "#position" }, { "href": "#square-state" } ] },
-      { "id": "outcome", "type": "semantic", "doc": { "value": "The terminal result of a finished game: a player has won, or the board is a draw." },
-        "descriptor": [ { "href": "#player" }, { "id": "draw" } ] },
-      { "id": "turn", "type": "semantic", "doc": { "value": "Whose move it is next, or the terminal outcome (a player has won, or the board is a draw)." },
-        "descriptor": [ { "href": "#player" }, { "href": "#outcome" } ] },
-      { "id": "game", "type": "semantic", "doc": { "value": "A game resource: the board state plus whose turn it is." },
-        "descriptor": [ { "href": "#board" }, { "href": "#turn" } ] },
-      { "id": "take-seat", "type": "unsafe", "rt": "#game",
-        "doc": { "value": "Claim the X or O seat by submitting the first move for that side; first mover on each side is seated. This is the same wire action as make-move (below), not a separate endpoint -- it is only distinguished by game state (no seat yet taken for that side)." },
-        "descriptor": [ { "href": "#player" }, { "href": "#position" } ] },
-      { "id": "make-move", "type": "unsafe", "rt": "#game",
-        "doc": { "value": "POST player + position to /games/{id}. Rejected if out of turn or the square is already taken." },
-        "descriptor": [ { "href": "#player" }, { "href": "#position" } ] },
-      { "id": "reset", "type": "idempotent", "rt": "#game", "doc": { "value": "POST /games/{id}/reset to reset the board and clear seats." } },
-      { "id": "delete", "type": "idempotent", "doc": { "value": "DELETE /games/{id} (or POST /games/{id}/delete) to remove the game." } }
-    ]
-  }
-}"""
+let player =
+    descriptor "player" {
+        semantic
+        doc "Which side is acting."
+        contains [ DescriptorFunctions.semantic "X"; DescriptorFunctions.semantic "O" ]
+    }
+
+let position =
+    descriptor "position" {
+        semantic
+        doc "One of the nine named squares."
+        contains [
+            DescriptorFunctions.semantic "TopLeft"; DescriptorFunctions.semantic "TopCenter"; DescriptorFunctions.semantic "TopRight"
+            DescriptorFunctions.semantic "MiddleLeft"; DescriptorFunctions.semantic "MiddleCenter"; DescriptorFunctions.semantic "MiddleRight"
+            DescriptorFunctions.semantic "BottomLeft"; DescriptorFunctions.semantic "BottomCenter"; DescriptorFunctions.semantic "BottomRight" ]
+    }
+
+let squareState =
+    descriptor "square-state" {
+        semantic
+        doc "A square's contents: taken by a player, or empty."
+        contains [ descriptor "square-state-player" { semantic; href player }; DescriptorFunctions.semantic "empty" ]
+    }
+
+let board =
+    descriptor "board" {
+        semantic
+        doc "The nine squares, each named by position, holding a square-state."
+        contains [
+            descriptor "board-position" { semantic; href position }
+            descriptor "board-square-state" { semantic; href squareState } ]
+    }
+
+let outcome =
+    descriptor "outcome" {
+        semantic
+        doc "The terminal result of a finished game: a player has won, or the board is a draw."
+        contains [ descriptor "outcome-player" { semantic; href player }; DescriptorFunctions.semantic "draw" ]
+    }
+
+let turn =
+    descriptor "turn" {
+        semantic
+        doc "Whose move it is next, or the terminal outcome (a player has won, or the board is a draw)."
+        contains [
+            descriptor "turn-player" { semantic; href player }
+            descriptor "turn-outcome" { semantic; href outcome } ]
+    }
+
+let game =
+    descriptor "game" {
+        semantic
+        doc "A game resource: the board state plus whose turn it is."
+        contains [ descriptor "game-board" { semantic; href board }; descriptor "game-turn" { semantic; href turn } ]
+    }
+
+let takeSeat =
+    descriptor "take-seat" {
+        unsafe
+        rt game
+        doc "Claim the X or O seat by submitting the first move for that side; first mover on each side is seated. This is the same wire action as make-move (below), not a separate endpoint -- it is only distinguished by game state (no seat yet taken for that side)."
+        contains [
+            descriptor "take-seat-player" { semantic; href player }
+            descriptor "take-seat-position" { semantic; href position } ]
+    }
+
+let makeMove =
+    descriptor "make-move" {
+        unsafe
+        rt game
+        doc "POST player + position to /games/{id}. Rejected if out of turn or the square is already taken."
+        contains [
+            descriptor "make-move-player" { semantic; href player }
+            descriptor "make-move-position" { semantic; href position } ]
+    }
+
+/// `unsafe`, not `idempotent`: each POST creates a brand-new game resource (Handlers.resetGame
+/// issues a fresh gameId), so repeating the call is not idempotent in ALPS's sense. Frank.Alps's
+/// startup `binds` validation (idempotent -> PUT/DELETE only) would fail host startup on the POST
+/// binding in Program.fs if this stayed "idempotent" -- that check is what surfaced this mislabel
+/// in the original hand-rolled profile.
+let reset =
+    descriptor "reset" {
+        unsafe
+        rt game
+        doc "POST /games/{id}/reset to reset the board and clear seats."
+    }
+
+let delete =
+    descriptor "delete" {
+        idempotent
+        doc "DELETE /games/{id} (or POST /games/{id}/delete) to remove the game."
+    }
+
+let alpsProfile : Descriptor list =
+    [ player; position; squareState; board; outcome; turn; game; takeSeat; makeMove; reset; delete ]
 
 /// The game's RDF description as schema.org/Game JSON-LD (So). Absolute @id/#players URIs are
 /// built from the request scheme+host so every named thing is a dereferenceable HTTP URI; zero

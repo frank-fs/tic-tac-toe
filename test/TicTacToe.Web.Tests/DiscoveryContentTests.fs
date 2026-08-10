@@ -8,13 +8,17 @@ namespace TicTacToe.Web.Tests
 
 open System.Text.Json
 open NUnit.Framework
+open Frank.Alps
 open TicTacToe.Web
 
 [<TestFixture>]
 type DiscoveryContentTests() =
 
+    let json () =
+        Serialization.toJson (System.Uri("/.well-known/alps.json", System.UriKind.Relative)) Discovery.alpsProfile
+
     let alps () =
-        JsonDocument.Parse(Discovery.alpsProfile).RootElement.GetProperty("alps")
+        JsonDocument.Parse(json ()).RootElement.GetProperty("alps")
 
     let descriptorsOf (alps: JsonElement) =
         alps.GetProperty("descriptor").EnumerateArray() |> List.ofSeq
@@ -61,12 +65,15 @@ type DiscoveryContentTests() =
 
     [<Test>]
     member _.``player and position are their own semantic descriptors, not just prose``() =
+        // Frank.Alps.Serialization omits "type" entirely for a Semantic descriptor (draft-07's
+        // default when the attribute is absent) -- presence as a distinct top-level descriptor
+        // with no "type" override is itself the assertion, not a literal "semantic" string.
         let ds = alps () |> descriptorsOf
         match ds |> byId "player" with
-        | Some d -> Assert.That(d.GetProperty("type").GetString(), Is.EqualTo "semantic")
+        | Some d -> Assert.That(d.TryGetProperty("type") |> fst, Is.False, "semantic is the default type; not written explicitly")
         | None -> Assert.Fail "expected a top-level 'player' descriptor"
         match ds |> byId "position" with
-        | Some d -> Assert.That(d.GetProperty("type").GetString(), Is.EqualTo "semantic")
+        | Some d -> Assert.That(d.TryGetProperty("type") |> fst, Is.False, "semantic is the default type; not written explicitly")
         | None -> Assert.Fail "expected a top-level 'position' descriptor"
 
     [<Test>]
@@ -102,7 +109,7 @@ type DiscoveryContentTests() =
 
     [<Test>]
     member _.``the removed /arenas alias is not mentioned anywhere in the profile``() =
-        Assert.That(Discovery.alpsProfile, Does.Not.Contain "/arenas", "the /arenas alias route was removed; the profile must not describe it")
+        Assert.That(json (), Does.Not.Contain "/arenas", "the /arenas alias route was removed; the profile must not describe it")
 
     [<Test>]
     member _.``player enumerates X and O as nested descriptors, not just prose``() =
@@ -115,7 +122,7 @@ type DiscoveryContentTests() =
         let ds = alps () |> descriptorsOf
         let squareState = ds |> byId "square-state" |> Option.get
         Assert.That(hrefsOf squareState, Is.EquivalentTo [ "#player" ])
-        Assert.That(nestedIdsOf squareState, Is.EquivalentTo [ "empty" ])
+        Assert.That(nestedIdsOf squareState, Is.EquivalentTo [ "square-state-player"; "empty" ])
 
     [<Test>]
     member _.``turn composes player (whose move) and outcome (terminal result) by href``() =
@@ -123,7 +130,7 @@ type DiscoveryContentTests() =
         Assert.That(hrefsOf (ds |> byId "turn" |> Option.get), Is.EquivalentTo [ "#player"; "#outcome" ])
         let outcome = ds |> byId "outcome" |> Option.get
         Assert.That(hrefsOf outcome, Is.EquivalentTo [ "#player" ], "outcome must reference player by href to name the winner, not prose")
-        Assert.That(nestedIdsOf outcome, Is.EquivalentTo [ "draw" ])
+        Assert.That(nestedIdsOf outcome, Is.EquivalentTo [ "outcome-player"; "draw" ])
 
     [<Test>]
     member _.``reset and delete take no body, so reference no fields``() =
