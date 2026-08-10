@@ -198,18 +198,25 @@ let gameById =
                 // it names the handler's self-writing intent instead of relying on which NegotiateBuilder
                 // overload F#'s resolver happens to pick.
                 //
-                // "text/html", not "*/*": MediaTypeNegotiation ties are broken by registration order
-                // (MediaTypeNegotiation.fs), and a registered "*/*" ties at quality 1.0 against ANY
-                // single concrete Accept entry -- including a bare "Accept: application/ld+json" with
-                // no other entries, and an absent Accept (normalized internally to "*/*"). With "*/*"
-                // registered, whichever order wins one of {absent Accept -> HTML default} or
-                // {Accept: application/ld+json alone -> ld+json 303} necessarily loses the other tie.
-                // "text/html" (this handler's actual content type) is disjoint from
-                // "application/ld+json" -- no tie on an explicit ld+json Accept -- while still winning
-                // the tie against ld+json on an absent or explicit "*/*" Accept because it is listed
-                // first here.
+                // "text/html" listed before "application/ld+json", not a single "*/*": MediaTypeNegotiation
+                // ties are broken by registration order (MediaTypeNegotiation.fs), and a registered "*/*"
+                // ties at quality 1.0 against ANY single concrete Accept entry -- including a bare
+                // "Accept: application/ld+json" with no other entries, and an absent Accept (normalized
+                // internally to "*/*"). If "*/*" were the ONLY HTML entry, whichever order wins one of
+                // {absent Accept -> HTML default} or {Accept: application/ld+json alone -> ld+json 303}
+                // would necessarily lose the other tie. "text/html" (this handler's actual content type)
+                // is disjoint from "application/ld+json" -- no tie on an explicit ld+json Accept -- while
+                // still winning the tie against ld+json on an absent or explicit "*/*" Accept because it
+                // is listed first.
+                //
+                // The trailing "*/*" entry restores the pre-upgrade "HTML otherwise" fallback for any
+                // OTHER concrete Accept (e.g. a bare "Accept: application/json") that matches neither
+                // "text/html" nor "application/ld+json" and would otherwise 406. It's listed LAST
+                // specifically so it never wins a tie against the two concrete entries above -- it only
+                // ever fires when neither of them matches at all.
                 accepts "text/html" (RequestDelegate(Handlers.getGameHtml))
                 accepts "application/ld+json" (RequestDelegate(Handlers.getGameLdJson))
+                accepts "*/*" (RequestDelegate(Handlers.getGameHtml))
             }
         )
         post Handlers.makeMove
