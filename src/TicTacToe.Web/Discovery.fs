@@ -103,24 +103,30 @@ let delete =
 let alpsProfile : Descriptor list =
     [ player; position; squareState; board; outcome; turn; game; takeSeat; makeMove; reset; delete ]
 
-/// The game's RDF description as schema.org/Game JSON-LD (So). Absolute @id/#players URIs are
-/// built from the request scheme+host so every named thing is a dereferenceable HTTP URI; zero
-/// blank nodes; sameAs links to Wikidata + DBpedia.
-let gameJsonLd (gameUri: string) =
-    String.concat "\n" [
-        "{"
-        "  \"@context\": \"https://schema.org\","
-        $"  \"@id\": \"{gameUri}\","
-        "  \"@type\": \"Game\","
-        "  \"name\": \"Tic-tac-toe\","
-        "  \"description\": \"A two-player m,n,k (3,3,3) game: place three of your marks in a row to win.\","
-        "  \"numberOfPlayers\": {"
-        $"    \"@id\": \"{gameUri}#players\","
-        "    \"@type\": \"QuantitativeValue\","
-        "    \"value\": 2"
-        "  },"
-        "  \"sameAs\": ["
-        "    \"http://www.wikidata.org/entity/Q210339\","
-        "    \"http://dbpedia.org/resource/Tic-tac-toe\""
-        "  ]"
-        "}" ]
+open Frank.Rdf
+
+/// The game's RDF description as schema.org/Game JSON-LD (So). Absolute IRIs are built from the
+/// request scheme+host so every named thing is a dereferenceable HTTP URI; zero blank nodes;
+/// sameAs links to Wikidata + DBpedia. Two triples with the same (subject, predicate) and
+/// different objects (the two sameAs targets) is exactly how RDF represents a multi-valued
+/// property -- Doc.writeJsonLd's expanded form renders that as a JSON array for the predicate.
+let gameDoc (gameUri: string) : Doc =
+    let game = Node.Iri gameUri
+    let players = Node.Iri $"{gameUri}#players"
+
+    rdf {
+        prefix "schema" "https://schema.org/"
+
+        about (
+            describe game {
+                typ "schema:Game"
+                propertyString "schema:name" "Tic-tac-toe"
+                propertyString "schema:description" "A two-player m,n,k (3,3,3) game: place three of your marks in a row to win."
+                propertyNode "schema:numberOfPlayers" players
+                propertyNode "schema:sameAs" (Node.Iri "http://www.wikidata.org/entity/Q210339")
+                propertyNode "schema:sameAs" (Node.Iri "http://dbpedia.org/resource/Tic-tac-toe")
+            }
+        )
+
+        about (describe players { typ "schema:QuantitativeValue"; propertyInt "schema:value" 2 })
+    }

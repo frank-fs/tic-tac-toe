@@ -160,7 +160,9 @@ type FullSurfaceWireTests() =
 
             use! typed = this.Client.GetAsync $"/games/{id}/type"
             let! body = typed.Content.ReadAsStringAsync()
-            Assert.That(body, Does.Contain "\"@type\": \"Game\"", "the description is schema.org/Game JSON-LD")
+            // Frank.Rdf emits expanded-form JSON-LD only: no @context, every type/predicate as an
+            // absolute IRI -- "Game" alone never appears; the schema.org/Game IRI does.
+            Assert.That(body, Does.Contain "schema.org/Game", "the description is schema.org/Game JSON-LD (expanded form)")
         }
 
     [<Test>]

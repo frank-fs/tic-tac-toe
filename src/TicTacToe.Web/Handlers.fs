@@ -10,6 +10,7 @@ open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.DependencyInjection
 open Oxpecker.ViewEngine
 open Frank.Datastar
+open Frank.Rdf
 open TicTacToe.Web.SseBroadcast
 open TicTacToe.Web.templates.shared
 open TicTacToe.Web.templates.game
@@ -715,5 +716,11 @@ let gameType (ctx: HttpContext) =
         | true, Some _ ->
             let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}{routePrefix ctx}/{gameId}"
             ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
-            do! ctx.Response.WriteAsync(Discovery.gameJsonLd gameUri)
+            // NOT Doc.writeJsonLd straight into ctx.Response.Body: VDS.RDF's JsonLdWriter.Save
+            // writes synchronously, and Kestrel disallows synchronous response-body writes by
+            // default -- confirmed here as an InvalidOperationException ("Synchronous operations
+            // are disallowed") that aborts the connection mid-response. Frank.Provenance.Sample
+            // documents hitting the same class of bug (silent truncation at StreamWriter's 1KB
+            // buffer) for the same reason and buffers via toJsonLd first; doing the same here.
+            do! ctx.Response.WriteAsync(Discovery.gameDoc gameUri |> Doc.toJsonLd)
     }
