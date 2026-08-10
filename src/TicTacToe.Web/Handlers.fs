@@ -396,29 +396,27 @@ let createGame (ctx: HttpContext) =
                 ctx.Response.Headers.Location <- $"{routePrefix ctx}/{gameId}"
     }
 
-/// GET /games/{id} - Get a specific game
-let getGame (ctx: HttpContext) =
+/// GET /games/{id} — the default representation: always HTML, the game board or the 404 page.
+/// Registered as negotiate{}'s "text/html" case in Program.fs (see the comment there on why
+/// "text/html" and not a "*/*" wildcard), and reused directly by getGameLdJson below whenever
+/// So is off or there's no game to redirect from.
+let getGameHtml (ctx: HttpContext) : Task =
     task {
         let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
-        let assignmentManager = ctx.RequestServices.GetRequiredService<PlayerAssignmentManager>()
         let surface = surfaceOf ctx
         let gameId = ctx.Request.RouteValues.["id"] |> string
+        let basePath = routePrefix ctx
 
         // GET is safe: no subscription side effect here. Every game is subscribed for
         // broadcasts at creation (createGame / startup / reset), so a read need not register one.
         // Read from the supervisor's cached state (TryGetState): never messages the game actor,
         // so a just-deleted game returns None (404) instead of hanging on a Stopped actor.
-        let basePath = routePrefix ctx
         match supervisor.TryGetState(gameId) with
-        | Some _ when surface.So && acceptsLdJson ctx ->
-            // httpRange-14: an RDF request on the thing → 303 See Other to its describing document.
-            ctx.Response.StatusCode <- 303
-            ctx.Response.Headers.Location <- Microsoft.Extensions.Primitives.StringValues $"{basePath}/{gameId}/type"
         | Some result ->
             ctx.Response.Headers.CacheControl <- "no-cache, private"
             ctx.Response.Headers.Vary <- "Cookie"
-            if surface.Sd then setDiscoveryHeaders ctx $"{basePath}/{gameId}" (Some(gameAllow result))
-            if surface.So then setDescribedByHeader ctx gameId
+            match gameAllow result with
+            | allow -> ctx.Response.Headers.Append("Allow", allow)
             do! renderGamePage ctx gameId result None
         | None ->
             ctx.Response.StatusCode <- 404
@@ -427,6 +425,26 @@ let getGame (ctx: HttpContext) =
             ctx.Response.ContentType <- "text/html; charset=utf-8"
             let element = notFoundPage |> layout.html ctx
             do! Render.toStreamAsync ctx.Response.Body element
+    }
+
+/// httpRange-14: an RDF request on the thing -> 303 See Other to its describing document
+/// (/games/{id}/type), but only when So is on — with So off there is no describing document to
+/// redirect to, so the request falls through to the ordinary HTML representation instead.
+/// Registered as negotiate{}'s "application/ld+json" case in Program.fs.
+let getGameLdJson (ctx: HttpContext) : Task =
+    task {
+        let surface = surfaceOf ctx
+        if not surface.So then
+            do! getGameHtml ctx
+        else
+            let supervisor = ctx.RequestServices.GetRequiredService<GameSupervisor>()
+            let gameId = ctx.Request.RouteValues.["id"] |> string
+            let basePath = routePrefix ctx
+            match supervisor.TryGetState(gameId) with
+            | Some _ ->
+                ctx.Response.StatusCode <- 303
+                ctx.Response.Headers.Location <- Microsoft.Extensions.Primitives.StringValues $"{basePath}/{gameId}/type"
+            | None -> do! getGameHtml ctx
     }
 
 /// Helper to determine if it's X's turn based on game state

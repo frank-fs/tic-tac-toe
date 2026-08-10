@@ -191,7 +191,27 @@ let gameById =
     resource "/games/{id}" {
         name "GameById"
         requireAuth
-        get Handlers.getGame
+        get (
+            negotiate {
+                // Explicit RequestDelegate(...) wrapper, not a bare function reference: this is the
+                // documented-safe form (frank-fs/frank#492, see Frank.Rdf.Sample's own getGame) —
+                // it names the handler's self-writing intent instead of relying on which NegotiateBuilder
+                // overload F#'s resolver happens to pick.
+                //
+                // "text/html", not "*/*": MediaTypeNegotiation ties are broken by registration order
+                // (MediaTypeNegotiation.fs), and a registered "*/*" ties at quality 1.0 against ANY
+                // single concrete Accept entry -- including a bare "Accept: application/ld+json" with
+                // no other entries, and an absent Accept (normalized internally to "*/*"). With "*/*"
+                // registered, whichever order wins one of {absent Accept -> HTML default} or
+                // {Accept: application/ld+json alone -> ld+json 303} necessarily loses the other tie.
+                // "text/html" (this handler's actual content type) is disjoint from
+                // "application/ld+json" -- no tie on an explicit ld+json Accept -- while still winning
+                // the tie against ld+json on an absent or explicit "*/*" Accept because it is listed
+                // first here.
+                accepts "text/html" (RequestDelegate(Handlers.getGameHtml))
+                accepts "application/ld+json" (RequestDelegate(Handlers.getGameLdJson))
+            }
+        )
         post Handlers.makeMove
         delete Handlers.deleteGame
     }
