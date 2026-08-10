@@ -403,8 +403,8 @@ let getGameHtml (ctx: HttpContext) : Task =
         | Some result ->
             ctx.Response.Headers.CacheControl <- "no-cache, private"
             ctx.Response.Headers.Vary <- "Cookie"
-            match gameAllow result with
-            | allow -> ctx.Response.Headers.Append("Allow", allow)
+            if surface.Sd then
+                ctx.Response.Headers.Append("Allow", gameAllow result)
             do! renderGamePage ctx gameId result None
         | None ->
             ctx.Response.StatusCode <- 404

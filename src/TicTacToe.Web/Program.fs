@@ -49,15 +49,17 @@ let private openApiEnabled () =
 /// Strips Link-header rel values that Frank 7.3.2's useX operations register as unconditional,
 /// app-wide contributions with no per-request hook of their own -- one rel per flag that's
 /// supposed to gate that discovery signal: "service-desc" (useOpenApi) when
-/// TICTACTOE_OPENAPI_ENABLED is off; "home" (useJsonHome, wired in a later task) and "profile"
-/// (useAlps, wired below) when Sd is off. See the doc comment on useOpenApiGuard/Step 4
-/// above for why this must be an IStartupFilter and not a plugBeforeRouting middleware.
+/// TICTACTOE_OPENAPI_ENABLED is off OR Sd is off (Sd=0 hides ALL discovery signals regardless of
+/// other independent toggles -- a floor cell must not leak service-desc just because the OpenAPI
+/// toggle happens to default on); "home" (useJsonHome) and "profile" (useAlps) when Sd is off.
+/// See the doc comment on useOpenApiGuard/Step 4 above for why this must be an IStartupFilter and
+/// not a plugBeforeRouting middleware.
 type private DiscoveryLinkScrubStartupFilter(surface: Surface) =
     interface IStartupFilter with
         member _.Configure(next: Action<IApplicationBuilder>) =
             Action<IApplicationBuilder>(fun app ->
                 let markers =
-                    [ if not (openApiEnabled ()) then yield "rel=\"service-desc\""
+                    [ if not (openApiEnabled ()) || not surface.Sd then yield "rel=\"service-desc\""
                       if not surface.Sd then
                           yield "rel=\"profile\""
                           yield "rel=\"home\"" ]
@@ -161,6 +163,16 @@ let private describedByLink : HttpContext -> WebLink seq =
             let gameId = ctx.Request.RouteValues.["id"] |> string
             Seq.singleton { Target = $"{Handlers.routePrefix ctx}/{gameId}/type"; Rel = "describedby"; Params = [] }
 
+/// Sd: rel="self" on the resource that served the response -- the old hand-rolled
+/// discoveryLinks (retired during the Frank.JsonHome/Alps migration) emitted this alongside
+/// profile/home; Frank's own useJsonHome/useAlps app-wide providers have no equivalent, so it
+/// is restored here per-resource (design spec 2026-06-25-sp2, line 93: `self` is an Sd=1 signal).
+let private selfLink : HttpContext -> WebLink seq =
+    fun ctx ->
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.Sd then Seq.empty
+        else Seq.singleton { Target = string ctx.Request.Path; Rel = "self"; Params = [] }
+
 // Resources
 let login =
     resource "/login" {
@@ -185,6 +197,7 @@ let home =
         name "Home"
         rel "tag:tictactoe,2026:home"
         requireAuth
+        link selfLink
         get Handlers.home
     }
 
@@ -208,6 +221,7 @@ let gameById =
         hrefVar "id" "tag:tictactoe,2026:param;id"
         requireAuth
         link describedByLink
+        link selfLink
         get (
             negotiate {
                 // Explicit RequestDelegate(...) wrapper, not a bare function reference: this is the

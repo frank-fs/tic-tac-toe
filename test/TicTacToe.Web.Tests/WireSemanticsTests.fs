@@ -144,6 +144,20 @@ type FullSurfaceWireTests() =
         }
 
     [<Test>]
+    member this.``the well-known documents actually serve their expected content, live``() : Task =
+        task {
+            use! home = this.Client.GetAsync "/.well-known/home.json"
+            let! homeBody = home.Content.ReadAsStringAsync()
+            Assert.That(homeBody, Does.Contain "tag:tictactoe,2026:home", "JSON Home must catalog the home resource")
+            Assert.That(homeBody, Does.Contain "tag:tictactoe,2026:game", "JSON Home must catalog the game resource")
+
+            use! profile = this.Client.GetAsync "/.well-known/alps.json"
+            let! profileBody = profile.Content.ReadAsStringAsync()
+            Assert.That(profileBody, Does.Contain "\"make-move\"", "the served ALPS profile must include the make-move descriptor")
+            Assert.That(profileBody, Does.Contain "\"reset\"", "the served ALPS profile must include the reset descriptor")
+        }
+
+    [<Test>]
     member this.``So types the game: describedby Link, ld+json 303, JSON-LD document``() : Task =
         task {
             let! id = this.GameId()
@@ -248,6 +262,14 @@ type FloorSurfaceWireTests() =
             Assert.That(int outOfTurn.StatusCode, Is.EqualTo 403, "out of turn: 403 on the floor too")
             use! bad = this.Move x $"/games/{id}" "X" "Nowhere"
             Assert.That(int bad.StatusCode, Is.EqualTo 400, "malformed: 400 on the floor too")
+        }
+
+    [<Test>]
+    member this.``Sd=0 carries no Allow header on GET /games/{id} -- Allow is an Sd=1 signal``() : Task =
+        task {
+            let! id = this.GameId()
+            use! board = this.Client.GetAsync $"/games/{id}"
+            Assert.That(board.Content.Headers.Allow.Count, Is.EqualTo 0, "Sd=0 -> no Allow leak on the game resource")
         }
 
     [<Test>]
