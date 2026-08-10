@@ -714,18 +714,6 @@ let profile (ctx: HttpContext) =
             do! ctx.Response.WriteAsync Discovery.alpsProfile
     }
 
-/// GET /.well-known/home.json — JSON Home document (Sd only).
-let wellKnownHome (ctx: HttpContext) =
-    task {
-        let surface = surfaceOf ctx
-        if not surface.Sd then
-            ctx.Response.StatusCode <- 404
-        else
-            ctx.Response.Headers.Append("Allow", "GET, OPTIONS")
-            ctx.Response.ContentType <- "application/json-home; charset=utf-8"
-            do! ctx.Response.WriteAsync Discovery.jsonHome
-    }
-
 /// GET /games/{id}/type — the game's RDF description as schema.org/Game JSON-LD (So only).
 /// The document the game URI (the thing) dereferences to under content negotiation.
 let gameType (ctx: HttpContext) =

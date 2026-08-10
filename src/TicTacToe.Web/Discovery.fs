@@ -39,15 +39,6 @@ let alpsProfile = """{
   }
 }"""
 
-/// JSON Home document listing resources and relations (Sd).
-let jsonHome = """{
-  "resources": {
-    "tag:tictactoe,2026:home": { "href": "/" },
-    "tag:tictactoe,2026:game": { "href-template": "/games/{id}", "href-vars": { "id": "tag:tictactoe,2026:param;id" } },
-    "tag:tictactoe,2026:profile": { "href": "/.well-known/alps.json" }
-  }
-}"""
-
 /// The game's RDF description as schema.org/Game JSON-LD (So). Absolute @id/#players URIs are
 /// built from the request scheme+host so every named thing is a dereferenceable HTTP URI; zero
 /// blank nodes; sameAs links to Wikidata + DBpedia.

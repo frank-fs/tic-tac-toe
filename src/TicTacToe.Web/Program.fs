@@ -17,6 +17,7 @@ open Frank.Builder
 open Frank.Auth
 open Frank.Datastar
 open Frank.OpenApi
+open Frank.JsonHome
 open TicTacToe.Web
 open TicTacToe.Web.Model
 open TicTacToe.Web.EventLog
@@ -148,9 +149,9 @@ let configureServices (services: IServiceCollection) =
 
     services
 
-/// Sd: profile + home + self, exactly what the old setDiscoveryHeaders emitted as one Link
-/// header value. Attached per-resource (not app-wide) so it appears on the same three endpoints
-/// it always has -- profileResource, wellKnownHomeResource, gameById's GET.
+/// Sd: profile + self. "home" is no longer emitted here -- useJsonHome (below) contributes
+/// rel="home" app-wide on its own, unconditionally; DiscoveryLinkScrubStartupFilter suppresses it
+/// when Sd is off so the floor cell still hides it.
 let private discoveryLinks : HttpContext -> WebLink seq =
     fun ctx ->
         let surface = ctx.RequestServices.GetRequiredService<Surface>()
@@ -158,7 +159,6 @@ let private discoveryLinks : HttpContext -> WebLink seq =
         else
             seq {
                 { Target = "/.well-known/alps.json"; Rel = "profile"; Params = [] }
-                { Target = "/.well-known/home.json"; Rel = "home"; Params = [] }
                 { Target = string ctx.Request.Path; Rel = "self"; Params = [] }
             }
 
@@ -195,6 +195,7 @@ let debug =
 let home =
     resource "/" {
         name "Home"
+        rel "tag:tictactoe,2026:home"
         requireAuth
         get Handlers.home
     }
@@ -215,6 +216,8 @@ let games =
 let gameById =
     resource "/games/{id}" {
         name "GameById"
+        rel "tag:tictactoe,2026:game"
+        hrefVar "id" "tag:tictactoe,2026:param;id"
         requireAuth
         link discoveryLinks
         link describedByLink
@@ -276,17 +279,10 @@ let gameSse =
 let profileResource =
     resource "/.well-known/alps.json" {
         name "Profile"
+        rel "tag:tictactoe,2026:profile"
         requireAuth
         link discoveryLinks
         get Handlers.profile
-    }
-
-let wellKnownHomeResource =
-    resource "/.well-known/home.json" {
-        name "WellKnownHome"
-        requireAuth
-        link discoveryLinks
-        get Handlers.wellKnownHome
     }
 
 // So: the describing document the game URI dereferences to under ld+json conneg.
@@ -357,6 +353,22 @@ let useOpenApiGuard (app: IApplicationBuilder) =
         }
         :> Task)
 
+/// Blocks the JSON Home document when Sd is off. Frank.JsonHome's `useJsonHome` operation has no
+/// on/off switch of its own (mounts unconditionally, same as useOpenApi) -- same "present in the
+/// routing table, 404 unless the toggle is on" shape as useOpenApiGuard/useOptionsDiscovery.
+let useJsonHomeGuard (app: IApplicationBuilder) =
+    let surface = app.ApplicationServices.GetRequiredService<Surface>()
+    if surface.Sd then app
+    else
+        app.Use(fun (ctx: HttpContext) (next: RequestDelegate) ->
+            task {
+                if ctx.Request.Path.Value = "/.well-known/home.json" then
+                    ctx.Response.StatusCode <- 404
+                else
+                    do! next.Invoke ctx
+            }
+            :> Task)
+
 /// The resource a stream endpoint streams ABOUT — None when the path is not a stream endpoint.
 let private streamCanonical (path: string) =
     match path with
@@ -418,6 +430,7 @@ let main args =
         useAuthorization
 
         useOpenApi
+        useJsonHome
 
         plugBeforeRouting ResponseCompressionBuilderExtensions.UseResponseCompression
         plugBeforeRouting StaticFileExtensions.UseStaticFiles
@@ -429,6 +442,7 @@ let main args =
         plugBeforeRouting createInitialGames
         plugBeforeRouting useOptionsDiscovery
         plugBeforeRouting useOpenApiGuard
+        plugBeforeRouting useJsonHomeGuard
         plugBeforeRouting useStreamGuard
 
         // MCP mounts alongside Frank's own resources — same DI container, same GameSupervisor,
@@ -455,7 +469,6 @@ let main args =
         resource gameDelete
         resource gameSse
         resource profileResource
-        resource wellKnownHomeResource
     }
 
     0
