@@ -148,6 +148,31 @@ let configureServices (services: IServiceCollection) =
 
     services
 
+/// Sd: profile + home + self, exactly what the old setDiscoveryHeaders emitted as one Link
+/// header value. Attached per-resource (not app-wide) so it appears on the same three endpoints
+/// it always has -- profileResource, wellKnownHomeResource, gameById's GET.
+let private discoveryLinks : HttpContext -> WebLink seq =
+    fun ctx ->
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.Sd then Seq.empty
+        else
+            seq {
+                { Target = "/.well-known/alps.json"; Rel = "profile"; Params = [] }
+                { Target = "/.well-known/home.json"; Rel = "home"; Params = [] }
+                { Target = string ctx.Request.Path; Rel = "self"; Params = [] }
+            }
+
+/// So: the game URI names the Game (the thing); its RDF description is a distinct document
+/// (httpRange-14). Independent of discoveryLinks -- both coexist as separate Link entries on
+/// gameById's GET when Sd+So.
+let private describedByLink : HttpContext -> WebLink seq =
+    fun ctx ->
+        let surface = ctx.RequestServices.GetRequiredService<Surface>()
+        if not surface.So then Seq.empty
+        else
+            let gameId = ctx.Request.RouteValues.["id"] |> string
+            Seq.singleton { Target = $"{Handlers.routePrefix ctx}/{gameId}/type"; Rel = "describedby"; Params = [] }
+
 // Resources
 let login =
     resource "/login" {
@@ -191,6 +216,8 @@ let gameById =
     resource "/games/{id}" {
         name "GameById"
         requireAuth
+        link discoveryLinks
+        link describedByLink
         get (
             negotiate {
                 // Explicit RequestDelegate(...) wrapper, not a bare function reference: this is the
@@ -250,6 +277,7 @@ let profileResource =
     resource "/.well-known/alps.json" {
         name "Profile"
         requireAuth
+        link discoveryLinks
         get Handlers.profile
     }
 
@@ -257,6 +285,7 @@ let wellKnownHomeResource =
     resource "/.well-known/home.json" {
         name "WellKnownHome"
         requireAuth
+        link discoveryLinks
         get Handlers.wellKnownHome
     }
 

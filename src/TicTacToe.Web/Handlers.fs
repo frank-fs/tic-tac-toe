@@ -42,18 +42,6 @@ let private gameAllow (result: MoveResult) =
     | XTurn _ | OTurn _ -> "GET, POST, DELETE, OPTIONS"
     | _ -> "GET, DELETE, OPTIONS"   // terminal: no further moves
 
-let private setDiscoveryHeaders (ctx: HttpContext) (selfPath: string) (allow: string option) =
-    ctx.Response.Headers.Append("Link", $"</.well-known/alps.json>; rel=\"profile\", </.well-known/home.json>; rel=\"home\", <{selfPath}>; rel=\"self\"")
-    match allow with
-    | Some a -> ctx.Response.Headers.Append("Allow", a)
-    | None -> ()
-
-/// So: the game URI names the Game (the thing); its RDF description is a distinct document
-/// (httpRange-14). Advertise it with a describedby Link on the HTML representation. Independent
-/// of Sd's profile/home Links — both coexist as separate Link headers when Sd+So.
-let private setDescribedByHeader (ctx: HttpContext) (gameId: string) =
-    ctx.Response.Headers.Append("Link", $"<{routePrefix ctx}/{gameId}/type>; rel=\"describedby\"")
-
 /// So content negotiation: an agent asking for RDF (application/ld+json) is 303-redirected from
 /// the thing (the game) to its describing document (/games/{id}/type).
 let private acceptsLdJson (ctx: HttpContext) =
@@ -265,7 +253,6 @@ let home (ctx: HttpContext) =
         // Cookie so an intermediary can't serve one user's board to another.
         ctx.Response.Headers.CacheControl <- "no-cache, private"
         ctx.Response.Headers.Vary <- "Cookie"
-        if surface.Sd then setDiscoveryHeaders ctx "/" None
         let element = templates.home.homePage surface ctx allowCreate boards |> withBanner surface ctx |> layout.html ctx
         ctx.Response.ContentType <- "text/html; charset=utf-8"
         do! Render.toStreamAsync ctx.Response.Body element
@@ -722,7 +709,7 @@ let profile (ctx: HttpContext) =
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
-            setDiscoveryHeaders ctx "/.well-known/alps.json" (Some "GET, OPTIONS")
+            ctx.Response.Headers.Append("Allow", "GET, OPTIONS")
             ctx.Response.ContentType <- "application/alps+json; charset=utf-8"
             do! ctx.Response.WriteAsync Discovery.alpsProfile
     }
@@ -734,7 +721,7 @@ let wellKnownHome (ctx: HttpContext) =
         if not surface.Sd then
             ctx.Response.StatusCode <- 404
         else
-            setDiscoveryHeaders ctx "/.well-known/home.json" (Some "GET, OPTIONS")
+            ctx.Response.Headers.Append("Allow", "GET, OPTIONS")
             ctx.Response.ContentType <- "application/json-home; charset=utf-8"
             do! ctx.Response.WriteAsync Discovery.jsonHome
     }
