@@ -703,7 +703,7 @@ let resetGame (ctx: HttpContext) =
 // Sd / So: discovery documents (404 when the factor is off — the surface is the toggle)
 // ============================================================================
 
-/// GET /games/{id}/type — the game's RDF description as schema.org/Game JSON-LD (So only).
+/// GET /games/{id}/type — the game's RDF description as schema.org/Game JSON-LD (So).
 /// The document the game URI (the thing) dereferences to under content negotiation.
 let gameType (ctx: HttpContext) =
     task {
@@ -713,8 +713,16 @@ let gameType (ctx: HttpContext) =
         match surface.So, supervisor.TryGetState(gameId) with
         | false, _ | _, None ->
             ctx.Response.StatusCode <- 404
-        | true, Some _ ->
+        | true, Some result ->
             let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}{routePrefix ctx}/{gameId}"
+            // So+Sd coupling: only hand Discovery.gameDoc the ALPS profile IRI when Sd is also on --
+            // with Sd off, /.well-known/alps.json 404s (useAlpsGuard), so predicates minted from it
+            // would be undereferenceable. Sd on: the profile is live, so the RDF doc expresses live
+            // board/turn/outcome using the ALPS profile's own fragment IRIs as predicates instead of
+            // just coexisting with it (see Discovery.gameDoc's doc comment).
+            let alpsProfileUri =
+                if surface.Sd then Some $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}/.well-known/alps.json"
+                else None
             ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
             // Frank 7.3.3's Doc.writeJsonLdAsync writes JSON-LD expanded-form directly into an
             // IBufferWriter<byte> (ctx.Response.BodyWriter is Kestrel's PipeWriter), encoding
@@ -727,5 +735,5 @@ let gameType (ctx: HttpContext) =
             // buffer-writer-native path has neither failure mode, so the buffering workaround is
             // gone. No explicit flush/dispose here: BodyWriter is owned by the ASP.NET Core
             // response pipeline, which completes/flushes it when the handler's task finishes.
-            do! Doc.writeJsonLdAsync (Discovery.gameDoc gameUri) ctx.Response.BodyWriter
+            do! Doc.writeJsonLdAsync (Discovery.gameDoc gameUri alpsProfileUri (Some result)) ctx.Response.BodyWriter
     }

@@ -210,8 +210,9 @@ let sse =
 let games =
     resource "/games" {
         name "Games"
+        rel "tag:tictactoe,2026:games"
         requireAuth
-        post Handlers.createGame
+        post (handler { handle Handlers.createGame; binds Discovery.createGame })
     }
 
 let gameById =
@@ -224,10 +225,14 @@ let gameById =
         link selfLink
         get (
             negotiate {
-                // Explicit RequestDelegate(...) wrapper, not a bare function reference: this is the
-                // documented-safe form (frank-fs/frank#492, see Frank.Rdf.Sample's own getGame) —
-                // it names the handler's self-writing intent instead of relying on which NegotiateBuilder
-                // overload F#'s resolver happens to pick.
+                // "application/ld+json" and "*/*" get an explicit RequestDelegate(...) wrapper, not a
+                // bare function reference: this is the documented-safe form (frank-fs/frank#492, see
+                // Frank.Rdf.Sample's own getGame) — it names the handler's self-writing intent instead
+                // of relying on which NegotiateBuilder overload F#'s resolver happens to pick.
+                // "text/html" instead wraps in `handler { }` (a HandlerDefinition, not ambiguous with
+                // any FSharpFunc overload either) so it can carry `binds Discovery.viewGame` — Sd's ALPS
+                // profile needs a `safe` transition for this GET the same way JSON Home already
+                // advertises it as GET-allowed on tag:tictactoe,2026:game.
                 //
                 // "text/html" listed before "application/ld+json", not a single "*/*": MediaTypeNegotiation
                 // ties are broken by registration order (MediaTypeNegotiation.fs), and a registered "*/*"
@@ -245,7 +250,7 @@ let gameById =
                 // "text/html" nor "application/ld+json" and would otherwise 406. It's listed LAST
                 // specifically so it never wins a tie against the two concrete entries above -- it only
                 // ever fires when neither of them matches at all.
-                accepts "text/html" (RequestDelegate(Handlers.getGameHtml))
+                accepts "text/html" (handler { handle Handlers.getGameHtml; binds Discovery.viewGame })
                 accepts "application/ld+json" (RequestDelegate(Handlers.getGameLdJson))
                 accepts "*/*" (RequestDelegate(Handlers.getGameHtml))
             }
@@ -261,6 +266,8 @@ let gameById =
 let gameReset =
     resource "/games/{id}/reset" {
         name "GameReset"
+        rel "tag:tictactoe,2026:game-reset"
+        hrefVar "id" "tag:tictactoe,2026:param;id"
         requireAuth
         post (handler { handle Handlers.resetGame; binds Discovery.reset })
     }
