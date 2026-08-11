@@ -716,11 +716,16 @@ let gameType (ctx: HttpContext) =
         | true, Some _ ->
             let gameUri = $"{ctx.Request.Scheme}://{ctx.Request.Host.Value}{routePrefix ctx}/{gameId}"
             ctx.Response.ContentType <- "application/ld+json; charset=utf-8"
-            // NOT Doc.writeJsonLd straight into ctx.Response.Body: VDS.RDF's JsonLdWriter.Save
-            // writes synchronously, and Kestrel disallows synchronous response-body writes by
-            // default -- confirmed here as an InvalidOperationException ("Synchronous operations
-            // are disallowed") that aborts the connection mid-response. Frank.Provenance.Sample
-            // documents hitting the same class of bug (silent truncation at StreamWriter's 1KB
-            // buffer) for the same reason and buffers via toJsonLd first; doing the same here.
-            do! ctx.Response.WriteAsync(Discovery.gameDoc gameUri |> Doc.toJsonLd)
+            // Frank 7.3.3's Doc.writeJsonLdAsync writes JSON-LD expanded-form directly into an
+            // IBufferWriter<byte> (ctx.Response.BodyWriter is Kestrel's PipeWriter), encoding
+            // UTF8 straight to the buffer with no intermediate string and no TextWriter/StreamWriter
+            // layer. That removes the earlier problem: VDS.RDF's JsonLdWriter.Save writes
+            // synchronously, and a TextWriter-based sink either hits Kestrel's "Synchronous
+            // operations are disallowed" (writing straight to ctx.Response.Body) or truncates
+            // silently at a fixed buffer size (StreamWriter) -- both of which forced buffering the
+            // whole document into a string via Doc.toJsonLd first. writeJsonLdAsync's async,
+            // buffer-writer-native path has neither failure mode, so the buffering workaround is
+            // gone. No explicit flush/dispose here: BodyWriter is owned by the ASP.NET Core
+            // response pipeline, which completes/flushes it when the handler's task finishes.
+            do! Doc.writeJsonLdAsync (Discovery.gameDoc gameUri) ctx.Response.BodyWriter
     }
